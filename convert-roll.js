@@ -130,8 +130,8 @@ function parseTextRoll(text) {
       countyTaxable, cityTaxable, schoolTaxable,
       frontage, depth, deedYear, eastCoord, nrthCoord, exemptions,
       mailAddress,
-      yearBuilt: null, municipality: null, schoolDistrict: "Albany",
-      acres: null, waterType: null, sewerType: null, parcelArea: null, saleDate: null
+      schoolDistrict: "Albany"
+      // null fields omitted to reduce JSON size
     };
   }).filter(p => p.parcelId && p.assessedValue >= 0);
 }
@@ -144,8 +144,27 @@ const elapsed = Date.now() - t0;
 
 console.log(`  Parsed ${parcels.length.toLocaleString()} parcels in ${elapsed}ms`);
 
+// Pre-compute metadata so the browser never has to compute dropdown lists
+console.log("  Computing metadata…");
+const zipSet = new Set(), clsMap = {}, exSet = new Set(), deedMap = {}, fmvBkts = {"<100k":0,"100–200k":0,"200–300k":0,"300–400k":0,"400–500k":0,"500–750k":0,"750k+":0};
+for (const p of parcels) {
+  zipSet.add(p.zip);
+  clsMap[p.propClass] = p.propClassDesc;
+  for (const e of p.exemptions) exSet.add(e.name);
+  if (p.deedYear) deedMap[p.deedYear] = (deedMap[p.deedYear]||0)+1;
+  const v = p.fullMarketValue;
+  if(v<100000)fmvBkts["<100k"]++;else if(v<200000)fmvBkts["100–200k"]++;else if(v<300000)fmvBkts["200–300k"]++;else if(v<400000)fmvBkts["300–400k"]++;else if(v<500000)fmvBkts["400–500k"]++;else if(v<750000)fmvBkts["500–750k"]++;else fmvBkts["750k+"]++;
+}
+const meta = {
+  zips: [...zipSet].sort(),
+  classes: Object.entries(clsMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([code,desc])=>({code,desc})),
+  exemptionNames: [...exSet].sort(),
+  deedYears: Object.entries(deedMap).sort((a,b)=>a[0]-b[0]).map(([year,count])=>({year:+year,count})),
+  fmvBuckets: Object.entries(fmvBkts).map(([range,count])=>({range,count}))
+};
+
 // Wrap in the same envelope the dashboard expects from JSON uploads
-const payload = { version: 1, source: path.basename(inFile), parsedAt: new Date().toISOString(), parcels };
+const payload = { version: 2, source: path.basename(inFile), parsedAt: new Date().toISOString(), meta, parcels };
 const json = JSON.stringify(payload);
 fs.writeFileSync(out, json);
 

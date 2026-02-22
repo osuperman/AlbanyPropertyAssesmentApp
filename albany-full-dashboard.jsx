@@ -510,12 +510,22 @@ const PropListModal = ({data, onClose}) => {
   );
 };
 
+/* ── DEBOUNCE HOOK — delays useMemo recomputation until typing stops ── */
+function useDebounce(value, delay) {
+  const [dv, setDv] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDv(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return dv;
+}
+
 /* ════════════════════════════════════════
    TAB PANELS
 ════════════════════════════════════════ */
 
 /* ── 1. BROWSE ── */
-const Browse = ({parcels,compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup}) => {
+const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup}) => {
   const [search,setSearch]=useState("");
   const [fZip,setFZip]=useState(""); const [fCls,setFCls]=useState(""); const [fTyp,setFTyp]=useState("");
   const [fEx,setFEx]=useState(""); const [fEq,setFEq]=useState(""); const [fNbr,setFNbr]=useState("");
@@ -525,9 +535,15 @@ const Browse = ({parcels,compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup
   const [page,setPage]=useState(0);
   const [ownerSearch,setOwnerSearch]=useState("");
   const PAGE_SIZE=25;
-  const zips=useMemo(()=>[...new Set(parcels.map(p=>p.zip))].sort(),[parcels]);
-  const clss=useMemo(()=>[...new Set(parcels.map(p=>p.propClass))].sort(),[parcels]);
-  const exs=useMemo(()=>[...new Set(parcels.flatMap(p=>p.exemptions.map(e=>e.name)))].sort(),[parcels]);
+  // Debounce text search so filter only runs 300ms after typing stops
+  const dSearch=useDebounce(search,300);
+  const dOwner=useDebounce(ownerSearch,300);
+  // Use pre-computed metadata from JSON when available (skips expensive iteration)
+  const zips=useMemo(()=>meta.zips||[...new Set(parcels.map(p=>p.zip))].sort(),[meta,parcels]);
+  const clss=useMemo(()=>meta.classes?meta.classes.map(c=>c.code):[...new Set(parcels.map(p=>p.propClass))].sort(),[meta,parcels]);
+  const clssDescs=useMemo(()=>meta.classes?Object.fromEntries(meta.classes.map(c=>[c.code,c.desc])):null,[meta]);
+  // Use Set loop instead of flatMap to avoid 80K+ intermediate array; skip if metadata available
+  const exs=useMemo(()=>{if(meta.exemptionNames)return meta.exemptionNames;const s=new Set();for(const p of parcels)for(const e of p.exemptions)s.add(e.name);return[...s].sort();},[meta,parcels]);
   const nbrs=useMemo(()=>[...new Set(parcels.map(p=>p.neighborhood).filter(Boolean))].sort(),[parcels]);
   const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,fontFamily:"var(--fb)",cursor:"pointer"};
 
@@ -535,8 +551,8 @@ const Browse = ({parcels,compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup
   const useMyHome = () => { if(myHome) setSearch(myHome.address.split(" ").slice(0,2).join(" ")); };
   const filtered=useMemo(()=>{
     let r=[...parcels];
-    const q=search.toLowerCase();
-    const oq=ownerSearch.toLowerCase();
+    const q=dSearch.toLowerCase();
+    const oq=dOwner.toLowerCase();
     if(q)r=r.filter(p=>[p.address,p.parcelId,p.propClassDesc,p.neighborhood||""].some(x=>x.toLowerCase().includes(q)));
     if(oq)r=r.filter(p=>[p.owner1||"",p.owner2||""].some(x=>x.toLowerCase().includes(oq)));
     if(fZip)r=r.filter(p=>p.zip===fZip);
@@ -558,9 +574,9 @@ const Browse = ({parcels,compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup
       return 0;
     });
     return r;
-  },[parcels,search,ownerSearch,fZip,fCls,fTyp,fEx,fEq,fNbr,sort]);
-  // Reset to page 1 whenever filters or sort change
-  useEffect(()=>{setPage(0);},[search,ownerSearch,fZip,fCls,fTyp,fEx,fEq,fNbr,sort]);
+  },[parcels,dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,sort]);
+  // Reset to page 1 whenever debounced filters or sort change
+  useEffect(()=>{setPage(0);},[dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,sort]);
   const pageCount=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
   const pageSlice=filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
   const clearAll=()=>{setSearch("");setOwnerSearch("");setFZip("");setFCls("");setFTyp("");setFEx("");setFEq("");setFNbr("");};
@@ -1840,6 +1856,7 @@ const HomebuyerGuide = ({parcels, myHome}) => {
 ════════════════════════════════════════ */
 export default function App() {
   const [parcels,setParcels]=useState(SAMPLE);
+  const [meta,setMeta]=useState({});
   const [dataSource,setDataSource]=useState("sample");
   const [tab,setTab]=useState("browse");
   const [compareList,setCompareList]=useState([]);
@@ -1857,23 +1874,29 @@ export default function App() {
     r.onload=ev=>{
       const raw=ev.target.result;
       const fname=f.name.toLowerCase();
-      // ── JSON fast-load (pre-converted roll, ~50-100x faster than TXT) ──
-      if(fname.endsWith(".json")){
-        try{
-          const payload=JSON.parse(raw);
-          const arr=payload.parcels||payload;
-          if(Array.isArray(arr)&&arr.length>0){setParcels(arr);setDataSource("json");}
-          else alert("JSON file does not contain a parcels array.");
-        }catch(err){alert("Could not parse JSON: "+err.message);}
+      // Defer heavy processing so the browser paints the loading spinner first
+      setTimeout(()=>{
+        // ── JSON fast-load (pre-converted roll, ~50-100x faster than TXT) ──
+        if(fname.endsWith(".json")){
+          try{
+            const payload=JSON.parse(raw);
+            const arr=payload.parcels||payload;
+            if(Array.isArray(arr)&&arr.length>0){
+              if(payload.meta)setMeta(payload.meta);
+              setParcels(arr);setDataSource("json");
+            }
+            else alert("JSON file does not contain a parcels array.");
+          }catch(err){alert("Could not parse JSON: "+err.message);}
+          setUploading(false);
+          return;
+        }
+        // ── TXT / CSV path ──
+        const isRoll=fname.endsWith(".txt")||raw.includes("HOMESTEAD PARCEL")||raw.includes("FULL MARKET VALUE");
+        const parsed=isRoll?parseTextRoll(raw):parseCSV(raw);
+        if(parsed.length>0){setParcels(parsed);setDataSource(isRoll?"roll":"csv");}
+        else alert("Could not parse file — ensure it is an Albany CSV, Final Roll .txt, or converted .json file.");
         setUploading(false);
-        return;
-      }
-      // ── TXT / CSV path ──
-      const isRoll=fname.endsWith(".txt")||raw.includes("HOMESTEAD PARCEL")||raw.includes("FULL MARKET VALUE");
-      const parsed=isRoll?parseTextRoll(raw):parseCSV(raw);
-      if(parsed.length>0){setParcels(parsed);setDataSource(isRoll?"roll":"csv");}
-      else alert("Could not parse file — ensure it is an Albany CSV, Final Roll .txt, or converted .json file.");
-      setUploading(false);
+      },50);
     };
     r.readAsText(f);
   },[]);
@@ -1977,7 +2000,7 @@ export default function App() {
 
         {/* CONTENT */}
         <div style={{maxWidth:1400,margin:"0 auto",padding:"22px 24px 40px"}}>
-          {tab==="browse"&&<Browse parcels={parcels} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)}/>}
+          {tab==="browse"&&<Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)}/>}
           {tab==="analytics"&&<Analytics parcels={parcels} onDrill={setDrillList}/>}
           {tab==="ownership"&&<Ownership parcels={parcels} onDrill={setDrillList}/>}
           {tab==="equity"&&<Equity parcels={parcels} onDrill={setDrillList}/>}
