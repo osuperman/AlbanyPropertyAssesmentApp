@@ -221,11 +221,16 @@ function parseTextRoll(text) {
     const firstLine=blk.trim().split("\n")[0];
     const addrM=firstLine.match(/^(.+?)\s+(?:HOMESTEAD|NON-HOMESTEAD)/);
     const address=(addrM?addrM[1]:firstLine).replace(/\s+/g," ").trim();
-    const zipM=blk.match(/1220\d/);
-    const zip=zipM?zipM[0]:"12207";
-    const ownM=blk.match(/(?:\t|\n)([A-Z][^\t\n]+?)\t(?:Albany|ALBANY)\s*\t?010100/);
+    const zipM=blk.match(/Albany,?\s+NY\s+(122\d{2})/)||blk.match(/\b(122\d{2})\b/);
+    const zip=zipM?(zipM[1]||zipM[0]):"12207";
+    let ownM=blk.match(/(?:\t|\n)([A-Z][^\t\n]+?)\t(?:Albany|ALBANY)\s*\t?010100/)||
+             blk.match(/(?:\t|\n)([A-Z][^\t\n]+?)\s{3,}(?:Albany|ALBANY)\s*\t?010100/);
+    if(!ownM)ownM=blk.match(/([A-Z][^0-9\t\n]{2,45}?)\s+(?:Albany|ALBANY)\s*\t?010100/);
     let owner1=ownM?ownM[1].trim().replace(/\s*(?:BAS STAR|ENH STAR|AGED|VET|WHOLLY).*$/i,"").trim():null;
-    const landM=blk.match(/010100\s+([\d,]+)\s+COUNTY TAXABLE/);
+    const own2M=blk.match(/\n([A-Z][^0-9\t\n]+?)\tFRNT/)||blk.match(/[\d,]+ ([A-Z][^0-9\t\n]+?)\tFRNT/);
+    let owner2=own2M?own2M[1].trim():null;
+    if(owner2===owner1||owner2===address)owner2=null;
+    const landM=blk.match(/010100\s+([\d,]+)\s+(?:COUNTY|CITY)\s+TAXABLE/);
     const landValue=landM?num(landM[1]):0;
     const fmvM=blk.match(/FULL MARKET VALUE\s+([\d,]+)/);
     const fullMarketValue=fmvM?num(fmvM[1]):0;
@@ -233,9 +238,9 @@ function parseTextRoll(text) {
     const frontage=frntM?parseFloat(frntM[1]):0;
     const depth=frntM?parseFloat(frntM[2]):0;
     const assessedValue=frntM?num(frntM[3]):(fullMarketValue>0?Math.round(fullMarketValue*0.96):0);
-    const ctyM=blk.match(/COUNTY TAXABLE VALUE\s+([\d,]+)/);
-    const cityM=blk.match(/CITY TAXABLE VALUE\s+([\d,]+)/);
-    const schM=blk.match(/SCHOOL TAXABLE VALUE\s+([\d,]+)/);
+    const ctyM=blk.match(/COUNTY\s+TAXABLE\s+VALUE\s+([\d,]+)/);
+    const cityM=blk.match(/CITY\s+TAXABLE\s+VALUE\s+([\d,]+)/);
+    const schM=blk.match(/SCHOOL\s+TAXABLE\s+VALUE\s+([\d,]+)/);
     const countyTaxable=ctyM?num(ctyM[1]):assessedValue;
     const cityTaxable=cityM?num(cityM[1]):assessedValue;
     const schoolTaxable=schM?num(schM[1]):assessedValue;
@@ -246,7 +251,7 @@ function parseTextRoll(text) {
     const dy=deedM?parseInt(deedM[1]):null;
     const deedYear=(dy&&dy>=1900&&dy<=2025)?dy:null;
     const exemptions=[];
-    const exPat=/([A-Z][A-Z\s\-]{1,20}?)\s{2,}(\d{5})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/g;
+    const exPat=/([A-Z][A-Za-z\s\-]{1,20}?)\s{2,}(\d{5})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/g;
     const skipEx=new Set(["COUNTY TAXABLE","CITY TAXABLE","SCHOOL TAXABLE","FULL MARKET","DEED BOOK"]);
     let exM;
     while((exM=exPat.exec(blk))!==null){
@@ -258,7 +263,7 @@ function parseTextRoll(text) {
     const mailAddress=mailM?`${mailM[1].trim()}, ${mailM[2]} ${mailM[3]}`:address;
     return {
       parcelId:pid,address,zip,neighborhood:"Albany",
-      owner1:owner1||"Unknown",owner2:null,
+      owner1:owner1||"Unknown",owner2,
       propClass,propClassDesc,parcelType,
       landValue,assessedValue,fullMarketValue,
       countyTaxable,cityTaxable,schoolTaxable,
