@@ -737,6 +737,9 @@ const Analytics = ({parcels}) => {
 const Ownership = ({parcels, onDrill}) => {
   const [view,setView]=useState("portfolio");
   const [selOwner,setSelOwner]=useState(null);
+  const [showAllAbs,setShowAllAbs]=useState(false);
+  const [showAllDupes,setShowAllDupes]=useState(false);
+  const LIST_LIMIT=50;
 
   // Portfolio: group by owner name
   const portfolio=useMemo(()=>{
@@ -838,7 +841,7 @@ const Ownership = ({parcels, onDrill}) => {
           <StatCard label="Total Absentee FMV" value={"$"+(absentees.reduce((s,p)=>s+p.fullMarketValue,0)/1000000).toFixed(1)+"M"} icon="💰" color="#f59e0b"/>
         </div>
         <div style={{display:"grid",gap:10}}>
-          {absentees.map(p=>(
+          {absentees.slice(0,showAllAbs?absentees.length:LIST_LIMIT).map(p=>(
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(249,115,22,.2)",borderRadius:11,padding:"14px 16px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
@@ -857,6 +860,7 @@ const Ownership = ({parcels, onDrill}) => {
             </div>
           ))}
           {absentees.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No absentee owners detected in current dataset. Upload full roll to see results.</div>}
+          {absentees.length>LIST_LIMIT&&<button onClick={()=>setShowAllAbs(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllAbs?`Show top ${LIST_LIMIT} ↑`:`Show all ${absentees.length.toLocaleString()} absentee owners ↓`}</button>}
         </div>
       </div>}
 
@@ -876,7 +880,8 @@ const Ownership = ({parcels, onDrill}) => {
                 </div>
               </div>
               <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:6}}>
-                {yr.parcels.map(p=><Badge key={p.parcelId} color="#0d9488" small>{p.address}</Badge>)}
+                {yr.parcels.slice(0,10).map(p=><Badge key={p.parcelId} color="#0d9488" small>{p.address}</Badge>)}
+                {yr.parcels.length>10&&<Badge color="#475569" small>+{yr.parcels.length-10} more</Badge>}
               </div>
             </div>
           ))}
@@ -887,18 +892,21 @@ const Ownership = ({parcels, onDrill}) => {
         <InfoBox icon="🔍" title="Duplicate Owner Detection — Why This Matters" color="#a78bfa">
           Public property records are entered by hand and are often inconsistent. The same person might appear as "Robert Smith", "Bob Smith", "R. Smith", and "Smith Robert" across different parcels — making it impossible to see their full portfolio at a glance. This tool uses fuzzy name matching (similarity scoring) to flag owner names that look like they might belong to the same person or entity. Always verify manually before drawing conclusions — similar names can also be coincidental.
         </InfoBox>
-        {dupes.length>0?dupes.map((g,i)=>(
-          <div key={i} style={{background:"var(--card2)",border:"1px solid rgba(220,38,38,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
-            <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><Badge color="#dc2626">Possible Duplicate</Badge><span style={{fontSize:12,color:"var(--gray)"}}>Similar owner names detected</span></div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
-              {[g.base,...g.similar].map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
-                <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13}}>{p.owner1}</div>
-                <div style={{fontSize:11,color:"var(--gray)",marginTop:3}}>{p.address}</div>
-                <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)",marginTop:4}}>{$f(p.fullMarketValue)}</div>
-              </div>)}
+        {dupes.length>0?<div>
+          {dupes.slice(0,showAllDupes?dupes.length:LIST_LIMIT).map((g,i)=>(
+            <div key={i} style={{background:"var(--card2)",border:"1px solid rgba(220,38,38,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
+              <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><Badge color="#dc2626">Possible Duplicate</Badge><span style={{fontSize:12,color:"var(--gray)"}}>Similar owner names detected</span></div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
+                {[g.base,...g.similar].map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13}}>{p.owner1}</div>
+                  <div style={{fontSize:11,color:"var(--gray)",marginTop:3}}>{p.address}</div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)",marginTop:4}}>{$f(p.fullMarketValue)}</div>
+                </div>)}
+              </div>
             </div>
-          </div>
-        )):<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
+          ))}
+          {dupes.length>LIST_LIMIT&&<button onClick={()=>setShowAllDupes(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllDupes?`Show top ${LIST_LIMIT} ↑`:`Show all ${dupes.length.toLocaleString()} duplicate groups ↓`}</button>}
+        </div>:<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
           <div style={{fontSize:32,marginBottom:10}}>✅</div>
           <div>No near-duplicate owner names detected in current dataset.</div>
           <div style={{fontSize:11,marginTop:8}}>Upload the full roll to run a complete fuzzy-match analysis across all owners.</div>
@@ -1069,8 +1077,11 @@ const Equity = ({parcels, onDrill}) => {
 };
 
 /* ── 5. OPPORTUNITY FINDER ── */
-const Opportunity = ({parcels}) => {
+const Opportunity = ({parcels, onDrill}) => {
   const [view,setView]=useState("lots");
+  const [showAllArb,setShowAllArb]=useState(false);
+  const [showAllAnom,setShowAllAnom]=useState(false);
+  const OPP_LIMIT=50;
 
   // Lot opportunity: high land value + small building relative to lot
   const lotOpps=useMemo(()=>parcels.filter(p=>p.frontage&&p.depth&&p.landValue>0).map(p=>({...p,sqft:p.frontage*p.depth,landPerSqFt:p.landValue/(p.frontage*p.depth),buildingRatio:(p.assessedValue-p.landValue)/p.assessedValue})).sort((a,b)=>a.buildingRatio-b.buildingRatio).filter(p=>p.sqft>2000),[parcels]);
@@ -1194,7 +1205,7 @@ const Opportunity = ({parcels}) => {
           <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>Parcels where assessed value is significantly below full market value. The owner effectively pays taxes on a smaller base than the property's true worth. These represent hidden value — for buyers, lower carrying costs; for policy makers, potential tax base leakage.</div>
         </Card>
         {arbitrage.length>0?<div style={{display:"grid",gap:10}}>
-          {arbitrage.map(p=>(
+          {arbitrage.slice(0,showAllArb?arbitrage.length:OPP_LIMIT).map(p=>(
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(34,197,94,.2)",borderRadius:11,padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
@@ -1220,6 +1231,7 @@ const Opportunity = ({parcels}) => {
               </div>
             </div>
           ))}
+          {arbitrage.length>OPP_LIMIT&&<button onClick={()=>setShowAllArb(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllArb?`Show top ${OPP_LIMIT} ↑`:`Show all ${arbitrage.length.toLocaleString()} arbitrage candidates ↓`}</button>}
         </div>:<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No strong arbitrage candidates in current sample. Upload full roll to discover hidden opportunities.</div>}
       </div>}
 
@@ -1227,21 +1239,24 @@ const Opportunity = ({parcels}) => {
         <InfoBox icon="🔬" title="Property Class Anomaly Detector — What's Out of Place?" color="#a78bfa">
           Every parcel in Albany is assigned a property class code that describes how it's used — 210 for single-family homes, 220 for two-family, 400 for commercial, 300 for vacant land, etc. This tool looks at each street and identifies parcels whose class code is different from the majority of their neighbors. A commercial property surrounded by single-family homes, or a vacant lot on a block of apartments, may represent a holdover use, a recent conversion, or a data entry error. Either way, it's a flag worth investigating.
         </InfoBox>
-        {anomalies.length>0?anomalies.map(p=>(
-          <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(167,139,250,.25)",borderRadius:11,padding:"14px 18px",marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{p.address}</div>
-                <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>on {p.street} · {p.zip}</div>
-                <div style={{display:"flex",gap:8,marginTop:8}}>
-                  <div><span style={{fontSize:11,color:"var(--gray)"}}>This parcel: </span><Badge color="#a78bfa">{p.propClass} {p.propClassDesc}</Badge></div>
-                  <div><span style={{fontSize:11,color:"var(--gray)"}}>Street mode: </span><Badge color="#22c55e">{p.expectedClass}</Badge></div>
+        {anomalies.length>0?<div>
+          {anomalies.slice(0,showAllAnom?anomalies.length:OPP_LIMIT).map(p=>(
+            <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(167,139,250,.25)",borderRadius:11,padding:"14px 18px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{p.address}</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>on {p.street} · {p.zip}</div>
+                  <div style={{display:"flex",gap:8,marginTop:8}}>
+                    <div><span style={{fontSize:11,color:"var(--gray)"}}>This parcel: </span><Badge color="#a78bfa">{p.propClass} {p.propClassDesc}</Badge></div>
+                    <div><span style={{fontSize:11,color:"var(--gray)"}}>Street mode: </span><Badge color="#22c55e">{p.expectedClass}</Badge></div>
+                  </div>
                 </div>
+                <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
               </div>
-              <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
             </div>
-          </div>
-        )):<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
+          ))}
+          {anomalies.length>OPP_LIMIT&&<button onClick={()=>setShowAllAnom(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllAnom?`Show top ${OPP_LIMIT} ↑`:`Show all ${anomalies.length.toLocaleString()} anomalies ↓`}</button>}
+        </div>:<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
           <div style={{fontSize:32,marginBottom:10}}>🔬</div>
           No class anomalies detected. Streets need 3+ parcels to run anomaly detection. Upload full roll for complete analysis.
         </div>}
@@ -1429,141 +1444,206 @@ const TaxTools = ({parcels, myHome}) => {
     </div>
   );
 };
-/* ── 7. COORDINATE MAP ── */
+/* ── 7. COORDINATE MAP (Canvas renderer — smooth 60fps pan/zoom) ── */
 const MapView = ({parcels, onDrill}) => {
+  const canvasRef=useRef();
+  const msRef=useRef({zoom:1,pan:{x:0,y:0},drag:null}); // mutable — no re-renders during interaction
   const [colorBy,setColorBy]=useState("fmv");
-  const [hovered,setHovered]=useState(null);
-  const [zoom,setZoom]=useState(1);
-  const [pan,setPan]=useState({x:0,y:0});
-  const [dragging,setDragging]=useState(false);
-  const [dragStart,setDragStart]=useState({x:0,y:0,px:0,py:0});
-  const containerRef=useRef();
+  const [tooltip,setTooltip]=useState(null);
+  const [tooltipPos,setTooltipPos]=useState({x:14,y:14});
+  const [addrSearch,setAddrSearch]=useState("");
+  const [zoomDisplay,setZoomDisplay]=useState(100);
+  const W=720,H=480,PAD=40;
 
   const mapped=useMemo(()=>parcels.filter(p=>p.eastCoord>0&&p.nrthCoord>0),[parcels]);
-  const minE=useMemo(()=>mapped.length?Math.min(...mapped.map(p=>p.eastCoord)):630000,[mapped]);
-  const maxE=useMemo(()=>mapped.length?Math.max(...mapped.map(p=>p.eastCoord)):660000,[mapped]);
-  const minN=useMemo(()=>mapped.length?Math.min(...mapped.map(p=>p.nrthCoord)):955000,[mapped]);
-  const maxN=useMemo(()=>mapped.length?Math.max(...mapped.map(p=>p.nrthCoord)):985000,[mapped]);
-  const W=720,H=480,PAD=40;
-  const px=e=>PAD+(e-minE)/(maxE-minE||1)*(W-PAD*2);
-  const py=n=>H-PAD-(n-minN)/(maxN-minN||1)*(H-PAD*2);
+  const bounds=useMemo(()=>{
+    if(!mapped.length) return {minE:630000,maxE:660000,minN:955000,maxN:985000};
+    let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity;
+    for(const p of mapped){if(p.eastCoord<minE)minE=p.eastCoord;if(p.eastCoord>maxE)maxE=p.eastCoord;if(p.nrthCoord<minN)minN=p.nrthCoord;if(p.nrthCoord>maxN)maxN=p.nrthCoord;}
+    return {minE,maxE,minN,maxN};
+  },[mapped]);
 
-  const getColor=p=>{
-    if(colorBy==="fmv"){const v=p.fullMarketValue;return v>500000?"#f59e0b":v>300000?"#3b82f6":v>150000?"#0d9488":"#64748b";}
-    if(colorBy==="equity")return FC[eqFlag(p)];
-    if(colorBy==="class"){return {"210":"#3b82f6","220":"#0d9488","230":"#06b6d4","411":"#a78bfa","400":"#f97316","300":"#64748b","330":"#94a3b8"}[p.propClass]||"#94a3b8";}
-    if(colorBy==="exemption")return p.exemptions?.length>0?"#f59e0b":"#475569";
-    if(colorBy==="absentee")return isAbsentee(p)?"#f97316":"#22c55e";
-    return "#3b82f6";
-  };
+  const hlSet=useMemo(()=>{
+    const q=addrSearch.trim().toLowerCase(); if(!q) return null;
+    const s=new Set();
+    for(const p of mapped){if(p.address.toLowerCase().includes(q)||p.owner1.toLowerCase().includes(q))s.add(p.parcelId);}
+    return s.size?s:null;
+  },[addrSearch,mapped]);
+
+  const draw=useCallback(()=>{
+    const canvas=canvasRef.current; if(!canvas) return;
+    const ctx=canvas.getContext("2d");
+    const {zoom,pan}=msRef.current;
+    const {minE,maxE,minN,maxN}=bounds;
+    const rx=e=>PAD+(e-minE)/(maxE-minE||1)*(W-PAD*2);
+    const ry=n=>H-PAD-(n-minN)/(maxN-minN||1)*(H-PAD*2);
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle="#0d1829"; ctx.fillRect(0,0,W,H);
+    // grid
+    ctx.strokeStyle="rgba(255,255,255,0.025)"; ctx.lineWidth=1;
+    for(let gx=0;gx<W;gx+=40){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();}
+    for(let gy=0;gy<H;gy+=40){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}
+    ctx.save(); ctx.translate(pan.x,pan.y); ctx.scale(zoom,zoom);
+    // ZIP watermarks
+    const zg={};
+    for(const p of mapped){if(!zg[p.zip])zg[p.zip]={sx:0,sy:0,n:0};zg[p.zip].sx+=rx(p.eastCoord);zg[p.zip].sy+=ry(p.nrthCoord);zg[p.zip].n++;}
+    ctx.font=`bold ${Math.max(8,16/zoom)}px sans-serif`; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,0.06)";
+    for(const zip in zg){const g=zg[zip];ctx.fillText(zip,g.sx/g.n,g.sy/g.n);}
+    // parcel dots
+    const hl=hlSet; const r=Math.max(1.5,4.5/zoom);
+    for(const p of mapped){
+      const x=rx(p.eastCoord),y=ry(p.nrthCoord);
+      const isHl=hl?hl.has(p.parcelId):false;
+      if(hl&&!isHl){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle="rgba(100,116,139,0.18)";ctx.fill();}
+      else {
+        let color;
+        if(colorBy==="fmv"){const v=p.fullMarketValue;color=v>500000?"#f59e0b":v>300000?"#3b82f6":v>150000?"#0d9488":"#64748b";}
+        else if(colorBy==="equity")color=FC[eqFlag(p)];
+        else if(colorBy==="class")color=({"210":"#3b82f6","220":"#0d9488","230":"#06b6d4","411":"#a78bfa","400":"#f97316","300":"#64748b","330":"#94a3b8"})[p.propClass]||"#94a3b8";
+        else if(colorBy==="exemption")color=p.exemptions?.length>0?"#f59e0b":"#475569";
+        else if(colorBy==="absentee")color=isAbsentee(p)?"#f97316":"#22c55e";
+        else color="#3b82f6";
+        if(isHl){
+          ctx.beginPath();ctx.arc(x,y,r*2.4,0,Math.PI*2);ctx.fillStyle="#fbbf24";ctx.fill();
+          ctx.strokeStyle="white";ctx.lineWidth=1.5/zoom;ctx.stroke();
+        } else {
+          ctx.globalAlpha=0.8;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1;
+        }
+      }
+    }
+    ctx.restore();
+  },[mapped,bounds,hlSet,colorBy]);
+
+  useEffect(()=>{draw();},[draw]);
+
+  // Auto-pan to first search match
+  useEffect(()=>{
+    if(!hlSet||!hlSet.size) return;
+    const first=mapped.find(p=>hlSet.has(p.parcelId)); if(!first) return;
+    const {minE,maxE,minN,maxN}=bounds;
+    const sx=PAD+(first.eastCoord-minE)/(maxE-minE||1)*(W-PAD*2);
+    const sy=H-PAD-(first.nrthCoord-minN)/(maxN-minN||1)*(H-PAD*2);
+    const nz=Math.max(3,msRef.current.zoom);
+    msRef.current.zoom=nz; msRef.current.pan={x:W/2-sx*nz,y:H/2-sy*nz};
+    setZoomDisplay(Math.round(nz*100)); draw();
+  },[hlSet]); // eslint-disable-line
+
+  const handleWheel=useCallback(e=>{
+    e.preventDefault();
+    const rect=canvasRef.current.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const factor=e.deltaY<0?1.18:0.847;
+    const ms=msRef.current;
+    const nz=Math.min(12,Math.max(0.3,ms.zoom*factor));
+    ms.pan.x=mx-(mx-ms.pan.x)*(nz/ms.zoom); ms.pan.y=my-(my-ms.pan.y)*(nz/ms.zoom);
+    ms.zoom=nz; draw(); setZoomDisplay(Math.round(nz*100));
+  },[draw]);
+
+  useEffect(()=>{
+    const c=canvasRef.current; if(!c) return;
+    c.addEventListener("wheel",handleWheel,{passive:false});
+    return ()=>c.removeEventListener("wheel",handleWheel);
+  },[handleWheel]);
+
+  const hitTest=useCallback((mx,my,hitPx=10)=>{
+    const {zoom,pan}=msRef.current; const {minE,maxE,minN,maxN}=bounds;
+    const mapX=(mx-pan.x)/zoom, mapY=(my-pan.y)/zoom;
+    const hr=Math.max(hitPx/zoom,hitPx);
+    let best=null,bestD=Infinity;
+    for(const p of mapped){
+      const dx=PAD+(p.eastCoord-minE)/(maxE-minE||1)*(W-PAD*2)-mapX;
+      const dy=H-PAD-(p.nrthCoord-minN)/(maxN-minN||1)*(H-PAD*2)-mapY;
+      if(Math.abs(dx)>hr||Math.abs(dy)>hr) continue;
+      const d=dx*dx+dy*dy; if(d<bestD){bestD=d;best=p;}
+    }
+    return (best&&bestD<hr*hr)?best:null;
+  },[mapped,bounds]);
+
+  const handleMouseDown=useCallback(e=>{
+    if(e.button!==0) return;
+    const ms=msRef.current;
+    ms.drag={sx:e.clientX,sy:e.clientY,px:ms.pan.x,py:ms.pan.y};
+    if(canvasRef.current) canvasRef.current.style.cursor="grabbing";
+  },[]);
+  const handleMouseMove=useCallback(e=>{
+    const ms=msRef.current;
+    if(ms.drag){ms.pan.x=ms.drag.px+(e.clientX-ms.drag.sx);ms.pan.y=ms.drag.py+(e.clientY-ms.drag.sy);draw();return;}
+    const rect=canvasRef.current.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const hit=hitTest(mx,my);
+    if(hit){setTooltip(hit);setTooltipPos({x:Math.min(mx+14,W-265),y:Math.max(my-10,8)});}
+    else setTooltip(null);
+  },[draw,hitTest]);
+  const handleMouseUp=useCallback(()=>{
+    msRef.current.drag=null;
+    if(canvasRef.current) canvasRef.current.style.cursor="grab";
+  },[]);
+  const handleClick=useCallback(e=>{
+    const rect=canvasRef.current.getBoundingClientRect();
+    const hit=hitTest(e.clientX-rect.left,e.clientY-rect.top,12);
+    if(hit&&onDrill) onDrill({title:`${hit.address} — ${hit.propClassDesc}`,parcels:[hit]});
+  },[hitTest,onDrill]);
+
+  const stepZoom=useCallback(factor=>{
+    const ms=msRef.current;
+    const nz=Math.min(12,Math.max(0.3,ms.zoom*factor));
+    ms.pan.x=W/2-(W/2-ms.pan.x)*(nz/ms.zoom); ms.pan.y=H/2-(H/2-ms.pan.y)*(nz/ms.zoom);
+    ms.zoom=nz; draw(); setZoomDisplay(Math.round(nz*100));
+  },[draw]);
+  const resetView=useCallback(()=>{msRef.current.zoom=1;msRef.current.pan={x:0,y:0};draw();setZoomDisplay(100);},[draw]);
 
   const LEGEND={
     fmv:[[">$500k","#f59e0b"],["$300–500k","#3b82f6"],["$150–300k","#0d9488"],["<$150k","#64748b"]],
-    equity:[["Under-Assessed (<80%)","#f59e0b"],["Fair (80–120%)","#22c55e"],["Over-Assessed (>120%)","#dc2626"],["No FMV data","#64748b"]],
+    equity:[["Under (<80%)","#f59e0b"],["Fair (80–120%)","#22c55e"],["Over (>120%)","#dc2626"],["No data","#64748b"]],
     class:[["210 Single Family","#3b82f6"],["220 Two Family","#0d9488"],["230 Three Family","#06b6d4"],["411 Apartment","#a78bfa"],["400 Commercial","#f97316"],["300/330 Vacant","#64748b"]],
     exemption:[["Has Exemption","#f59e0b"],["No Exemption","#475569"]],
     absentee:[["Owner-Occupied","#22c55e"],["Absentee Owner","#f97316"]],
   };
-
-  const handleWheel=useCallback(e=>{
-    e.preventDefault();
-    const factor=e.deltaY<0?1.18:0.847;
-    setZoom(z=>Math.min(8,Math.max(0.3,z*factor)));
-  },[]);
-
-  const handleMouseDown=e=>{
-    if(e.button!==0)return;
-    setDragging(true);
-    setDragStart({x:e.clientX,y:e.clientY,px:pan.x,py:pan.y});
-  };
-  const handleMouseMove=e=>{
-    if(!dragging)return;
-    setPan({x:dragStart.px+(e.clientX-dragStart.x),y:dragStart.py+(e.clientY-dragStart.y)});
-  };
-  const handleMouseUp=()=>setDragging(false);
-  const resetView=()=>{setZoom(1);setPan({x:0,y:0});};
-
-  const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,fontFamily:"var(--fb)",cursor:"pointer"};
-  const ZBtn=({label,action})=><button onClick={action} style={{...SI,width:32,height:32,padding:0,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace"}}>{label}</button>;
+  const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,cursor:"pointer"};
 
   return (
     <div className="fi">
       <SectionTitle>Coordinate Map View</SectionTitle>
-      <Sub>Spatial layout from EAST/NRTH survey coordinates · Scroll to zoom · Drag to pan</Sub>
+      <Sub>Spatial layout from EAST/NRTH survey coordinates · Smooth scroll-to-zoom · Drag to pan</Sub>
       <InfoBox icon="🗺️" title="How This Map Works" color="#3b82f6">
-        Each parcel's EAST and NRTH survey coordinates place it accurately within Albany. This is not a street map, but the clustering is spatially real. <b style={{color:"var(--white)"}}>Scroll wheel = zoom · Click + drag = pan · +/− buttons = step zoom · Reset = restore full view.</b> Switch color modes to see value tiers, equity ratios, property classes, exemption holders, or absentee ownership patterns. Click any dot to see the full property summary. Upload TIGER/Line shapefiles for a real road-network underlay.
+        Each parcel's EAST and NRTH survey coordinates place it accurately within Albany. <b style={{color:"var(--white)"}}>Scroll = zoom toward cursor · Drag = pan · Click any dot = detail panel.</b> Switch color modes to explore value tiers, equity ratios, property classes, exemptions, or absentee ownership. Use the search bar below to highlight matching addresses or owner names.
       </InfoBox>
 
-      {/* Controls row */}
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+      {/* Color mode buttons + zoom controls */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
         <span style={{fontSize:12,color:"var(--gray)"}}>Color:</span>
         {[["fmv","Market Value"],["equity","Equity Ratio"],["class","Property Class"],["exemption","Exemptions"],["absentee","Absentee"]].map(([k,l])=>(
           <button key={k} onClick={()=>setColorBy(k)} style={{background:colorBy===k?"var(--blue)":"var(--card2)",border:"1px solid var(--border)",color:colorBy===k?"white":"var(--gray)",borderRadius:7,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>{l}</button>
         ))}
         <div style={{display:"flex",gap:4,marginLeft:"auto",alignItems:"center"}}>
-          <ZBtn label="+" action={()=>setZoom(z=>Math.min(8,z*1.3))}/>
-          <ZBtn label="−" action={()=>setZoom(z=>Math.max(0.3,z/1.3))}/>
+          <button onClick={()=>stepZoom(1.3)} style={{...SI,width:32,height:32,padding:0,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace"}}>+</button>
+          <button onClick={()=>stepZoom(1/1.3)} style={{...SI,width:32,height:32,padding:0,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace"}}>−</button>
           <button onClick={resetView} style={{...SI,fontSize:11,padding:"5px 10px"}}>⌂ Reset</button>
-          <span style={{fontSize:11,color:"var(--gray2)",marginLeft:2,fontFamily:"var(--fm)"}}>{Math.round(zoom*100)}%</span>
+          <span style={{fontSize:11,color:"var(--gray2)",marginLeft:2,fontFamily:"var(--fm)"}}>{zoomDisplay}%</span>
         </div>
       </div>
 
-      {/* Map */}
-      <div
-        ref={containerRef}
-        style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,overflow:"hidden",position:"relative",cursor:dragging?"grabbing":"grab",userSelect:"none"}}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-      >
-        <svg width={W} height={H} style={{display:"block"}}>
-          <defs>
-            <pattern id="mapgrid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1"/>
-            </pattern>
-            <clipPath id="mapclip"><rect width={W} height={H}/></clipPath>
-          </defs>
-          <rect width={W} height={H} fill="url(#mapgrid)"/>
-          <g clipPath="url(#mapclip)">
-            <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
-              {/* ZIP watermarks */}
-              {[...new Set(mapped.map(p=>p.zip))].map(zip=>{
-                const ps=mapped.filter(p=>p.zip===zip);
-                const cx=ps.reduce((s,p)=>s+px(p.eastCoord),0)/ps.length;
-                const cy=ps.reduce((s,p)=>s+py(p.nrthCoord),0)/ps.length;
-                return <text key={zip} x={cx} y={cy} fill="rgba(255,255,255,0.1)" fontSize={Math.max(8,16/zoom)} fontFamily="var(--fd)" textAnchor="middle" fontWeight={700} pointerEvents="none">{zip}</text>;
-              })}
-              {/* Parcel dots */}
-              {mapped.map(p=>{
-                const x=px(p.eastCoord),y=py(p.nrthCoord);
-                const color=getColor(p);
-                const isH=hovered?.parcelId===p.parcelId;
-                const r=Math.max(2,(isH?10:5)/zoom);
-                return (
-                  <g key={p.parcelId}
-                    onMouseEnter={()=>setHovered(p)}
-                    onMouseLeave={()=>setHovered(null)}
-                    onClick={()=>onDrill&&onDrill({title:`${p.address} — ${p.propClassDesc}`,parcels:[p]})}
-                    style={{cursor:"pointer"}}
-                  >
-                    <circle cx={x} cy={y} r={r} fill={color} opacity={isH?1:.8} stroke={isH?"white":"rgba(255,255,255,.15)"} strokeWidth={(isH?2:0.5)/zoom}/>
-                  </g>
-                );
-              })}
-            </g>
-          </g>
-        </svg>
+      {/* Address / owner search */}
+      <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+        <input
+          value={addrSearch} onChange={e=>setAddrSearch(e.target.value)}
+          placeholder="Search address or owner name to highlight on map…"
+          style={{flex:1,background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"8px 12px",fontSize:13,outline:"none"}}
+        />
+        {addrSearch&&<button onClick={()=>setAddrSearch("")} style={{...SI,fontSize:11,padding:"5px 10px",background:"rgba(220,38,38,.15)",borderColor:"rgba(220,38,38,.3)"}}>✕</button>}
+        {hlSet&&<span style={{fontSize:12,color:"#fbbf24",whiteSpace:"nowrap"}}>{hlSet.size} found</span>}
+      </div>
 
-        {/* Legend — HTML overlay, no SVG clipping issues */}
-        <div style={{
-          position:"absolute",top:10,right:10,
-          background:"rgba(8,15,30,0.9)",
-          border:"1px solid rgba(255,255,255,0.12)",
-          borderRadius:10,padding:"10px 14px",minWidth:170,
-          backdropFilter:"blur(6px)",pointerEvents:"none"
-        }}>
+      {/* Canvas map */}
+      <div style={{position:"relative",display:"inline-block",borderRadius:14,overflow:"hidden",border:"1px solid var(--border)",maxWidth:"100%"}}>
+        <canvas
+          ref={canvasRef} width={W} height={H}
+          style={{display:"block",cursor:"grab"}}
+          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onClick={handleClick}
+        />
+        {/* Legend */}
+        <div style={{position:"absolute",top:10,right:10,background:"rgba(8,15,30,0.92)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"10px 14px",minWidth:175,backdropFilter:"blur(6px)",pointerEvents:"none"}}>
           <div style={{fontSize:9,color:"var(--gray2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Legend</div>
           {(LEGEND[colorBy]||[]).map(([label,color])=>(
             <div key={label} style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
@@ -1572,32 +1652,29 @@ const MapView = ({parcels, onDrill}) => {
             </div>
           ))}
         </div>
-
         {/* Hover tooltip */}
-        {hovered&&(
-          <div style={{position:"absolute",top:14,left:14,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:"12px 14px",maxWidth:260,pointerEvents:"none",zIndex:10,boxShadow:"0 8px 30px rgba(0,0,0,.4)"}}>
-            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14}}>{hovered.address}</div>
-            <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{hovered.parcelId} · {hovered.zip}</div>
+        {tooltip&&(
+          <div style={{position:"absolute",top:tooltipPos.y,left:tooltipPos.x,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:"12px 14px",maxWidth:255,pointerEvents:"none",zIndex:10,boxShadow:"0 8px 30px rgba(0,0,0,.5)"}}>
+            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}>{tooltip.address}</div>
+            <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{tooltip.parcelId} · {tooltip.zip}</div>
             <div style={{marginTop:8,display:"grid",gap:3}}>
-              <div style={{fontSize:12}}>FMV: <span style={{color:"var(--amber)",fontFamily:"var(--fm)",fontWeight:600}}>{$f(hovered.fullMarketValue)}</span></div>
-              <div style={{fontSize:12}}>Assessed: <span style={{fontFamily:"var(--fm)"}}>{$f(hovered.assessedValue)}</span></div>
-              <div style={{fontSize:12}}>Equity: <span style={{color:FC[eqFlag(hovered)],fontFamily:"var(--fm)",fontWeight:600}}>{eqR(hovered)}%</span></div>
-              <div style={{fontSize:12}}>Owner: <span style={{color:"var(--gray2)"}}>{hovered.owner1}</span></div>
-              {hovered.exemptions?.length>0&&<div style={{fontSize:11,color:"var(--amber2)"}}>{hovered.exemptions.length} exemption{hovered.exemptions.length>1?"s":""}</div>}
-              {isAbsentee(hovered)&&<Badge color="#f97316" small>Absentee</Badge>}
+              <div style={{fontSize:12}}>FMV: <span style={{color:"var(--amber)",fontFamily:"var(--fm)",fontWeight:600}}>{$f(tooltip.fullMarketValue)}</span></div>
+              <div style={{fontSize:12}}>Assessed: <span style={{fontFamily:"var(--fm)"}}>{$f(tooltip.assessedValue)}</span></div>
+              <div style={{fontSize:12}}>Equity: <span style={{color:FC[eqFlag(tooltip)],fontFamily:"var(--fm)",fontWeight:600}}>{eqR(tooltip)}%</span></div>
+              <div style={{fontSize:12}}>Owner: <span style={{color:"var(--gray2)"}}>{tooltip.owner1}</span></div>
+              {tooltip.exemptions?.length>0&&<div style={{fontSize:11,color:"var(--amber2)"}}>{tooltip.exemptions.length} exemption{tooltip.exemptions.length>1?"s":""}</div>}
+              {isAbsentee(tooltip)&&<Badge color="#f97316" small>Absentee</Badge>}
             </div>
-            <div style={{fontSize:10,color:"var(--gray3)",marginTop:8}}>Click dot to view full detail →</div>
+            <div style={{fontSize:10,color:"var(--gray3)",marginTop:7}}>Click dot to view full detail →</div>
           </div>
         )}
-
-        {/* Bottom-left status */}
-        <div style={{position:"absolute",bottom:8,left:12,fontSize:10,color:"var(--gray3)",pointerEvents:"none"}}>
+        {/* Status bar */}
+        <div style={{position:"absolute",bottom:8,left:12,fontSize:10,color:"rgba(255,255,255,0.3)",pointerEvents:"none"}}>
           {mapped.length.toLocaleString()} parcels plotted · {parcels.length-mapped.length} missing coords
         </div>
       </div>
-
       <div style={{marginTop:8,fontSize:11,color:"var(--gray2)",textAlign:"center"}}>
-        Scroll or use +/− to zoom · Drag to pan · Coordinates from EAST/NRTH fields in the assessment roll
+        Scroll to zoom toward cursor · Drag to pan · Click any dot to drill in
       </div>
     </div>
   );
@@ -1605,6 +1682,9 @@ const MapView = ({parcels, onDrill}) => {
 
 /* ── 8. DATA QUALITY ── */
 const DataQuality = ({parcels, onDrill}) => {
+  const [showAllInconsist,setShowAllInconsist]=useState(false);
+  const [showAllNoCoords,setShowAllNoCoords]=useState(false);
+  const DQ_LIMIT=50;
   const fields=[
     {key:"address",label:"Address"},{key:"zip",label:"ZIP Code"},{key:"owner1",label:"Owner Name"},
     {key:"propClass",label:"Property Class"},{key:"fullMarketValue",label:"Full Market Value"},
@@ -1680,18 +1760,21 @@ const DataQuality = ({parcels, onDrill}) => {
           <Card style={{marginBottom:14}}>
             <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Assessment Consistency Flags</div>
             <div style={{fontSize:11,color:"var(--gray2)",marginBottom:12}}>Properties on the same street, same class, whose FMV deviates more than 1.5 standard deviations from street peers. May indicate data errors or genuine outliers worth reviewing.</div>
-            {inconsistent.length>0?inconsistent.map(p=>(
-              <div key={p.parcelId} style={{background:"rgba(220,38,38,.07)",border:"1px solid rgba(220,38,38,.2)",borderRadius:9,padding:"11px 14px",marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:13}}>{p.address}</div>
-                    <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} · Parcel {p.parcelId}</div>
-                    <div style={{fontSize:11,marginTop:6}}>Street avg: <span style={{fontFamily:"var(--fm)",color:"var(--gray)"}}>{$f(p.streetAvg)}</span> · Deviation: <span style={{fontFamily:"var(--fm)",color:p.deviation>0?"var(--red2)":"var(--amber)"}}>{p.deviation>0?"+":""}{$f(p.deviation)}</span></div>
+            {inconsistent.length>0?<div>
+              {inconsistent.slice(0,showAllInconsist?inconsistent.length:DQ_LIMIT).map(p=>(
+                <div key={p.parcelId} style={{background:"rgba(220,38,38,.07)",border:"1px solid rgba(220,38,38,.2)",borderRadius:9,padding:"11px 14px",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:13}}>{p.address}</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} · Parcel {p.parcelId}</div>
+                      <div style={{fontSize:11,marginTop:6}}>Street avg: <span style={{fontFamily:"var(--fm)",color:"var(--gray)"}}>{$f(p.streetAvg)}</span> · Deviation: <span style={{fontFamily:"var(--fm)",color:p.deviation>0?"var(--red2)":"var(--amber)"}}>{p.deviation>0?"+":""}{$f(p.deviation)}</span></div>
+                    </div>
+                    <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
                   </div>
-                  <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
                 </div>
-              </div>
-            )):<div style={{textAlign:"center",padding:30,color:"var(--gray2)"}}>
+              ))}
+              {inconsistent.length>DQ_LIMIT&&<button onClick={()=>setShowAllInconsist(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"9px",fontSize:12,cursor:"pointer",width:"100%",marginTop:4}}>{showAllInconsist?`Show top ${DQ_LIMIT} ↑`:`Show all ${inconsistent.length.toLocaleString()} consistency flags ↓`}</button>}
+            </div>:<div style={{textAlign:"center",padding:30,color:"var(--gray2)"}}>
               <div style={{fontSize:28,marginBottom:8}}>✅</div>
               <div style={{fontSize:12}}>No major consistency issues in current sample. Upload full roll to run complete street-level consistency analysis.</div>
             </div>}
@@ -1699,13 +1782,16 @@ const DataQuality = ({parcels, onDrill}) => {
           <Card>
             <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Missing Coordinates</div>
             <div style={{fontSize:11,color:"var(--gray2)",marginBottom:10}}>Parcels without EAST/NRTH survey coordinates cannot be plotted on the map view.</div>
-            {parcels.filter(p=>!p.eastCoord||p.eastCoord===0).map(p=>(
-              <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"8px 12px",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-                <div><div style={{fontSize:12,fontWeight:600}}>{p.address}</div><div style={{fontSize:10,color:"var(--gray2)"}}>{p.parcelId}</div></div>
-                <Badge color="#64748b" small>No Coords</Badge>
-              </div>
-            ))}
-            {parcels.every(p=>p.eastCoord>0)&&<div style={{textAlign:"center",padding:20,color:"var(--gray2)",fontSize:12}}>✅ All parcels have coordinates</div>}
+            {(()=>{const noCrd=parcels.filter(p=>!p.eastCoord||p.eastCoord===0);return(<div>
+              {noCrd.slice(0,showAllNoCoords?noCrd.length:DQ_LIMIT).map(p=>(
+                <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"8px 12px",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                  <div><div style={{fontSize:12,fontWeight:600}}>{p.address}</div><div style={{fontSize:10,color:"var(--gray2)"}}>{p.parcelId}</div></div>
+                  <Badge color="#64748b" small>No Coords</Badge>
+                </div>
+              ))}
+              {noCrd.length>DQ_LIMIT&&<button onClick={()=>setShowAllNoCoords(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"9px",fontSize:12,cursor:"pointer",width:"100%",marginTop:4}}>{showAllNoCoords?`Show top ${DQ_LIMIT} ↑`:`Show all ${noCrd.length.toLocaleString()} missing-coord parcels ↓`}</button>}
+              {noCrd.length===0&&<div style={{textAlign:"center",padding:20,color:"var(--gray2)",fontSize:12}}>✅ All parcels have coordinates</div>}
+            </div>);})()}
           </Card>
         </div>
       </div>
