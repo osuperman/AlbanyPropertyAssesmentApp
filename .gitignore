@@ -1,0 +1,10 @@
+# Large data files
+*.csv
+*.zip
+*.pdf
+*.txt
+desktop.ini
+.DS_Store
+
+# Build artifacts (keep the compiled HTML, exclude node_modules etc)
+node_modules/
