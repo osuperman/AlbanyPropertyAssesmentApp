@@ -8,17 +8,17 @@ const GS = () => (
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
-      --bg:#080f1e;--bg2:#0e1b30;--bg3:#152540;--bg4:#1c3158;
-      --blue:#2563eb;--blue2:#3b82f6;--blue3:#60a5fa;
-      --amber:#f59e0b;--amber2:#fbbf24;
-      --teal:#0d9488;--teal2:#14b8a6;
-      --red:#dc2626;--red2:#ef4444;
-      --green:#16a34a;--green2:#22c55e;
-      --purple:#7c3aed;--purple2:#a78bfa;
-      --orange:#ea580c;--orange2:#f97316;
-      --white:#f1f5f9;--gray:#94a3b8;--gray2:#64748b;--gray3:#475569;
-      --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
-      --card:rgba(255,255,255,0.03);--card2:rgba(255,255,255,0.06);--card3:rgba(255,255,255,0.09);
+      --bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#c8d3e2;
+      --blue:#2563eb;--blue2:#3b82f6;--blue3:#1d4ed8;
+      --amber:#d97706;--amber2:#b45309;
+      --teal:#0d9488;--teal2:#0f766e;
+      --red:#dc2626;--red2:#b91c1c;
+      --green:#16a34a;--green2:#15803d;
+      --purple:#7c3aed;--purple2:#6d28d9;
+      --orange:#ea580c;--orange2:#c2410c;
+      --white:#1e293b;--gray:#475569;--gray2:#64748b;--gray3:#94a3b8;
+      --border:rgba(0,0,0,0.09);--border2:rgba(0,0,0,0.15);
+      --card:#ffffff;--card2:#f8fafc;--card3:#f1f5f9;
       --fd:'Syne',sans-serif;--fb:'IBM Plex Sans',sans-serif;--fm:'IBM Plex Mono',monospace;
     }
     body{background:var(--bg);color:var(--white);font-family:var(--fb);line-height:1.5}
@@ -1855,11 +1855,24 @@ export default function App() {
     setUploading(true);
     const r=new FileReader();
     r.onload=ev=>{
-      const txt=ev.target.result;
-      const isRoll=f.name.toLowerCase().endsWith(".txt")||txt.includes("HOMESTEAD PARCEL")||txt.includes("FULL MARKET VALUE");
-      const parsed=isRoll?parseTextRoll(txt):parseCSV(txt);
+      const raw=ev.target.result;
+      const fname=f.name.toLowerCase();
+      // ── JSON fast-load (pre-converted roll, ~50-100x faster than TXT) ──
+      if(fname.endsWith(".json")){
+        try{
+          const payload=JSON.parse(raw);
+          const arr=payload.parcels||payload;
+          if(Array.isArray(arr)&&arr.length>0){setParcels(arr);setDataSource("json");}
+          else alert("JSON file does not contain a parcels array.");
+        }catch(err){alert("Could not parse JSON: "+err.message);}
+        setUploading(false);
+        return;
+      }
+      // ── TXT / CSV path ──
+      const isRoll=fname.endsWith(".txt")||raw.includes("HOMESTEAD PARCEL")||raw.includes("FULL MARKET VALUE");
+      const parsed=isRoll?parseTextRoll(raw):parseCSV(raw);
       if(parsed.length>0){setParcels(parsed);setDataSource(isRoll?"roll":"csv");}
-      else alert("Could not parse file — ensure it is an Albany CSV or Final Roll .txt file.");
+      else alert("Could not parse file — ensure it is an Albany CSV, Final Roll .txt, or converted .json file.");
       setUploading(false);
     };
     r.readAsText(f);
@@ -1930,9 +1943,9 @@ export default function App() {
                 {myHome?"🏡 My Home":"🏡 Set My Home"}
               </button>
               <button onClick={()=>fileRef.current.click()} disabled={uploading} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                {uploading?"⏳ Parsing…":"⬆ Upload CSV / Roll"}
+                {uploading?"⏳ Parsing…":"⬆ Upload CSV / Roll / JSON"}
               </button>
-              <input ref={fileRef} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={handleFile}/>
+              <input ref={fileRef} type="file" accept=".csv,.txt,.json" style={{display:"none"}} onChange={handleFile}/>
             </div>
           </div>
         </div>
