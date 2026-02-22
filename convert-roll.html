@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Albany Roll Converter — TXT → JSON</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4f8;color:#1e293b;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.1);padding:40px;max-width:580px;width:100%}
+  h1{font-size:22px;font-weight:700;color:#1e293b;margin-bottom:6px}
+  .sub{font-size:13px;color:#64748b;margin-bottom:28px;line-height:1.6}
+  .drop{border:2px dashed #cbd5e0;border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:all .2s;background:#f8fafc}
+  .drop.over{border-color:#2563eb;background:#eff6ff}
+  .drop-icon{font-size:40px;margin-bottom:10px}
+  .drop-label{font-size:15px;color:#475569;font-weight:500}
+  .drop-hint{font-size:12px;color:#94a3b8;margin-top:4px}
+  input[type=file]{display:none}
+  .btn{display:inline-block;padding:10px 22px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:14px;transition:opacity .15s}
+  .btn:hover{opacity:.88}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-outline{background:transparent;color:#2563eb;border:1.5px solid #2563eb}
+  .progress{margin-top:24px;display:none}
+  .bar-bg{background:#e2e8f0;border-radius:99px;height:8px;overflow:hidden;margin-top:8px}
+  .bar{height:100%;background:#2563eb;border-radius:99px;transition:width .3s;width:0%}
+  .status{font-size:13px;color:#475569;margin-top:8px}
+  .result{margin-top:24px;display:none;padding:18px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px}
+  .result-title{font-size:14px;font-weight:600;color:#15803d;margin-bottom:6px}
+  .result-stats{font-size:12px;color:#166534;line-height:1.8}
+  .error{margin-top:24px;display:none;padding:18px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;font-size:13px;color:#991b1b}
+  .tips{margin-top:24px;padding:14px 18px;background:#eff6ff;border-radius:10px;font-size:12px;color:#1d4ed8;line-height:1.8}
+  .tips strong{display:block;margin-bottom:4px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>📋 Albany Roll Converter</h1>
+  <p class="sub">
+    Converts your Albany Final Assessment Roll <strong>.txt</strong> file into a compact <strong>.json</strong> file
+    that loads 50–100× faster in the dashboard. No installation required — runs entirely in your browser.
+  </p>
+
+  <div class="drop" id="drop" onclick="document.getElementById('fi').click()">
+    <div class="drop-icon">📂</div>
+    <div class="drop-label">Click to choose file, or drag &amp; drop here</div>
+    <div class="drop-hint">Albany Final Assessment Roll .txt file</div>
+  </div>
+  <input type="file" id="fi" accept=".txt"/>
+
+  <div class="progress" id="progress">
+    <div class="status" id="status">Reading file…</div>
+    <div class="bar-bg"><div class="bar" id="bar"></div></div>
+  </div>
+
+  <div class="result" id="result">
+    <div class="result-title">✅ Conversion complete!</div>
+    <div class="result-stats" id="stats"></div>
+    <br/>
+    <button class="btn" id="dlBtn">⬇ Download JSON</button>
+  </div>
+
+  <div class="error" id="err"></div>
+
+  <div class="tips">
+    <strong>How to use</strong>
+    1. Convert your <code>.txt</code> roll file here → get <code>albany-roll.json</code><br/>
+    2. Open <strong>albany-dashboard.html</strong><br/>
+    3. Click "Upload CSV / Roll / JSON" and pick the <code>.json</code> file<br/>
+    4. Dashboard loads instantly with all parcels
+  </div>
+</div>
+
+<script>
+/* ─── PARSER (matches albany-full-dashboard.jsx) ─── */
+function parseTextRoll(text, onProgress) {
+  const delimPat = /\*{5,}[\s*]+(\d+\.\d+-\d+-\d+)[\s*]+\*{5,}/g;
+  const parts = [];
+  let m, lastIdx = 0, lastPid = null;
+  while ((m = delimPat.exec(text)) !== null) {
+    if (lastPid !== null) parts.push({ pid: lastPid, blk: text.slice(lastIdx, m.index) });
+    lastPid = m[1]; lastIdx = m.index + m[0].length;
+  }
+  if (lastPid) parts.push({ pid: lastPid, blk: text.slice(lastIdx) });
+
+  const num = s => parseFloat((s || "").replace(/[,$]/g, "")) || 0;
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const total = parts.length;
+
+  return parts.map(({ pid, blk }, idx) => {
+    if (idx % 500 === 0 && onProgress) onProgress(idx, total);
+
+    const pidE = esc(pid);
+    const clsM = blk.match(new RegExp(pidE + "\\t(\\d{3})\\s+(.+?)(?=\\s{3,}|\\t)")) ||
+                 blk.match(new RegExp("\\d+\\s+" + pidE + "\\t(\\d{3})\\s+(.+?)(?=\\s{3,}|\\t)"));
+    const propClass     = clsM ? clsM[1] : "000";
+    const propClassDesc = clsM ? clsM[2].trim() : "Unknown";
+    const parcelType    = blk.includes("HOMESTEAD PARCEL") ? "HOMESTEAD" : "NON-HOMESTEAD";
+    const firstLine     = blk.trim().split("\n")[0];
+    const addrM         = firstLine.match(/^(.+?)\s+(?:HOMESTEAD|NON-HOMESTEAD)/);
+    const address       = (addrM ? addrM[1] : firstLine).replace(/\s+/g, " ").trim();
+
+    const zipM = blk.match(/Albany,?\s+NY\s+(122\d{2})/) || blk.match(/\b(122\d{2})\b/);
+    const zip  = zipM ? (zipM[1] || zipM[0]) : "12207";
+
+    let ownM = blk.match(/(?:\t|\n)([A-Z][^\t\n]+?)\t(?:Albany|ALBANY)\s*\t?010100/) ||
+               blk.match(/(?:\t|\n)([A-Z][^\t\n]+?)\s{3,}(?:Albany|ALBANY)\s*\t?010100/);
+    if (!ownM) ownM = blk.match(/([A-Z][^0-9\t\n]{2,45}?)\s+(?:Albany|ALBANY)\s*\t?010100/);
+    let owner1 = ownM
+      ? ownM[1].trim().replace(/\s*(?:BAS STAR|ENH STAR|AGED|VET|WHOLLY).*$/i, "").trim()
+      : null;
+
+    const own2M = blk.match(/\n([A-Z][^0-9\t\n]+?)\tFRNT/) ||
+                  blk.match(/[\d,]+ ([A-Z][^0-9\t\n]+?)\tFRNT/);
+    let owner2 = own2M ? own2M[1].trim() : null;
+    if (owner2 === owner1 || owner2 === address) owner2 = null;
+
+    const landM          = blk.match(/010100\s+([\d,]+)\s+(?:COUNTY|CITY)\s+TAXABLE/);
+    const landValue      = landM ? num(landM[1]) : 0;
+    const fmvM           = blk.match(/FULL MARKET VALUE\s+([\d,]+)/);
+    const fullMarketValue = fmvM ? num(fmvM[1]) : 0;
+    const frntM          = blk.match(/FRNT\s+([\d.]+)\s+DPTH\s+([\d.]+)\s+([\d,]+)/);
+    const frontage       = frntM ? parseFloat(frntM[1]) : 0;
+    const depth          = frntM ? parseFloat(frntM[2]) : 0;
+    const assessedValue  = frntM
+      ? num(frntM[3])
+      : fullMarketValue > 0 ? Math.round(fullMarketValue * 0.96) : 0;
+
+    const ctyM  = blk.match(/COUNTY\s+TAXABLE\s+VALUE\s+([\d,]+)/);
+    const cityM = blk.match(/CITY\s+TAXABLE\s+VALUE\s+([\d,]+)/);
+    const schM  = blk.match(/SCHOOL\s+TAXABLE\s+VALUE\s+([\d,]+)/);
+    const countyTaxable = ctyM  ? num(ctyM[1])  : assessedValue;
+    const cityTaxable   = cityM ? num(cityM[1]) : assessedValue;
+    const schoolTaxable = schM  ? num(schM[1])  : assessedValue;
+
+    const coordM   = blk.match(/EAST-0?(\d+)\s+NRTH-0?(\d+)/);
+    const eastCoord = coordM ? parseInt(coordM[1]) : 0;
+    const nrthCoord = coordM ? parseInt(coordM[2]) : 0;
+    const deedM    = blk.match(/DEED BOOK\s+(\d{4})\s+PG/);
+    const dy       = deedM ? parseInt(deedM[1]) : null;
+    const deedYear = dy && dy >= 1900 && dy <= 2025 ? dy : null;
+
+    const exemptions = [];
+    const exPat = /([A-Z][A-Za-z\s\-]{1,20}?)\s{2,}(\d{5})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/g;
+    const skipEx = new Set(["COUNTY TAXABLE","CITY TAXABLE","SCHOOL TAXABLE","FULL MARKET","DEED BOOK"]);
+    let exM;
+    while ((exM = exPat.exec(blk)) !== null) {
+      const nm = exM[1].trim();
+      if (skipEx.has(nm) || nm.length < 3) continue;
+      exemptions.push({ name: nm, code: exM[2], countyAmt: num(exM[3]), cityAmt: num(exM[4]), schoolAmt: num(exM[5]) });
+    }
+
+    const mailM       = blk.match(/(\d+[^\n]+?),?\s+([A-Z]{2})\s+(1\d{4})(?=[\s\n])/);
+    const mailAddress = mailM ? `${mailM[1].trim()}, ${mailM[2]} ${mailM[3]}` : address;
+
+    return {
+      parcelId: pid, address, zip, neighborhood: "Albany",
+      owner1: owner1 || "Unknown", owner2,
+      propClass, propClassDesc, parcelType,
+      landValue, assessedValue, fullMarketValue,
+      countyTaxable, cityTaxable, schoolTaxable,
+      frontage, depth, deedYear, eastCoord, nrthCoord, exemptions,
+      mailAddress,
+      yearBuilt: null, municipality: null, schoolDistrict: "Albany",
+      acres: null, waterType: null, sewerType: null, parcelArea: null, saleDate: null
+    };
+  }).filter(p => p.parcelId && p.assessedValue >= 0);
+}
+
+/* ─── UI ─── */
+const drop   = document.getElementById("drop");
+const fi     = document.getElementById("fi");
+const prog   = document.getElementById("progress");
+const bar    = document.getElementById("bar");
+const status = document.getElementById("status");
+const result = document.getElementById("result");
+const stats  = document.getElementById("stats");
+const errEl  = document.getElementById("err");
+const dlBtn  = document.getElementById("dlBtn");
+
+let jsonBlob = null;
+let outName  = "albany-roll.json";
+
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); processFile(e.dataTransfer.files[0]); });
+fi.addEventListener("change", () => processFile(fi.files[0]));
+
+function processFile(file) {
+  if (!file) return;
+  outName = file.name.replace(/\.txt$/i, "") + ".json";
+  result.style.display = "none";
+  errEl.style.display  = "none";
+  prog.style.display   = "block";
+  bar.style.width      = "5%";
+  status.textContent   = "Reading file…";
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = ev.target.result;
+    if (!text.includes("HOMESTEAD PARCEL") && !text.includes("FULL MARKET VALUE")) {
+      showError("This doesn't look like an Albany Assessment Roll .txt file. Make sure you're using the Final Assessment Roll text export.");
+      return;
+    }
+    bar.style.width    = "15%";
+    status.textContent = "Parsing parcels…";
+
+    // Use setTimeout to let the UI update before the heavy parse
+    setTimeout(() => {
+      const t0 = Date.now();
+      try {
+        const parcels = parseTextRoll(text, (done, total) => {
+          const pct = 15 + Math.round((done / total) * 75);
+          bar.style.width    = pct + "%";
+          status.textContent = `Parsing ${done.toLocaleString()} of ${total.toLocaleString()} parcels…`;
+        });
+        const elapsed = Date.now() - t0;
+        bar.style.width    = "100%";
+        status.textContent = "Done!";
+
+        const inSzKB   = (text.length   / 1024).toFixed(0);
+        const payload  = JSON.stringify({ version: 1, source: file.name, parsedAt: new Date().toISOString(), parcels });
+        const outSzKB  = (payload.length / 1024).toFixed(0);
+        const savings  = (100 - payload.length / text.length * 100).toFixed(0);
+        const unknown  = parcels.filter(p => p.owner1 === "Unknown").length;
+
+        jsonBlob = new Blob([payload], { type: "application/json" });
+        stats.innerHTML = `
+          <b>${parcels.toLocaleString ? parcels.length.toLocaleString() : parcels.length}</b> parcels parsed in ${elapsed.toLocaleString()}ms<br/>
+          Input: <b>${Number(inSzKB).toLocaleString()} KB</b> → Output: <b>${Number(outSzKB).toLocaleString()} KB</b> (${savings}% smaller)<br/>
+          Unknown owners: <b>${unknown.toLocaleString()}</b> of ${parcels.length.toLocaleString()}
+          ${unknown > 0 ? ' — <span style="color:#92400e">some page-break records may still need review</span>' : ' ✅'}
+        `;
+        result.style.display = "block";
+      } catch(e) {
+        showError("Parse error: " + e.message);
+      }
+    }, 50);
+  };
+  reader.onerror = () => showError("Could not read file.");
+  reader.readAsText(file);
+}
+
+dlBtn.addEventListener("click", () => {
+  if (!jsonBlob) return;
+  const url = URL.createObjectURL(jsonBlob);
+  const a   = document.createElement("a");
+  a.href     = url;
+  a.download = outName;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+function showError(msg) {
+  prog.style.display   = "none";
+  errEl.style.display  = "block";
+  errEl.textContent    = "⚠ " + msg;
+}
+</script>
+</body>
+</html>
