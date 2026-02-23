@@ -1,0 +1,21 @@
+{
+  "name": "albany_real_estate",
+  "version": "1.0.0",
+  "description": "An interactive data intelligence application for exploring Albany, NY property assessment data from the 2025 Final Assessment Roll.",
+  "main": "convert-roll.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osuperman/AlbanyPropertyAssesmentApp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/osuperman/AlbanyPropertyAssesmentApp/issues"
+  },
+  "homepage": "https://github.com/osuperman/AlbanyPropertyAssesmentApp#readme"
+}

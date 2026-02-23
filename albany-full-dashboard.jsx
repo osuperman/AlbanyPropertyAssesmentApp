@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+﻿import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, ScatterChart, Scatter, LineChart, Line, Legend } from "recharts";
 
@@ -52,10 +52,10 @@ const MyHomeBanner = ({myHome, onUse, label="Use My Home"}) => {
   if(!myHome) return null;
   return (
     <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.25)",borderRadius:9,padding:"10px 14px",marginBottom:12}}>
-      <span style={{fontSize:16}}>🏡</span>
+      <span style={{fontSize:16}}>Home</span>
       <div style={{flex:1}}>
         <div style={{fontSize:12,fontWeight:600,color:"var(--green2)"}}>My Home is saved</div>
-        <div style={{fontSize:11,color:"var(--gray2)",marginTop:1}}>{myHome.address}</div>
+        <div style={{fontSize:11,color:"var(--gray2)",marginTop:1}}>{myHome.address}{myHome.parcel?.neighborhood?` · ${myHome.parcel.neighborhood}`:""}</div>
       </div>
       <button onClick={onUse} style={{background:"var(--green)",color:"white",border:"none",borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>
     </div>
@@ -279,15 +279,528 @@ function parseTextRoll(text) {
 const $f = v => v==null?"—":"$"+Number(v).toLocaleString();
 const nf = v => v==null?"—":Number(v).toLocaleString();
 const eqR = p => p.fullMarketValue>0?((p.assessedValue/p.fullMarketValue)*100).toFixed(1):"—";
-const eqFlag = p => { const r=parseFloat(eqR(p)); if(isNaN(r))return"neutral"; if(r<80)return"under"; if(r>120)return"over"; return"fair"; };
+const eqFlag = p => { const r=parseFloat(eqRFast(p)); if(isNaN(r))return"neutral"; if(r<80)return"under"; if(r>120)return"over"; return"fair"; };
 const FC = {under:"#f59e0b",over:"#dc2626",fair:"#22c55e",neutral:"#64748b"};
 const FL = {under:"Under-Assessed",over:"Over-Assessed",fair:"Fair Value",neutral:"No Data"};
 const lotSqFt = p => p.frontage&&p.depth?p.frontage*p.depth:null;
 const gentriIdx = p => p.assessedValue>0?(p.landValue/p.assessedValue*100).toFixed(1):0;
-const isAbsentee = p => { if(!p.mailAddress)return false; const street=(p.address||"").toLowerCase().split(" ").slice(0,3).join(" "); return!p.mailAddress.toLowerCase().includes(street); };
+function normalizeStreetKeyForCompare(raw){
+  if(!raw) return "";
+  const DIR = {n:"n",north:"n",s:"s",south:"s",e:"e",east:"e",w:"w",west:"w",ne:"ne",northeast:"ne",nw:"nw",northwest:"nw",se:"se",southeast:"se",sw:"sw",southwest:"sw"};
+  const SUF = {street:"st",st:"st",avenue:"ave",ave:"ave",road:"rd",rd:"rd",boulevard:"blvd",blvd:"blvd",drive:"dr",dr:"dr",lane:"ln",ln:"ln",court:"ct",ct:"ct",terrace:"ter",ter:"ter",place:"pl",pl:"pl",circle:"cir",cir:"cir",way:"way",highway:"hwy",hwy:"hwy",parkway:"pkwy",pkwy:"pkwy"};
+  const STOP = new Set(["apt","apartment","unit","ste","suite","fl","floor","rm","room"]);
+  const ROLL_NOISE = new Set(["frnt","dpth","taxable","value","county","city","school"]);
+  const tokens = raw.toString().toLowerCase()
+    .replace(/[\r\n,]+/g," ")
+    .replace(/[^\w\s#-]/g," ")
+    .replace(/\s+/g," ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  const isNumTok = t => /^\d+[a-z]?$/.test(t);
+  const scoreCandidate = startIdx => {
+    for(let j=startIdx+1;j<Math.min(tokens.length,startIdx+7);j++){
+      const tj = tokens[j];
+      if(/^\d{5}(?:-\d{4})?$/.test(tj) || tj==="ny") break;
+      if(SUF[tj]){
+        const middle = tokens.slice(startIdx+1,j);
+        const alphaCount = middle.filter(x=>/[a-z]/.test(x) && !DIR[x] && !SUF[x]).length;
+        const numNoise = middle.filter(x=>/^\d+$/.test(x) || isNumTok(x)).length;
+        if(alphaCount<1) return null;
+        return { score: (numNoise*10) + (j-startIdx), j };
+      }
+    }
+    return null;
+  };
+  let startIndex = -1;
+  let best = null;
+  for(let i=0;i<tokens.length;i++){
+    if(!isNumTok(tokens[i])) continue;
+    const cand = scoreCandidate(i);
+    if(!cand) continue;
+    if(!best || cand.score<best.score || (cand.score===best.score && i>startIndex)){
+      best = cand;
+      startIndex = i;
+    }
+  }
+  if(startIndex<0) startIndex = tokens.findIndex(isNumTok);
+  const out = [];
+  let started = startIndex>=0;
+  for(let i=started?startIndex:0;i<tokens.length;i++){
+    let t = tokens[i];
+    if(!started){
+      if(isNumTok(t)){ started = true; out.push(t.replace(/^0+(?=\d)/,"")); }
+      continue;
+    }
+    if(/^\d{5}(?:-\d{4})?$/.test(t) || t==="ny") break;
+    if(t==="albany" && out.length>=2) break;
+    if(t==="new" && tokens[i+1]==="york") break;
+    if(/^east-?\d+$/i.test(t) || /^nrth-?\d+$/i.test(t) || ROLL_NOISE.has(t)) break;
+    if(t.startsWith("#") || STOP.has(t)) break;
+    t = DIR[t] || SUF[t] || t;
+    out.push(t);
+    if(out.length>=5) break;
+  }
+  return out.join(" ");
+}
+
+function computeAbsenteeFlag(p){
+  const mail = (p?.mailAddress||"").toString();
+  if(!mail) return false;
+  const mailLower = mail.toLowerCase();
+  const zip = (p?.zip||"").toString();
+  // In Albany roll text exports, "000 Albany, NY 122xx" often means same as property/situs.
+  if(/^\s*0+\b/.test(mailLower) && /\balbany\b/.test(mailLower) && (!zip || mailLower.includes(zip))) return false;
+  const propKey = normalizeStreetKeyForCompare(p?.address||"");
+  if(!propKey) return false;
+  const mailKey = normalizeStreetKeyForCompare(mail);
+  if(!mailKey) return true;
+  if(mailKey.includes(propKey) || propKey.includes(mailKey)) return false;
+  const a = propKey.split(" ");
+  const b = mailKey.split(" ");
+  if(a.length>=2 && b.length>=2 && a[0]===b[0] && a[1]===b[1]) return false;
+  const aNum = parseInt((a[0]||"").match(/\d+/)?.[0]||"",10);
+  const bNum = parseInt((b[0]||"").match(/\d+/)?.[0]||"",10);
+  const aStreet = a.slice(1).join(" ");
+  const bStreet = b.slice(1).join(" ");
+  const sameZipOrAlbany = (!zip || mailLower.includes(zip)) && /\balbany\b/.test(mailLower);
+  if(aStreet && bStreet && aStreet===bStreet && sameZipOrAlbany && Number.isFinite(aNum) && Number.isFinite(bNum) && Math.abs(aNum-bNum)<=2) return false;
+  return true;
+}
+
+const isAbsentee = p => computeAbsenteeFlag(p);
 const COLORS = ["#3b82f6","#f59e0b","#0d9488","#a78bfa","#f97316","#ec4899","#22c55e","#06b6d4","#dc2626","#facc15"];
 
+/* Performance helpers */
+function inferNeighborhoodFallback(zip){
+  const z = (zip||"").toString().trim();
+  if(!z) return "Albany";
+  const byZip = {
+    "12203":"Westland Hills",
+    "12206":"West Hill / Pine Hills",
+    "12207":"Downtown / Arbor Hill",
+    "12208":"Pine Hills",
+    "12209":"South End",
+    "12210":"Center Square / Washington Park",
+    "12211":"Albany",
+  };
+  return byZip[z] || "Albany";
+}
+
+function preprocessParcels(arr){
+  if(!Array.isArray(arr) || arr.length===0) return [];
+  const alreadyPreprocessed = !!(arr[0] && typeof arr[0]._searchBlob==="string" && typeof arr[0]._absentee==="boolean");
+  if(alreadyPreprocessed){
+    const needsNeighborhoodRepair = arr.some(p=>{
+      const rawNbr = ((p&&p.neighborhood)||"").toString().trim();
+      if(!rawNbr) return true;
+      if(/^(albany|city of albany)$/i.test(rawNbr)){
+        const inferred = inferNeighborhoodFallback((p&&p.zip)||"");
+        return inferred && inferred !== "Albany";
+      }
+      return false;
+    });
+    if(!needsNeighborhoodRepair) return arr;
+  }
+  return arr.map(p=>{
+    const address = (p.address||"").toString();
+    const owner1 = (p.owner1||"").toString();
+    const owner2 = (p.owner2||"").toString();
+    const parcelId = (p.parcelId||"").toString();
+    const zip = (p.zip||"").toString();
+    const clsDesc = (p.propClassDesc||"").toString();
+    const rawNbr = (p.neighborhood||"").toString().trim();
+    const inferredNbr = inferNeighborhoodFallback(zip);
+    const nbr = (!rawNbr || /^(albany|city of albany)$/i.test(rawNbr)) ? inferredNbr : rawNbr;
+    const addrLower = address.toLowerCase();
+    const owner1Lower = owner1.toLowerCase();
+    const owner2Lower = owner2.toLowerCase();
+    const next = (p && p.neighborhood===nbr) ? p : {...p, neighborhood:nbr};
+    const absentee = computeAbsenteeFlag(next);
+    const eqRatioNum = p.fullMarketValue>0 ? (p.assessedValue/p.fullMarketValue)*100 : null;
+    const eqBand = eqRatioNum==null || !isFinite(eqRatioNum) ? "neutral" : eqRatioNum<80 ? "under" : eqRatioNum>120 ? "over" : "fair";
+    return {
+      ...next,
+      _addrLower: addrLower,
+      _owner1Lower: owner1Lower,
+      _owner2Lower: owner2Lower,
+      _searchBlob: [addrLower, parcelId.toLowerCase(), clsDesc.toLowerCase(), nbr.toLowerCase(), zip.toLowerCase()].join("|"),
+      _ownerBlob: [owner1Lower, owner2Lower].join("|"),
+      _absentee: absentee,
+      _eqRatioNum: eqRatioNum,
+      _eqBand: eqBand,
+    };
+  });
+}
+
+const eqRFast = p => (typeof p?._eqRatioNum==="number" && isFinite(p._eqRatioNum))
+  ? p._eqRatioNum.toFixed(1)
+  : eqR(p);
+
+const eqFlagFast = p => (p && typeof p._eqBand==="string") ? p._eqBand : eqFlag(p);
+
+const isAbsenteeFast = p => (p && typeof p._absentee==="boolean") ? p._absentee : isAbsentee(p);
+
+function downsampleScatterParcels(parcels, maxPoints=1800){
+  if(!Array.isArray(parcels) || parcels.length<=maxPoints) return parcels;
+  const step = Math.ceil(parcels.length/maxPoints);
+  const out = [];
+  for(let i=0;i<parcels.length;i+=step) out.push(parcels[i]);
+  return out;
+}
+
+function createDataParseWorker(){
+  if(typeof Worker==="undefined" || typeof Blob==="undefined" || typeof URL==="undefined") return null;
+  const workerSrc = `
+${parseCSV.toString()}
+${parseTextRoll.toString()}
+${normalizeStreetKeyForCompare.toString()}
+${computeAbsenteeFlag.toString()}
+${inferNeighborhoodFallback.toString()}
+${preprocessParcels.toString()}
+self.onmessage = function(ev){
+  try{
+    var data = ev.data || {};
+    var raw = data.raw || "";
+    var fname = (data.fname || "").toLowerCase();
+    var meta = null;
+    var arr = [];
+    var sourceType = "csv";
+    if(fname.slice(-5)===".json"){
+      var payload = JSON.parse(raw);
+      arr = payload && (payload.parcels || payload);
+      if(!Array.isArray(arr) || arr.length===0) throw new Error("JSON file does not contain a parcels array.");
+      meta = payload && payload.meta ? payload.meta : null;
+      sourceType = "json";
+    } else {
+      var isRoll = fname.slice(-4)===".txt" || raw.indexOf("HOMESTEAD PARCEL")>=0 || raw.indexOf("FULL MARKET VALUE")>=0;
+      arr = isRoll ? parseTextRoll(raw) : parseCSV(raw);
+      sourceType = isRoll ? "roll" : "csv";
+    }
+    self.postMessage({ ok:true, parcels: preprocessParcels(arr), meta: meta, sourceType: sourceType });
+  } catch(err){
+    self.postMessage({ ok:false, error: err && err.message ? err.message : String(err) });
+  }
+};`;
+  const blob = new Blob([workerSrc], { type:"text/javascript" });
+  const blobUrl = URL.createObjectURL(blob);
+  const worker = new Worker(blobUrl);
+  worker.__blobUrl = blobUrl;
+  return worker;
+}
+
+function createDuplicateScanWorker(){
+  if(typeof Worker==="undefined" || typeof Blob==="undefined" || typeof URL==="undefined") return null;
+  const workerSrc = `
+var __levenSim = (${levenSim.toString()});
+self.onmessage = function(ev){
+  try{
+    var data = ev.data || {};
+    var parcels = Array.isArray(data.parcels) ? data.parcels : [];
+    var threshold = typeof data.threshold === "number" ? data.threshold : 0.75;
+    var names = new Array(parcels.length);
+    for(var i=0;i<parcels.length;i++){
+      var owner = (((parcels[i]||{}).owner1)||"").toString().trim().toLowerCase();
+      names[i] = owner.replace(/\\s+/g," ");
+    }
+    var buckets = {};
+    for(var j=0;j<names.length;j++){
+      var n = names[j];
+      if(!n) continue;
+      var key = n.slice(0,1)+"|"+n.length;
+      (buckets[key]||(buckets[key]=[])).push(j);
+    }
+    var groups = [];
+    var used = {};
+    var bucketKeys = Object.keys(buckets);
+    for(var b=0;b<bucketKeys.length;b++){
+      var idxs = buckets[bucketKeys[b]];
+      for(var x=0;x<idxs.length;x++){
+        var i0 = idxs[x];
+        if(used[i0]) continue;
+        var baseName = names[i0];
+        if(!baseName || baseName.length < 4) continue;
+        var matches = [];
+        for(var y=x+1;y<idxs.length;y++){
+          var i1 = idxs[y];
+          if(used[i1]) continue;
+          var other = names[i1];
+          if(!other) continue;
+          if(Math.abs(baseName.length-other.length)>4) continue;
+          if(__levenSim(baseName, other) > threshold) matches.push(i1);
+        }
+        if(matches.length){
+          groups.push({baseIndex:i0, similarIndices:matches});
+          used[i0]=1;
+          for(var k=0;k<matches.length;k++) used[matches[k]]=1;
+        }
+      }
+    }
+    self.postMessage({ok:true, groups:groups});
+  }catch(err){
+    self.postMessage({ok:false, error: err && err.message ? err.message : String(err)});
+  }
+};`;
+  const blob = new Blob([workerSrc], { type:"text/javascript" });
+  const blobUrl = URL.createObjectURL(blob);
+  const worker = new Worker(blobUrl);
+  worker.__blobUrl = blobUrl;
+  return worker;
+}
+
+const VirtualRows = ({items,rowHeight=96,height=480,overscan=4,renderRow,empty}) => {
+  const [scrollTop,setScrollTop]=useState(0);
+  const start=Math.max(0,Math.floor(scrollTop/rowHeight)-overscan);
+  const visible=Math.ceil(height/rowHeight)+(overscan*2);
+  const end=Math.min(items.length,start+visible);
+  if(items.length===0) return empty||null;
+  return (
+    <div style={{height,overflowY:"auto"}} onScroll={e=>setScrollTop(e.currentTarget.scrollTop)}>
+      <div style={{paddingTop:start*rowHeight,paddingBottom:Math.max(0,(items.length-end)*rowHeight)}}>
+        {items.slice(start,end).map((item,i)=>renderRow(item,start+i))}
+      </div>
+    </div>
+  );
+};
+
 /* ── SHARED UI ATOMS ── */
+const googleMapsHref = (address, zip, neighborhood) => {
+  const q = [address, neighborhood, "Albany, NY", zip].filter(Boolean).join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+};
+const AddrLink = ({address, zip, neighborhood, children, stopPropagation=true, style={}}) => {
+  const label = children ?? address ?? "(no address)";
+  if(!address) return <>{label}</>;
+  return (
+    <a
+      href={googleMapsHref(address, zip, neighborhood)}
+      target="_blank"
+      rel="noreferrer"
+      onClick={e=>{ if(stopPropagation) e.stopPropagation(); }}
+      title={`Open ${address}${neighborhood?` (${neighborhood})`:""}${zip?` ${zip}`:""} in Google Maps`}
+      style={{color:"inherit",textDecoration:"underline",textDecorationColor:"rgba(59,130,246,.55)",textUnderlineOffset:2,...style}}
+    >
+      {label}
+      {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` · ${neighborhood}`}</span>}
+    </a>
+  );
+};
+const formatPropClassLabel = (code, desc) => {
+  const c = (code||"").toString().trim();
+  const d = (desc||"").toString().trim();
+  if(d && c && d!==c) return `${d} (${c})`;
+  return d || c || "Unknown";
+};
+const propClassLabel = p => formatPropClassLabel(p?.propClass, p?.propClassDesc);
+const propClassDescLabel = p => (p?.propClassDesc||p?.propClass||"Unknown");
+function pointInRingXY(x,y,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const xi=ring[i]?.[0], yi=ring[i]?.[1], xj=ring[j]?.[0], yj=ring[j]?.[1];
+    if(!Number.isFinite(xi)||!Number.isFinite(yi)||!Number.isFinite(xj)||!Number.isFinite(yj)) continue;
+    const intersect=((yi>y)!==(yj>y)) && (x < ((xj-xi)*(y-yi))/((yj-yi)||1e-12)+xi);
+    if(intersect) inside=!inside;
+  }
+  return inside;
+}
+function pointInCompactMultiPoly(x,y,g){
+  const polys = g?.g;
+  if(!Array.isArray(polys)) return false;
+  for(const poly of polys){
+    if(!Array.isArray(poly) || !poly.length) continue;
+    if(!pointInRingXY(x,y,poly[0])) continue;
+    let inHole=false;
+    for(let i=1;i<poly.length;i++){ if(pointInRingXY(x,y,poly[i])) { inHole=true; break; } }
+    if(!inHole) return true;
+  }
+  return false;
+}
+function compactGeoJsonMultiPolygonCoords(geom){
+  if(!geom || !geom.type || !geom.coordinates) return null;
+  const src = geom.type==="MultiPolygon" ? geom.coordinates : (geom.type==="Polygon" ? [geom.coordinates] : null);
+  if(!src || !Array.isArray(src)) return null;
+  const out = [];
+  for(const poly of src){
+    if(!Array.isArray(poly) || !poly.length) continue;
+    const polyOut = [];
+    for(const ring of poly){
+      if(!Array.isArray(ring) || !ring.length) continue;
+      const ringOut = [];
+      for(const pt of ring){
+        if(!Array.isArray(pt) || pt.length<2) continue;
+        const x = Number(pt[0]), y = Number(pt[1]);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        ringOut.push([Math.round(x*10)/10, Math.round(y*10)/10]);
+      }
+      if(ringOut.length>=3) polyOut.push(ringOut);
+    }
+    if(polyOut.length) out.push(polyOut);
+  }
+  return out.length ? out : null;
+}
+function computeCompactGeometryAux(multiPoly){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,sx=0,sy=0,c=0;
+  for(const poly of multiPoly){
+    for(const ring of poly){
+      for(const pt of ring){
+        const x=pt[0], y=pt[1];
+        if(!Number.isFinite(x)||!Number.isFinite(y)) continue;
+        if(x<minX) minX=x; if(x>maxX) maxX=x;
+        if(y<minY) minY=y; if(y>maxY) maxY=y;
+        sx+=x; sy+=y; c++;
+      }
+    }
+  }
+  if(!Number.isFinite(minX) || c===0) return null;
+  const round1 = n => Math.round(n*10)/10;
+  return {
+    b: [round1(minX), round1(minY), round1(maxX), round1(maxY)],
+    c: [round1(sx/c), round1(sy/c)],
+  };
+}
+function convertGeoJsonFeatureCollectionToCompactGeometry(payload, sourceName="uploaded.geojson"){
+  if(!payload || payload.type!=="FeatureCollection" || !Array.isArray(payload.features)) return null;
+  const byId = Object.create(null);
+  let processed=0, skippedNoKey=0, skippedBadGeom=0, duplicateKeys=0;
+  for(const ft of payload.features){
+    const props = ft?.properties || {};
+    const key = String(
+      props.PRINT_KEY ?? props.PrintKey ?? props.print_key ?? props.parcelId ?? props.PARCELID ?? props.SBL ?? ""
+    ).trim();
+    if(!key){ skippedNoKey++; continue; }
+    const g = compactGeoJsonMultiPolygonCoords(ft?.geometry);
+    if(!g){ skippedBadGeom++; continue; }
+    const aux = computeCompactGeometryAux(g);
+    if(!aux){ skippedBadGeom++; continue; }
+    if(byId[key]) duplicateKeys++;
+    byId[key] = { g, b: aux.b, c: aux.c };
+    processed++;
+  }
+  const count = Object.keys(byId).length;
+  if(!count) return null;
+  return {
+    version: 1,
+    source: sourceName,
+    parsedAt: new Date().toISOString(),
+    geometryType: "MultiPolygon",
+    coordSystem: payload?.crs?.properties?.name || payload?.crs?.name || "GeoJSON-default",
+    count,
+    parcels: byId,
+    stats: {
+      inputFeatureCount: payload.features.length,
+      processedFeatures: processed,
+      duplicateKeys,
+      skippedNoKey,
+      skippedBadGeom,
+    }
+  };
+}
+function compactGeoJsonMultiLineCoords(geom){
+  if(!geom || !geom.type || !geom.coordinates) return null;
+  const src = geom.type==="MultiLineString" ? geom.coordinates : (geom.type==="LineString" ? [geom.coordinates] : null);
+  if(!src || !Array.isArray(src)) return null;
+  const out = [];
+  for(const line of src){
+    if(!Array.isArray(line) || line.length<2) continue;
+    const lineOut = [];
+    for(const pt of line){
+      if(!Array.isArray(pt) || pt.length<2) continue;
+      const x=Number(pt[0]), y=Number(pt[1]);
+      if(!Number.isFinite(x)||!Number.isFinite(y)) continue;
+      lineOut.push([Math.round(x*10)/10, Math.round(y*10)/10]);
+    }
+    if(lineOut.length>=2) out.push(lineOut);
+  }
+  return out.length ? out : null;
+}
+function computeCompactLineAux(lines){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  let totalLen=0, midTarget=0;
+  const segs = [];
+  for(const line of lines){
+    for(let i=0;i<line.length;i++){
+      const [x,y] = line[i];
+      if(x<minX) minX=x; if(x>maxX) maxX=x;
+      if(y<minY) minY=y; if(y>maxY) maxY=y;
+      if(i===0) continue;
+      const [x0,y0] = line[i-1];
+      const dx=x-x0, dy=y-y0;
+      const len=Math.hypot(dx,dy);
+      if(len>0){ segs.push([x0,y0,x,y,len]); totalLen+=len; }
+    }
+  }
+  if(!Number.isFinite(minX) || !segs.length) return null;
+  midTarget = totalLen/2;
+  let acc=0, cx=(minX+maxX)/2, cy=(minY+maxY)/2, angle=0;
+  for(const [x0,y0,x1,y1,len] of segs){
+    if(acc+len >= midTarget){
+      const t=(midTarget-acc)/(len||1);
+      cx = x0 + (x1-x0)*t;
+      cy = y0 + (y1-y0)*t;
+      angle = Math.atan2(y1-y0, x1-x0);
+      break;
+    }
+    acc += len;
+  }
+  const round1 = n => Math.round(n*10)/10;
+  return {
+    b:[round1(minX),round1(minY),round1(maxX),round1(maxY)],
+    c:[round1(cx),round1(cy)],
+    a: Math.round(angle*1000)/1000,
+  };
+}
+function inferStreetNameFromProps(props){
+  if(!props || typeof props!=="object") return "";
+  const keys = [
+    "FULLNAME","FULL_NAME","STREET","STREETNAME","ST_NAME","STNAME","NAME","RD_NAME",
+    "LABEL","FULL_STREE","FULLSTREET","ROADNAME","L_ST_NAME","R_ST_NAME"
+  ];
+  for(const k of keys){
+    const v = props[k] ?? props[k.toLowerCase()];
+    if(typeof v==="string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+function isAlbanyStreetCenterlineFeature(props){
+  if(!props || typeof props!=="object") return true;
+  const lc = String(props.LeftCityTownName ?? props.leftcitytownname ?? "").trim().toLowerCase();
+  const rc = String(props.RightCityTownName ?? props.rightcitytownname ?? "").trim().toLowerCase();
+  if(!lc && !rc) return true; // Unknown schema; don't over-filter
+  const isAlb = v => v==="albany" || v==="city of albany";
+  return isAlb(lc) || isAlb(rc);
+}
+function convertGeoJsonFeatureCollectionToStreetCenterlines(payload, sourceName="uploaded.geojson"){
+  if(!payload || payload.type!=="FeatureCollection" || !Array.isArray(payload.features)) return null;
+  const streets = [];
+  let skippedNoGeom=0, skippedNoName=0, skippedOutsideAlbany=0;
+  for(const ft of payload.features){
+    if(!isAlbanyStreetCenterlineFeature(ft?.properties)){ skippedOutsideAlbany++; continue; }
+    const lines = compactGeoJsonMultiLineCoords(ft?.geometry);
+    if(!lines){ skippedNoGeom++; continue; }
+    const name = inferStreetNameFromProps(ft?.properties);
+    if(!name){ skippedNoName++; continue; }
+    const aux = computeCompactLineAux(lines);
+    if(!aux){ skippedNoGeom++; continue; }
+    streets.push({ n:name, g:lines, b:aux.b, c:aux.c, a:aux.a });
+  }
+  if(!streets.length) return null;
+  return {
+    version:1,
+    kind:"streetCenterlines",
+    source:sourceName,
+    parsedAt:new Date().toISOString(),
+    geometryType:"MultiLineString",
+    coordSystem: payload?.crs?.properties?.name || payload?.crs?.name || "GeoJSON-default",
+    count: streets.length,
+    streets,
+    stats:{
+      inputFeatureCount: payload.features.length,
+      skippedNoGeom,
+      skippedNoName,
+      skippedOutsideAlbany,
+    }
+  };
+}
 const Badge = ({children,color="#3b82f6",small}) => (
   <span style={{background:color+"22",color,border:`1px solid ${color}33`,borderRadius:5,padding:small?"1px 6px":"2px 8px",fontSize:small?10:11,fontWeight:600,fontFamily:"var(--fm)",whiteSpace:"nowrap"}}>{children}</span>
 );
@@ -318,7 +831,7 @@ const StatCard = ({label,value,icon,color="#3b82f6",sub,onClick}) => (
 
 /* ── PARCEL MINI CARD ── */
 const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
-  const flag=eqFlag(p); const fc=FC[flag];
+  const flag=eqFlagFast(p); const fc=FC[flag];
   return (
     <div className="fi" onClick={()=>onClick&&onClick(p)} style={{
       background:selected?"rgba(37,99,235,0.12)":"var(--card)",border:`1px solid ${selected?"var(--blue)":"var(--border)"}`,
@@ -328,19 +841,19 @@ const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
     onMouseLeave={e=>{if(!selected&&onClick)e.currentTarget.style.background="var(--card)"}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.address}</div>
+          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
           <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",margin:"3px 0 7px"}}>{p.parcelId} · {p.zip}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-            <Badge color="#6366f1" small>{p.propClass} {p.propClassDesc}</Badge>
+            <Badge color="#6366f1" small>{propClassLabel(p)}</Badge>
             {p.parcelType==="HOMESTEAD"&&<Badge color="#0d9488" small>Homestead</Badge>}
             {p.exemptions.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} Exemption{p.exemptions.length>1?"s":""}</Badge>}
-            {isAbsentee(p)&&<Badge color="#f97316" small>Absentee</Badge>}
+            {isAbsenteeFast(p)&&<Badge color="#f97316" small>Absentee</Badge>}
           </div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
           <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
           <div style={{fontSize:10,color:"var(--gray)",margin:"2px 0 5px"}}>FMV</div>
-          <span style={{fontSize:11,color:fc,fontWeight:600}}>●&nbsp;{eqR(p)}%</span>
+          <span style={{fontSize:11,color:fc,fontWeight:600}}>●&nbsp;{eqRFast(p)}%</span>
         </div>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid var(--border)",paddingTop:8,marginTop:8}}>
@@ -353,7 +866,7 @@ const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
 
 /* ── DETAIL PANEL ── */
 const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
-  const flag=eqFlag(p); const fc=FC[flag]; const r=parseFloat(eqR(p));
+  const flag=eqFlagFast(p); const fc=FC[flag]; const r=parseFloat(eqRFast(p));
   const Row = ({label,value,color,mono}) => (
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,gap:12}}>
       <span style={{fontSize:12,color:"var(--gray)",flex:1}}>{label}</span>
@@ -372,7 +885,7 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
   return (
     <div className="fi" style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:20,height:"100%",overflowY:"auto",position:"relative"}}>
       <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--gray)",width:26,height:26,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-      <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:32}}>{p.address}</div>
+      <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:32}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
       <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)",marginBottom:10}}>Parcel {p.parcelId} · Albany, NY {p.zip} · {p.neighborhood}</div>
       {/* Save My Home button */}
       {onSaveHome&&<button onClick={()=>onSaveHome(p)} style={{
@@ -382,13 +895,13 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
         color:myHome?.parcelId===p.parcelId?"var(--green2)":"var(--gray)",
         borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",marginBottom:14
       }}>
-        {myHome?.parcelId===p.parcelId?"🏡 This is My Home (saved)":"🏡 Save as My Home"}
+        {myHome?.parcelId===p.parcelId?"Home: This is My Home (saved)":"Save as My Home"}
       </button>}
       {/* Equity meter */}
       <div style={{background:`${fc}11`,border:`1px solid ${fc}33`,borderRadius:9,padding:12,marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
           <span style={{fontSize:11,fontWeight:600,color:fc}}>{FL[flag]}</span>
-          <span style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:fc}}>{eqR(p)}%</span>
+          <span style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:fc}}>{eqRFast(p)}%</span>
         </div>
         <div style={{height:5,background:"var(--bg)",borderRadius:3,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${Math.min(isNaN(r)?0:r,150)/1.5}%`,background:fc,borderRadius:3,transition:"width .5s ease"}}></div>
@@ -399,7 +912,7 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
         <Row label="Primary Owner" value={p.owner1}/>
         {p.owner2&&<Row label="Co-Owner" value={p.owner2}/>}
         <Row label="Mailing Address" value={p.mailAddress||"—"}/>
-        <Row label="Absentee Owner?" value={isAbsentee(p)?"Yes — mailing ≠ property":"No — owner-occupied likely"}  color={isAbsentee(p)?"#f97316":"#22c55e"}/>
+        <Row label="Absentee Owner?" value={isAbsenteeFast(p)?"Yes — mailing ≠ property":"No — owner-occupied likely"}  color={isAbsenteeFast(p)?"#f97316":"#22c55e"}/>
       </Sec>
       <Sec title="Valuation">
         <Row label="Full Market Value" value={$f(p.fullMarketValue)} mono color="#f59e0b"/>
@@ -428,7 +941,7 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
         <div style={{fontSize:10,color:"var(--gray2)",marginTop:4}}>Totals — County: {$f(totExC)} · City: {$f(totExCI)} · School: {$f(totExS)}</div>
       </Sec>}
       <Sec title="Property Details">
-        <Row label="Class" value={`${p.propClass} — ${p.propClassDesc}`}/>
+        <Row label="Class" value={propClassLabel(p)}/>
         <Row label="Type" value={p.parcelType}/>
         <Row label="Lot Size" value={p.frontage&&p.depth?`${p.frontage}×${p.depth} ft (${nf(p.frontage*p.depth)} sq ft)`:"—"}/>
         {p.acres&&<Row label="Lot Acres" value={p.acres.toFixed(4)+" ac"} mono/>}
@@ -454,9 +967,33 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
 const PropListModal = ({data, onClose}) => {
   if (!data) return null;
   const [search, setSearch] = useState("");
-  const shown = search
-    ? data.parcels.filter(p=>[p.address,p.owner1,p.parcelId,p.zip,p.propClassDesc].some(x=>(x||"").toLowerCase().includes(search.toLowerCase())))
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? data.parcels.filter(p=>(p._searchBlob||"").includes(q)||(p._ownerBlob||"").includes(q))
     : data.parcels;
+  const listHeight = Math.max(260, Math.min(620, (typeof window!=="undefined" ? window.innerHeight : 760) - 220));
+  const renderRow = p => (
+    <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"11px 14px",marginBottom:7}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address||"(no address)"}</AddrLink></div>
+          <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:1}}>{p.parcelId} | {p.zip}</div>
+          <div style={{fontSize:11,color:"var(--gray2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.owner1}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>
+            <Badge color="#6366f1" small>{propClassLabel(p)}</Badge>
+            {p.parcelType==="HOMESTEAD"&&<Badge color="#0d9488" small>Homestead</Badge>}
+            {p.exemptions?.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} Exempt</Badge>}
+            {isAbsenteeFast(p)&&<Badge color="#f97316" small>Absentee</Badge>}
+          </div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+          <div style={{fontSize:10,color:"var(--gray)",marginTop:1}}>FMV</div>
+          <div style={{fontSize:11,color:FC[eqFlagFast(p)],marginTop:2,fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(p)}%</div>
+        </div>
+      </div>
+    </div>
+  );
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",backdropFilter:"blur(4px)",zIndex:800,display:"flex",justifyContent:"flex-end"}} onClick={onClose}>
       <div className="fi" onClick={e=>e.stopPropagation()} style={{
@@ -464,53 +1001,35 @@ const PropListModal = ({data, onClose}) => {
         width:540,maxWidth:"95vw",height:"100vh",display:"flex",flexDirection:"column",
         boxShadow:"-24px 0 70px rgba(0,0,0,.6)"
       }}>
-        {/* Header */}
         <div style={{padding:"18px 22px",borderBottom:"1px solid var(--border)",background:"var(--bg3)",position:"sticky",top:0,zIndex:1,flexShrink:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
             <div>
               <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16}}>{data.title}</div>
               <div style={{fontSize:12,color:"var(--gray2)",marginTop:2}}>{shown.length.toLocaleString()} of {data.parcels.length.toLocaleString()} propert{data.parcels.length===1?"y":"ies"}</div>
             </div>
-            <button onClick={onClose} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:7,color:"var(--gray)",width:30,height:30,cursor:"pointer",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            <button onClick={onClose} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:7,color:"var(--gray)",width:30,height:30,cursor:"pointer",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>x</button>
           </div>
           <input
-            placeholder="Filter this list…"
+            placeholder="Filter this list..."
             value={search} onChange={e=>setSearch(e.target.value)}
             style={{width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,fontFamily:"var(--fb)"}}
           />
         </div>
-        {/* Property list */}
         <div style={{overflowY:"auto",flex:1,padding:"10px 14px"}}>
-          {shown.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No matching properties.</div>}
-          {shown.map(p=>(
-            <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"11px 14px",marginBottom:7}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.address||"(no address)"}</div>
-                  <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:1}}>{p.parcelId} · {p.zip}</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.owner1}</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>
-                    <Badge color="#6366f1" small>{p.propClass} {p.propClassDesc}</Badge>
-                    {p.parcelType==="HOMESTEAD"&&<Badge color="#0d9488" small>Homestead</Badge>}
-                    {p.exemptions?.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} Exempt</Badge>}
-                    {isAbsentee(p)&&<Badge color="#f97316" small>Absentee</Badge>}
-                  </div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
-                  <div style={{fontSize:10,color:"var(--gray)",marginTop:1}}>FMV</div>
-                  <div style={{fontSize:11,color:FC[eqFlag(p)],marginTop:2,fontFamily:"var(--fm)",fontWeight:600}}>{eqR(p)}%</div>
-                </div>
-              </div>
-            </div>
-          ))}
+          <VirtualRows
+            items={shown}
+            rowHeight={104}
+            height={listHeight}
+            renderRow={renderRow}
+            empty={<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No matching properties.</div>}
+          />
         </div>
       </div>
     </div>
   );
 };
 
-/* ── DEBOUNCE HOOK — delays useMemo recomputation until typing stops ── */
+/* u{00E2}u{0080}u{009D}u{00E2}u{0082}u{00AC}u{00E2}u{0080}u{009D} DEBOUNCE HOOK — delays useMemo recomputation until typing stops ── */
 function useDebounce(value, delay) {
   const [dv, setDv] = useState(value);
   useEffect(() => {
@@ -550,26 +1069,26 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
   // Auto-fill search from My Home
   const useMyHome = () => { if(myHome) setSearch(myHome.address.split(" ").slice(0,2).join(" ")); };
   const filtered=useMemo(()=>{
-    let r=[...parcels];
+    let r=parcels.slice();
     const q=dSearch.toLowerCase();
     const oq=dOwner.toLowerCase();
-    if(q)r=r.filter(p=>[p.address,p.parcelId,p.propClassDesc,p.neighborhood||""].some(x=>x.toLowerCase().includes(q)));
-    if(oq)r=r.filter(p=>[p.owner1||"",p.owner2||""].some(x=>x.toLowerCase().includes(oq)));
+    if(q)r=r.filter(p=>(p._searchBlob||"").includes(q));
+    if(oq)r=r.filter(p=>(p._ownerBlob||"").includes(oq));
     if(fZip)r=r.filter(p=>p.zip===fZip);
     if(fCls)r=r.filter(p=>p.propClass===fCls);
     if(fTyp)r=r.filter(p=>p.parcelType===fTyp);
     if(fEx)r=r.filter(p=>p.exemptions.some(e=>e.name===fEx));
     if(fNbr)r=r.filter(p=>p.neighborhood===fNbr);
-    if(fEq==="under")r=r.filter(p=>{const v=parseFloat(eqR(p));return!isNaN(v)&&v<80;});
-    if(fEq==="fair")r=r.filter(p=>{const v=parseFloat(eqR(p));return!isNaN(v)&&v>=80&&v<=120;});
-    if(fEq==="over")r=r.filter(p=>{const v=parseFloat(eqR(p));return!isNaN(v)&&v>120;});
-    if(fEq==="absentee")r=r.filter(p=>isAbsentee(p));
+    if(fEq==="under")r=r.filter(p=>p._eqBand==="under");
+    if(fEq==="fair")r=r.filter(p=>p._eqBand==="fair");
+    if(fEq==="over")r=r.filter(p=>p._eqBand==="over");
+    if(fEq==="absentee")r=r.filter(p=>p._absentee===true);
     r.sort((a,b)=>{
       if(sort==="fmv-desc")return b.fullMarketValue-a.fullMarketValue;
       if(sort==="fmv-asc")return a.fullMarketValue-b.fullMarketValue;
       if(sort==="address")return a.address.localeCompare(b.address);
       if(sort==="assessed")return b.assessedValue-a.assessedValue;
-      if(sort==="equity")return(parseFloat(eqR(a))||0)-(parseFloat(eqR(b))||0);
+      if(sort==="equity")return (a._eqRatioNum??0)-(b._eqRatioNum??0);
       if(sort==="land")return b.landValue-a.landValue;
       return 0;
     });
@@ -590,7 +1109,7 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
             <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15,marginBottom:6}}>Welcome to Albany Property Intelligence</div>
             <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.8,marginBottom:10}}>This dashboard lets you explore every property in Albany's 2025 Final Assessment Roll — search by address, compare neighborhoods, check if you're overpaying taxes, and understand what every number on your tax bill actually means. <b style={{color:"var(--white)"}}>No property tax experience required.</b> Each tab has plain-English explanations built in.</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={onOpenHomeSetup} style={{background:"var(--green)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏡 Save My Home Address</button>
+              <button onClick={onOpenHomeSetup} style={{background:"var(--green)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Save My Home Address</button>
               <span style={{fontSize:12,color:"var(--gray2)",alignSelf:"center"}}>← Saves your address so you never have to type it again across any tab</span>
             </div>
           </div>
@@ -604,7 +1123,7 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
           <input placeholder="👤  Owner name (last, first or company)…" value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)} style={{...SI,flex:"1 1 200px",minWidth:200,borderColor:ownerSearch?"rgba(59,130,246,.6)":"var(--border)",background:ownerSearch?"rgba(37,99,235,.12)":"var(--bg3)"}}/>
           <select value={fNbr} onChange={e=>setFNbr(e.target.value)} style={SI}><option value="">All Neighborhoods</option>{nbrs.map(n=><option key={n}>{n}</option>)}</select>
           <select value={fZip} onChange={e=>setFZip(e.target.value)} style={SI}><option value="">All ZIPs</option>{zips.map(z=><option key={z}>{z}</option>)}</select>
-          <select value={fCls} onChange={e=>setFCls(e.target.value)} style={SI}><option value="">All Classes</option>{clss.map(c=><option key={c} value={c}>{c}</option>)}</select>
+          <select value={fCls} onChange={e=>setFCls(e.target.value)} style={SI}><option value="">All Classes</option>{clss.map(c=><option key={c} value={c}>{formatPropClassLabel(c, clssDescs?.[c])}</option>)}</select>
           <select value={fTyp} onChange={e=>setFTyp(e.target.value)} style={SI}><option value="">All Types</option><option value="HOMESTEAD">Homestead</option><option value="NON-HOMESTEAD">Non-Homestead</option></select>
           {exs.length>0&&<select value={fEx} onChange={e=>setFEx(e.target.value)} style={SI}><option value="">All Exemptions</option>{exs.map(e=><option key={e}>{e}</option>)}</select>}
           <select value={fEq} onChange={e=>setFEq(e.target.value)} style={SI}><option value="">All Equity</option><option value="under">Under-Assessed</option><option value="fair">Fair Value</option><option value="over">Over-Assessed</option><option value="absentee">Absentee Owner</option></select>
@@ -632,14 +1151,14 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
             </tr></thead>
             <tbody>{pageSlice.map((p,i)=><tr key={p.parcelId} onClick={()=>setSel(p)} style={{background:i%2?"transparent":"var(--card)",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--card2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"transparent":"var(--card)"}>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",color:"var(--gray)",fontSize:10}}>{p.parcelId}</td>
-              <td style={{padding:"7px 11px",fontWeight:500}}>{p.address}</td>
+              <td style={{padding:"7px 11px",fontWeight:500}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></td>
               <td style={{padding:"7px 11px",color:"var(--gray2)"}}>{p.neighborhood}</td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",fontSize:11}}>{p.zip}</td>
               <td style={{padding:"7px 11px",color:"var(--gray2)"}}>{p.owner1}</td>
-              <td style={{padding:"7px 11px"}}><Badge color="#6366f1" small>{p.propClass}</Badge></td>
+              <td style={{padding:"7px 11px"}}><span title={propClassLabel(p)}><Badge color="#6366f1" small>{propClassDescLabel(p)}</Badge></span></td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",color:"var(--amber)"}}>{$f(p.fullMarketValue)}</td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)"}}>{$f(p.assessedValue)}</td>
-              <td style={{padding:"7px 11px"}}><span style={{color:FC[eqFlag(p)],fontFamily:"var(--fm)",fontWeight:600}}>{eqR(p)}%</span></td>
+              <td style={{padding:"7px 11px"}}><span style={{color:FC[eqFlagFast(p)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(p)}%</span></td>
               <td style={{padding:"7px 11px"}}>{p.parcelType==="HOMESTEAD"?<Badge color="#0d9488" small>H</Badge>:<Badge color="#64748b" small>NH</Badge>}</td>
               <td style={{padding:"7px 11px"}}>{p.exemptions.map(e=><Badge key={e.code} color="#f59e0b" small>{e.name}</Badge>)}</td>
             </tr>)}</tbody>
@@ -667,6 +1186,26 @@ const Analytics = ({parcels}) => {
   const avgByZip=useMemo(()=>{const m={};parcels.forEach(p=>{if(!m[p.zip])m[p.zip]={t:0,c:0};m[p.zip].t+=p.fullMarketValue;m[p.zip].c++;});return Object.entries(m).map(([zip,v])=>({zip,avg:Math.round(v.t/v.c)})).sort((a,b)=>b.avg-a.avg);},[parcels]);
   const exTypes=useMemo(()=>{const m={};parcels.forEach(p=>p.exemptions.forEach(e=>{m[e.name]=(m[e.name]||0)+1;}));return Object.entries(m).map(([name,count])=>({name,count}));},[parcels]);
   const deedYears=useMemo(()=>{const m={};parcels.forEach(p=>{if(p.deedYear)m[p.deedYear]=(m[p.deedYear]||0)+1;});return Object.entries(m).sort((a,b)=>a[0]-b[0]).map(([year,count])=>({year,count}));},[parcels]);
+  const scatterPoints=useMemo(()=>{
+    const sampled=downsampleScatterParcels(parcels, 1800);
+    return sampled.map(p=>({fmv:p.fullMarketValue,assessed:p.assessedValue,name:p.address}));
+  },[parcels]);
+  const avgLandByClass=useMemo(()=>{
+    const m=new Map();
+    for(const p of parcels){
+      const key=p.propClassDesc||"Unknown";
+      const row=m.get(key)||{cls:key,land:0,bldg:0,count:0};
+      row.land+=p.landValue||0;
+      row.bldg+=Math.max(0,(p.assessedValue||0)-(p.landValue||0));
+      row.count++;
+      m.set(key,row);
+    }
+    return [...m.values()]
+      .filter(x=>x.count>0)
+      .map(x=>({cls:x.cls,avgLand:Math.round(x.land/x.count),avgBldg:Math.round(x.bldg/x.count),count:x.count}))
+      .sort((a,b)=>b.count-a.count)
+      .slice(0,6);
+  },[parcels]);
 
   const C=({title,desc,children})=>(
     <Card>
@@ -719,12 +1258,13 @@ const Analytics = ({parcels}) => {
 
         <C title="Assessed Value vs. Full Market Value"
            desc="Each dot is one parcel. The X-axis is its Full Market Value (what the assessor thinks it's worth). The Y-axis is its Assessed Value (what taxes are calculated on). In a perfectly fair assessment roll, every dot would fall along a straight diagonal line from bottom-left to top-right. Dots below the diagonal = under-assessed. Dots above = over-assessed. Clusters far from the line reveal systemic assessment inequities.">
-          <ResponsiveContainer width="100%" height={220}><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis type="number" dataKey="fmv" name="FMV" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis type="number" dataKey="assessed" name="Assessed" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><Tooltip {...TT} formatter={(v,n)=>[$f(v),n]}/><Scatter data={parcels.map(p=>({fmv:p.fullMarketValue,assessed:p.assessedValue,name:p.address}))} fill="#3b82f6" opacity={.75}/></ScatterChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={220}><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis type="number" dataKey="fmv" name="FMV" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis type="number" dataKey="assessed" name="Assessed" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><Tooltip {...TT} formatter={(v,n)=>[$f(v),n]}/><Scatter data={scatterPoints} fill="#3b82f6" opacity={.75}/></ScatterChart></ResponsiveContainer>
+          {parcels.length>scatterPoints.length&&<div style={{fontSize:10,color:"var(--gray2)",marginTop:6}}>Rendering a sampled subset ({scatterPoints.length.toLocaleString()} of {parcels.length.toLocaleString()} parcels) for chart performance.</div>}
         </C>
 
         <C title="Average Land vs. Building Value by Property Class"
            desc="For each property class, this stacked bar shows how much of the average assessed value is in the land itself (amber) versus the building sitting on it (blue). Commercial parcels often have a higher land share because the location is the asset. Residential properties typically carry more building value. A parcel with almost all land value and almost no building value is a signal of an underutilized or vacant lot.">
-          <ResponsiveContainer width="100%" height={220}><BarChart data={[...new Set(parcels.map(p=>p.propClassDesc))].map(cls=>{const ps=parcels.filter(p=>p.propClassDesc===cls);const avgLand=Math.round(ps.reduce((s,p)=>s+p.landValue,0)/ps.length);const avgBldg=Math.round(ps.reduce((s,p)=>s+(p.assessedValue-p.landValue),0)/ps.length);return{cls,avgLand,avgBldg};}).slice(0,6)}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis dataKey="cls" tick={{fontSize:9,fill:"#94a3b8"}}/><YAxis tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><Tooltip {...TT} formatter={v=>[$f(v)]}/><Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="avgLand" name="Avg Land" fill="#f59e0b" stackId="a"/><Bar dataKey="avgBldg" name="Avg Building" fill="#3b82f6" stackId="a" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={220}><BarChart data={avgLandByClass}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis dataKey="cls" tick={{fontSize:9,fill:"#94a3b8"}}/><YAxis tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><Tooltip {...TT} formatter={v=>[$f(v)]}/><Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="avgLand" name="Avg Land" fill="#f59e0b" stackId="a"/><Bar dataKey="avgBldg" name="Avg Building" fill="#3b82f6" stackId="a" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer>
         </C>
 
         {(()=>{const ybData=(()=>{const b={"Pre-1900":0,"1900s":0,"1920s":0,"1940s":0,"1960s":0,"1980s":0,"2000s+":0};parcels.forEach(p=>{if(!p.yearBuilt)return;const y=p.yearBuilt;if(y<1900)b["Pre-1900"]++;else if(y<1920)b["1900s"]++;else if(y<1940)b["1920s"]++;else if(y<1960)b["1940s"]++;else if(y<1980)b["1960s"]++;else if(y<2000)b["1980s"]++;else b["2000s+"]++;});return Object.entries(b).filter(([,v])=>v>0).map(([decade,count])=>({decade,count}));})();return ybData.length>1?<C title="Building Age by Decade" desc="How old is Albany's housing stock? Available when the Albany County CSV (which includes YEARBLT) is uploaded. Pre-1900 row houses dominate Center Square and Arbor Hill. Newer stock appears in the suburbs and redevelopment sites."><ResponsiveContainer width="100%" height={200}><BarChart data={ybData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis dataKey="decade" tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis tick={{fontSize:10,fill:"#94a3b8"}} allowDecimals={false}/><Tooltip {...TT}/><Bar dataKey="count" fill="#0d9488" radius={[4,4,0,0]} name="Properties"/></BarChart></ResponsiveContainer></C>:null;})()}
@@ -739,6 +1279,9 @@ const Ownership = ({parcels, onDrill}) => {
   const [selOwner,setSelOwner]=useState(null);
   const [showAllAbs,setShowAllAbs]=useState(false);
   const [showAllDupes,setShowAllDupes]=useState(false);
+  const [dupes,setDupes]=useState([]);
+  const [dupesStatus,setDupesStatus]=useState("idle");
+  const [dupesError,setDupesError]=useState("");
   const LIST_LIMIT=50;
 
   // Portfolio: group by owner name
@@ -753,7 +1296,7 @@ const Ownership = ({parcels, onDrill}) => {
   },[parcels]);
 
   // Absentee owners
-  const absentees=useMemo(()=>parcels.filter(p=>isAbsentee(p)),[parcels]);
+  const absentees=useMemo(()=>parcels.filter(p=>isAbsenteeFast(p)),[parcels]);
 
   // Deed timeline
   const deedData=useMemo(()=>{
@@ -762,18 +1305,73 @@ const Ownership = ({parcels, onDrill}) => {
     return Object.values(m).sort((a,b)=>a.year-b.year);
   },[parcels]);
 
-  // Duplicates: fuzzy owner name match
-  const dupes=useMemo(()=>{
-    const groups=[];
-    const used=new Set();
-    const names=parcels.map(p=>p.owner1.trim().toLowerCase());
-    parcels.forEach((p,i)=>{
-      if(used.has(i))return;
-      const matches=parcels.filter((q,j)=>j!==i&&!used.has(j)&&levenSim(names[i],q.owner1.trim().toLowerCase())>0.75);
-      if(matches.length>0){groups.push({base:p,similar:matches});matches.forEach(m=>used.add(parcels.indexOf(m)));used.add(i);}
-    });
-    return groups;
+  useEffect(()=>{
+    setDupes([]);
+    setDupesStatus("idle");
+    setDupesError("");
+    setShowAllDupes(false);
   },[parcels]);
+
+  const runDuplicateScan=useCallback(()=>{
+    if(dupesStatus==="running") return;
+    setDupesStatus("running");
+    setDupesError("");
+    const worker=createDuplicateScanWorker();
+    if(worker){
+      const cleanup=()=>{ try{worker.terminate();}catch{} try{if(worker.__blobUrl)URL.revokeObjectURL(worker.__blobUrl);}catch{} };
+      worker.onmessage=(ev)=>{
+        const msg=ev.data||{};
+        if(!msg.ok){
+          setDupesStatus("error");
+          setDupesError(msg.error||"Duplicate scan failed.");
+          cleanup();
+          return;
+        }
+        const groups=(msg.groups||[]).map(g=>({
+          base: parcels[g.baseIndex],
+          similar: (g.similarIndices||[]).map(i=>parcels[i]).filter(Boolean)
+        })).filter(g=>g.base&&g.similar.length);
+        setDupes(groups);
+        setDupesStatus("done");
+        cleanup();
+      };
+      worker.onerror=()=>{
+        setDupesStatus("error");
+        setDupesError("Duplicate scan worker crashed.");
+        cleanup();
+      };
+      worker.postMessage({parcels:parcels.map(p=>({owner1:p.owner1||""})), threshold:0.75});
+      return;
+    }
+    // Fallback (still on-demand)
+    try{
+      const groups=[];
+      const used=new Set();
+      const names=parcels.map(p=>(p.owner1||"").trim().toLowerCase());
+      for(let i=0;i<parcels.length;i++){
+        if(used.has(i)) continue;
+        const baseName=names[i];
+        if(!baseName || baseName.length<4) continue;
+        const matches=[];
+        for(let j=i+1;j<parcels.length;j++){
+          if(used.has(j)) continue;
+          const other=names[j];
+          if(!other || Math.abs(baseName.length-other.length)>4) continue;
+          if(baseName[0]!==other[0]) continue;
+          if(levenSim(baseName,other)>0.75) matches.push(j);
+        }
+        if(matches.length){
+          groups.push({base:parcels[i],similar:matches.map(j=>parcels[j])});
+          used.add(i); matches.forEach(j=>used.add(j));
+        }
+      }
+      setDupes(groups);
+      setDupesStatus("done");
+    }catch(err){
+      setDupesStatus("error");
+      setDupesError(err?.message||String(err));
+    }
+  },[dupesStatus,parcels]);
 
   const BtnTab=({id,label})=><button onClick={()=>setView(id)} style={{background:view===id?"var(--blue)":"transparent",color:view===id?"white":"var(--gray)",border:"none",borderRadius:7,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{label}</button>;
 
@@ -813,11 +1411,11 @@ const Ownership = ({parcels, onDrill}) => {
               </div>
               {selOwner===own.name&&<div style={{marginTop:14,paddingTop:14,borderTop:"1px solid var(--border)",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:8}}>
                 {own.parcels.map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
-                  <div style={{fontWeight:600,fontSize:13}}>{p.address}</div>
+                  <div style={{fontWeight:600,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                   <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{p.parcelId} · {p.propClassDesc}</div>
                   <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
                     <span style={{fontSize:12,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</span>
-                    <Badge color={FC[eqFlag(p)]} small>{eqR(p)}%</Badge>
+                    <Badge color={FC[eqFlagFast(p)]} small>{eqRFast(p)}%</Badge>
                   </div>
                 </div>)}
                 <div style={{background:"rgba(37,99,235,.08)",borderRadius:8,padding:"10px 12px",border:"1px solid rgba(37,99,235,.2)"}}>
@@ -841,24 +1439,30 @@ const Ownership = ({parcels, onDrill}) => {
           <StatCard label="Total Absentee FMV" value={"$"+(absentees.reduce((s,p)=>s+p.fullMarketValue,0)/1000000).toFixed(1)+"M"} icon="💰" color="#f59e0b"/>
         </div>
         <div style={{display:"grid",gap:10}}>
-          {absentees.slice(0,showAllAbs?absentees.length:LIST_LIMIT).map(p=>(
-            <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(249,115,22,.2)",borderRadius:11,padding:"14px 16px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{p.address}</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} · {p.zip}</div>
-                  <div style={{marginTop:8}}>
-                    <div style={{fontSize:11,color:"var(--gray)"}}>Property at: <span style={{color:"var(--white)"}}>{p.address}, Albany NY {p.zip}</span></div>
-                    <div style={{fontSize:11,color:"#f97316",marginTop:3}}>Mail to: {p.mailAddress}</div>
+          <VirtualRows
+            items={absentees.slice(0,showAllAbs?absentees.length:LIST_LIMIT)}
+            rowHeight={116}
+            height={showAllAbs ? 620 : Math.min(620, Math.max(240, absentees.length*116))}
+            renderRow={p=>(
+              <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(249,115,22,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                    <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} | {p.zip}</div>
+                    <div style={{marginTop:8}}>
+                      <div style={{fontSize:11,color:"var(--gray)"}}>Property at: <span style={{color:"var(--white)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink>, Albany NY {p.zip}</span></div>
+                      <div style={{fontSize:11,color:"#f97316",marginTop:3}}>Mail to: {p.mailAddress}</div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                    <Badge color="#f97316" small>Absentee</Badge>
                   </div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
-                  <Badge color="#f97316" small>Absentee</Badge>
-                </div>
               </div>
-            </div>
-          ))}
+            )}
+            empty={null}
+          />
           {absentees.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No absentee owners detected in current dataset. Upload full roll to see results.</div>}
           {absentees.length>LIST_LIMIT&&<button onClick={()=>setShowAllAbs(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllAbs?`Show top ${LIST_LIMIT} ↑`:`Show all ${absentees.length.toLocaleString()} absentee owners ↓`}</button>}
         </div>
@@ -880,7 +1484,7 @@ const Ownership = ({parcels, onDrill}) => {
                 </div>
               </div>
               <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:6}}>
-                {yr.parcels.slice(0,10).map(p=><Badge key={p.parcelId} color="#0d9488" small>{p.address}</Badge>)}
+                {yr.parcels.slice(0,10).map(p=><Badge key={p.parcelId} color="#0d9488" small><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></Badge>)}
                 {yr.parcels.length>10&&<Badge color="#475569" small>+{yr.parcels.length-10} more</Badge>}
               </div>
             </div>
@@ -892,25 +1496,47 @@ const Ownership = ({parcels, onDrill}) => {
         <InfoBox icon="🔍" title="Duplicate Owner Detection — Why This Matters" color="#a78bfa">
           Public property records are entered by hand and are often inconsistent. The same person might appear as "Robert Smith", "Bob Smith", "R. Smith", and "Smith Robert" across different parcels — making it impossible to see their full portfolio at a glance. This tool uses fuzzy name matching (similarity scoring) to flag owner names that look like they might belong to the same person or entity. Always verify manually before drawing conclusions — similar names can also be coincidental.
         </InfoBox>
-        {dupes.length>0?<div>
-          {dupes.slice(0,showAllDupes?dupes.length:LIST_LIMIT).map((g,i)=>(
-            <div key={i} style={{background:"var(--card2)",border:"1px solid rgba(220,38,38,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
-              <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><Badge color="#dc2626">Possible Duplicate</Badge><span style={{fontSize:12,color:"var(--gray)"}}>Similar owner names detected</span></div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
-                {[g.base,...g.similar].map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13}}>{p.owner1}</div>
-                  <div style={{fontSize:11,color:"var(--gray)",marginTop:3}}>{p.address}</div>
-                  <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)",marginTop:4}}>{$f(p.fullMarketValue)}</div>
-                </div>)}
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+            <button onClick={runDuplicateScan} disabled={dupesStatus==="running"} style={{background:dupesStatus==="running"?"var(--gray2)":"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,cursor:dupesStatus==="running"?"default":"pointer"}}>{dupesStatus==="running"?"Scanning owners...":"Run Duplicate Scan"}</button>
+            <span style={{fontSize:11,color:"var(--gray2)"}}>Fuzzy matching runs on-demand in a background worker to avoid freezing the tab.</span>
+            {dupesStatus==="done"&&<span style={{fontSize:11,color:"var(--gray2)"}}>{dupes.length.toLocaleString()} group{dupes.length===1?"":"s"} found</span>}
+          </div>
+          {dupesStatus==="idle"&&<div style={{textAlign:"center",padding:34,color:"var(--gray2)"}}>
+            <div style={{fontSize:28,marginBottom:8}}>Search</div>
+            <div>Duplicate owner scanning is disabled by default for performance.</div>
+            <div style={{fontSize:11,marginTop:8}}>Click <b style={{color:"var(--white)"}}>Run Duplicate Scan</b> to analyze owner names in the current dataset.</div>
+          </div>}
+          {dupesStatus==="running"&&<div style={{textAlign:"center",padding:34,color:"var(--gray2)"}}>
+            <div className="pulse" style={{fontSize:26,marginBottom:8}}>...</div>
+            <div>Scanning owner names in background...</div>
+          </div>}
+          {dupesStatus==="error"&&<div style={{textAlign:"center",padding:34,color:"#fca5a5"}}>
+            <div style={{fontSize:24,marginBottom:8}}>!</div>
+            <div>Duplicate scan failed.</div>
+            {dupesError&&<div style={{fontSize:11,marginTop:8,color:"var(--gray2)"}}>{dupesError}</div>}
+          </div>}
+          {dupesStatus==="done"&&dupes.length>0&&<div>
+            {dupes.slice(0,showAllDupes?dupes.length:LIST_LIMIT).map((g,i)=>(
+              <div key={i} style={{background:"var(--card2)",border:"1px solid rgba(220,38,38,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
+                <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><Badge color="#dc2626">Possible Duplicate</Badge><span style={{fontSize:12,color:"var(--gray)"}}>Similar owner names detected</span></div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
+                  {[g.base,...g.similar].map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
+                    <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13}}>{p.owner1}</div>
+                    <div style={{fontSize:11,color:"var(--gray)",marginTop:3}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                    <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)",marginTop:4}}>{$f(p.fullMarketValue)}</div>
+                  </div>)}
+                </div>
               </div>
-            </div>
-          ))}
-          {dupes.length>LIST_LIMIT&&<button onClick={()=>setShowAllDupes(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllDupes?`Show top ${LIST_LIMIT} ↑`:`Show all ${dupes.length.toLocaleString()} duplicate groups ↓`}</button>}
-        </div>:<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
-          <div style={{fontSize:32,marginBottom:10}}>✅</div>
-          <div>No near-duplicate owner names detected in current dataset.</div>
-          <div style={{fontSize:11,marginTop:8}}>Upload the full roll to run a complete fuzzy-match analysis across all owners.</div>
-        </div>}
+            ))}
+            {dupes.length>LIST_LIMIT&&<button onClick={()=>setShowAllDupes(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllDupes?`Show top ${LIST_LIMIT} ^`:`Show all ${dupes.length.toLocaleString()} duplicate groups v`}</button>}
+          </div>}
+          {dupesStatus==="done"&&dupes.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
+            <div style={{fontSize:32,marginBottom:10}}>OK</div>
+            <div>No near-duplicate owner names detected in current dataset.</div>
+            <div style={{fontSize:11,marginTop:8}}>Upload the full roll to run a complete fuzzy-match analysis across all owners.</div>
+          </div>}
+        </div>
       </div>}
     </div>
   );
@@ -999,7 +1625,7 @@ const Equity = ({parcels, onDrill}) => {
                 <div style={{height:"100%",width:`${z.pct}%`,background:z.pct>60?"var(--amber)":z.pct>30?"#f97316":"var(--green2)",borderRadius:3}}></div>
               </div>
               {z.pct>50&&<div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:5}}>
-                {z.parcels.slice(0,3).map(p=><div key={p.parcelId} style={{background:"rgba(245,158,11,.08)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"var(--amber2)"}}>{p.address} — {p.owner1}</div>)}
+                {z.parcels.slice(0,3).map(p=><div key={p.parcelId} style={{background:"rgba(245,158,11,.08)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"var(--amber2)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink> — {p.owner1}</div>)}
                 {z.parcels.length>3&&onDrill&&<button onClick={e=>{e.stopPropagation();onDrill({title:`ZIP ${z.zip} — Homesteads Without Exemptions (${z.noExempt})`,parcels:z.parcels});}} style={{background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.3)",color:"var(--amber2)",borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",fontWeight:600}}>View all {z.parcels.length} properties →</button>}
               </div>}
             </div>
@@ -1101,7 +1727,8 @@ const Opportunity = ({parcels, onDrill}) => {
       if(ps.length<3)return;
       const classes=ps.map(p=>p.propClass);
       const mode=classes.sort((a,b)=>classes.filter(x=>x===a).length-classes.filter(x=>x===b).length).pop();
-      ps.forEach(p=>{if(p.propClass!==mode)results.push({...p,expectedClass:mode,street:st});});
+      const modeDesc = ps.find(p=>p.propClass===mode)?.propClassDesc || "";
+      ps.forEach(p=>{if(p.propClass!==mode)results.push({...p,expectedClass:mode,expectedClassDesc:modeDesc,street:st});});
     });
     return results;
   },[parcels]);
@@ -1132,7 +1759,7 @@ const Opportunity = ({parcels, onDrill}) => {
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:11,padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{p.address}</div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                   <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} · {p.zip} · Lot: {p.frontage}×{p.depth} ft</div>
                   <div style={{display:"flex",gap:8,marginTop:8}}>
                     <div style={{background:"rgba(13,148,136,.12)",borderRadius:7,padding:"6px 10px",textAlign:"center"}}>
@@ -1179,7 +1806,7 @@ const Opportunity = ({parcels, onDrill}) => {
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
           {gentriParcels.slice(0,10).map(p=>{const color=p.gIdx>60?"var(--red2)":p.gIdx>40?"var(--amber)":"var(--green2)";return(
             <div key={p.parcelId} style={{background:"var(--card2)",border:`1px solid ${color}33`,borderRadius:11,padding:"14px 16px"}}>
-              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14}}>{p.address}</div>
+              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
               <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.neighborhood} · {p.zip}</div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
                 <div>
@@ -1209,7 +1836,7 @@ const Opportunity = ({parcels, onDrill}) => {
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(34,197,94,.2)",borderRadius:11,padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{p.address}</div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                   <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} · {p.zip} · Owner: {p.owner1}</div>
                   <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
                     <div style={{background:"rgba(34,197,94,.1)",borderRadius:7,padding:"6px 10px"}}>
@@ -1244,11 +1871,11 @@ const Opportunity = ({parcels, onDrill}) => {
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(167,139,250,.25)",borderRadius:11,padding:"14px 18px",marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{p.address}</div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                   <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>on {p.street} · {p.zip}</div>
                   <div style={{display:"flex",gap:8,marginTop:8}}>
-                    <div><span style={{fontSize:11,color:"var(--gray)"}}>This parcel: </span><Badge color="#a78bfa">{p.propClass} {p.propClassDesc}</Badge></div>
-                    <div><span style={{fontSize:11,color:"var(--gray)"}}>Street mode: </span><Badge color="#22c55e">{p.expectedClass}</Badge></div>
+                    <div><span style={{fontSize:11,color:"var(--gray)"}}>This parcel: </span><Badge color="#a78bfa">{propClassLabel(p)}</Badge></div>
+                    <div><span style={{fontSize:11,color:"var(--gray)"}}>Street mode: </span><Badge color="#22c55e">{formatPropClassLabel(p.expectedClass, p.expectedClassDesc)}</Badge></div>
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
@@ -1272,6 +1899,13 @@ const TaxTools = ({parcels, myHome}) => {
   const [found,setFound]=useState(null);
   const [neighborAddr,setNeighborAddr]=useState("");
   const [neighborResult,setNeighborResult]=useState(null);
+  const streetNameKey = useCallback((addr)=>{
+    const k = normalizeStreetKeyForCompare(addr||"");
+    if(!k) return "";
+    const t = k.split(" ").filter(Boolean);
+    return (t.length>1 && /^\d+[a-z]?$/i.test(t[0])) ? t.slice(1).join(" ") : t.join(" ");
+  },[]);
+  const isGenericNbr = useCallback((n)=>/^(albany|city of albany)$/i.test((n||"").toString().trim()),[]);
 
   // Auto-populate from myHome when switching sub-tabs
   const fillMyHome = useCallback((setter) => {
@@ -1282,11 +1916,30 @@ const TaxTools = ({parcels, myHome}) => {
   const lookupNeighbor=()=>{
     const p=parcels.find(x=>x.address.toLowerCase().includes(neighborAddr.toLowerCase()));
     if(!p){setNeighborResult(null);return;}
-    const street=p.address.replace(/^\d+\s*/,"").toLowerCase();
-    const neighbors=parcels.filter(x=>x.address.toLowerCase().includes(street)&&x.parcelId!==p.parcelId);
+    const streetKey = streetNameKey(p.address);
+    const nbr = (p.neighborhood||"").toString().trim();
+    const allSameStreet = parcels.filter(x=>streetNameKey(x.address)===streetKey && x.parcelId!==p.parcelId);
+    let neighbors = allSameStreet.filter(x=>(x.neighborhood||"").toString().trim()===nbr);
+    const genericScopeTightenedByZip = isGenericNbr(nbr);
+    if(genericScopeTightenedByZip) neighbors = neighbors.filter(x=>(x.zip||"")===p.zip);
     const avgFMV=neighbors.length>0?Math.round(neighbors.reduce((s,x)=>s+x.fullMarketValue,0)/neighbors.length):null;
     const avgAssessed=neighbors.length>0?Math.round(neighbors.reduce((s,x)=>s+x.assessedValue,0)/neighbors.length):null;
-    setNeighborResult({p,neighbors,avgFMV,avgAssessed});
+    const sameClassCount = neighbors.filter(x=>x.propClass===p.propClass).length;
+    const deltaFMV = avgFMV!=null ? p.fullMarketValue-avgFMV : null;
+    const deltaFMVPct = (avgFMV && avgFMV>0 && deltaFMV!=null) ? (deltaFMV/avgFMV)*100 : null;
+    const deltaAssessed = avgAssessed!=null ? p.assessedValue-avgAssessed : null;
+    setNeighborResult({
+      p,neighbors,avgFMV,avgAssessed,
+      streetKey,
+      scopeNeighborhood:nbr||null,
+      genericScopeTightenedByZip,
+      allSameStreetCount:allSameStreet.length,
+      excludedCrossNeighborhoodCount:Math.max(0, allSameStreet.length-neighbors.length),
+      sameClassCount,
+      deltaFMV,
+      deltaFMVPct,
+      deltaAssessed,
+    });
   };
 
   const schoolBurden=useMemo(()=>[...parcels].map(p=>({...p,schoolBurden:p.fullMarketValue>0?(p.schoolTaxable/p.fullMarketValue*100).toFixed(1):"—",schoolGap:p.assessedValue-p.schoolTaxable})).sort((a,b)=>parseFloat(b.schoolBurden||0)-parseFloat(a.schoolBurden||0)),[parcels]);
@@ -1319,7 +1972,7 @@ const TaxTools = ({parcels, myHome}) => {
             <button onClick={lookup} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Look Up</button>
           </div>
           {found&&<div className="fi">
-            <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:10}}>{found.address}</div>
+            <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:10}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood}>{found.address}</AddrLink></div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
               <div style={{background:"var(--card)",borderRadius:9,padding:"12px 14px",border:"1px solid var(--border)"}}>
                 <div style={{fontSize:11,color:"var(--gray)",marginBottom:4}}>Current Exemptions on Record</div>
@@ -1351,7 +2004,7 @@ const TaxTools = ({parcels, myHome}) => {
 
       {view==="neighbor"&&<div>
         <InfoBox icon="🏘️" title="What's My Neighbor Worth? — Street-Level Comparison" color="#a78bfa">
-          New York State law requires that all properties on the same street, of the same class, be assessed at the same ratio of market value. If your neighbor's assessment ratio is significantly lower than yours — meaning they pay less tax per dollar of property value — you may have grounds to file an assessment grievance. This tool lets you compare your property's equity ratio, assessed value, and market value against every other parcel on your street that's in the dataset. A big gap is worth investigating further with the city assessor's office.
+          New York State law requires that comparable properties be assessed at a similar ratio of market value. This tool compares your parcel to other parcels on the <b style={{color:"var(--white)"}}>same normalized street name and in the same neighborhood</b> (and, when the neighborhood label is a generic "Albany", also the same ZIP) within the currently loaded dataset. The averages shown are <b style={{color:"var(--white)"}}>simple arithmetic averages</b> of those included parcels — they are not adjusted for square footage, lot size, condition, or renovations, so treat large gaps as a starting point for investigation, not proof by themselves.
         </InfoBox>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Enter Your Address to Compare</div>
@@ -1364,29 +2017,47 @@ const TaxTools = ({parcels, myHome}) => {
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
               <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px"}}>
                 <div style={{fontSize:11,color:"var(--blue3)",marginBottom:4,fontWeight:600}}>Your Property</div>
-                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16}}>{neighborResult.p.address}</div>
+                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16}}><AddrLink address={neighborResult.p.address} zip={neighborResult.p.zip} neighborhood={neighborResult.p.neighborhood}>{neighborResult.p.address}</AddrLink></div>
                 <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
                   <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--amber)"}}>{$f(neighborResult.p.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your FMV</div></div>
                   <div><div style={{fontFamily:"var(--fm)",fontSize:16}}>{$f(neighborResult.p.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Assessed</div></div>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:FC[eqFlag(neighborResult.p)]}}>{eqR(neighborResult.p)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Equity %</div></div>
+                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:FC[eqFlagFast(neighborResult.p)]}}>{eqRFast(neighborResult.p)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Equity %</div></div>
                 </div>
               </div>
               <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px"}}>
-                <div style={{fontSize:11,color:"var(--gray2)",marginBottom:4,fontWeight:600}}>Street Average ({neighborResult.neighbors.length} neighbors)</div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Avg FMV</div></div>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgAssessed)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Avg Assessed</div></div>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:neighborResult.p.fullMarketValue>neighborResult.avgFMV?"var(--green2)":"var(--red2)"}}>{neighborResult.p.fullMarketValue>neighborResult.avgFMV?"▲ Above":"▼ Below"} avg</div></div>
+                <div style={{fontSize:11,color:"var(--gray2)",marginBottom:4,fontWeight:600}} title="Simple arithmetic averages for parcels on the same normalized street name and same neighborhood scope, excluding your parcel.">
+                  Street Average ({neighborResult.neighbors.length} neighbors)
                 </div>
+                <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5,marginBottom:8}}>
+                  Includes parcels on <b style={{color:"var(--gray2)"}}>{neighborResult.streetKey||"this street"}</b>{neighborResult.scopeNeighborhood?<> in <b style={{color:"var(--gray2)"}}>{neighborResult.scopeNeighborhood}</b></>:""}{neighborResult.genericScopeTightenedByZip?<> (ZIP <b style={{color:"var(--gray2)"}}>{neighborResult.p.zip}</b> filter applied)</>:""}, excluding your parcel.
+                  {neighborResult.excludedCrossNeighborhoodCount>0&&<> Excluded {neighborResult.excludedCrossNeighborhoodCount} same-street parcel{neighborResult.excludedCrossNeighborhoodCount===1?"":"s"} outside this neighborhood scope.</>}
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
+                  <div title="Average Full Market Value across included neighbor parcels."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Avg FMV</div></div>
+                  <div title="Average assessed value across included neighbor parcels."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgAssessed)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Avg Assessed</div></div>
+                  <div title="Compares your FMV to the included-neighbor average FMV (not a significance test)."><div style={{fontFamily:"var(--fm)",fontSize:16,color:(neighborResult.deltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{(neighborResult.deltaFMV??0)>=0?"â–² Above":"â–¼ Below"} avg FMV</div></div>
+                </div>
+                {neighborResult.avgFMV!=null&&<div style={{fontSize:10,color:"var(--gray3)",marginTop:8,lineHeight:1.5}}>
+                  Your FMV is <b style={{color:(neighborResult.deltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{neighborResult.deltaFMV!=null?`${neighborResult.deltaFMV>=0?"+":"-"}${$f(Math.abs(neighborResult.deltaFMV))}`:"—"}</b>
+                  {neighborResult.deltaFMVPct!=null&&<> ({neighborResult.deltaFMVPct>=0?"+":""}{neighborResult.deltaFMVPct.toFixed(1)}%)</>} versus the included-neighbor average.
+                  {neighborResult.sameClassCount>0&&<> Of these {neighborResult.neighbors.length} neighbors, <b style={{color:"var(--gray2)"}}>{neighborResult.sameClassCount}</b> share your property class ({propClassDescLabel(neighborResult.p)}).</>}
+                </div>}
+              </div>
+            </div>
+            <div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--gray2)",marginBottom:6}}>How To Read These Numbers</div>
+              <div style={{fontSize:11,color:"var(--gray3)",lineHeight:1.65}}>
+                <b style={{color:"var(--gray2)"}}>Neighbors</b> = parcels in the current dataset with the same normalized street name and neighborhood scope (excluding your parcel). <b style={{color:"var(--gray2)"}}>FMV</b> = assessor's estimate of market value. <b style={{color:"var(--gray2)"}}>Assessed</b> = value used to calculate taxes. <b style={{color:"var(--gray2)"}}>Equity %</b> = Assessed ÷ FMV × 100. Lower/higher than average is a directional flag only — it does not adjust for home size, condition, or improvements.
               </div>
             </div>
             {neighborResult.neighbors.length>0?<div style={{display:"grid",gap:8}}>
+              <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These are the parcels included in the comparison averages shown above.">Included Parcels In Comparison Scope ({neighborResult.neighbors.length})</div>
               {neighborResult.neighbors.map(n=>(
                 <div key={n.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div><div style={{fontSize:13,fontWeight:600}}>{n.address}</div><div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{n.owner1}</div></div>
+                  <div><div style={{fontSize:13,fontWeight:600}}><AddrLink address={n.address} zip={n.zip} neighborhood={n.neighborhood}>{n.address}</AddrLink></div><div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{n.owner1}</div></div>
                   <div style={{display:"flex",gap:16,textAlign:"right"}}>
-                    <div><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)"}}>{$f(n.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>FMV</div></div>
-                    <div><div style={{fontFamily:"var(--fm)",fontSize:13,color:FC[eqFlag(n)]}}>{eqR(n)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Equity</div></div>
+                    <div title="Assessor's estimated Full Market Value (FMV)."><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)"}}>{$f(n.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>FMV</div></div>
+                    <div title="Equity % = Assessed ÷ FMV × 100."><div style={{fontFamily:"var(--fm)",fontSize:13,color:FC[eqFlagFast(n)]}}>{eqRFast(n)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Equity</div></div>
                   </div>
                 </div>
               ))}
@@ -1420,7 +2091,7 @@ const TaxTools = ({parcels, myHome}) => {
             <div key={p.parcelId} style={{background:myHome?.parcelId===p.parcelId?"rgba(34,197,94,.06)":"var(--card2)",border:`1px solid ${myHome?.parcelId===p.parcelId?"rgba(34,197,94,.3)":"var(--border)"}`,borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <div style={{fontWeight:600,fontSize:14}}>{p.address}</div>
+                  <div style={{fontWeight:600,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                   {myHome?.parcelId===p.parcelId&&<Badge color="#22c55e" small>My Home</Badge>}
                 </div>
                 <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.owner1} · School taxable: {$f(p.schoolTaxable)}</div>
@@ -1445,84 +2116,325 @@ const TaxTools = ({parcels, myHome}) => {
   );
 };
 /* ── 7. COORDINATE MAP (Canvas renderer — smooth 60fps pan/zoom) ── */
-const MapView = ({parcels, onDrill}) => {
+const MapView = ({parcels, parcelGeometry, streetCenterlines, onDrill}) => {
   const canvasRef=useRef();
-  const msRef=useRef({zoom:1,pan:{x:0,y:0},drag:null}); // mutable — no re-renders during interaction
+  const msRef=useRef({zoom:1,pan:{x:0,y:0},drag:null}); // mutable, no re-renders during interaction
   const [colorBy,setColorBy]=useState("fmv");
   const [tooltip,setTooltip]=useState(null);
   const [tooltipPos,setTooltipPos]=useState({x:14,y:14});
   const [addrSearch,setAddrSearch]=useState("");
   const [zoomDisplay,setZoomDisplay]=useState(100);
+  const [showParcelPoints,setShowParcelPoints]=useState(true);
+  const [showPropertyOverlay,setShowPropertyOverlay]=useState(true);
+  const [showStreetLabels,setShowStreetLabels]=useState(false);
+  const [ultraDenseStreetLabels,setUltraDenseStreetLabels]=useState(true);
+  const [tinyStreetLabels,setTinyStreetLabels]=useState(false);
   const W=720,H=480,PAD=40;
+  const MAX_ZOOM=40;
 
-  const mapped=useMemo(()=>parcels.filter(p=>p.eastCoord>0&&p.nrthCoord>0),[parcels]);
+  const geomById = parcelGeometry?.parcels && !Array.isArray(parcelGeometry.parcels) ? parcelGeometry.parcels : null;
+  const hasParcelGeometry = !!geomById;
+  const uploadedStreetLines = Array.isArray(streetCenterlines?.streets) ? streetCenterlines.streets : null;
+  const hasStreetCenterlines = !!(uploadedStreetLines && uploadedStreetLines.length);
+  const useUploadedStreetCenterlines = hasStreetCenterlines && hasParcelGeometry;
+
+  const mapped=useMemo(()=>{
+    if(hasParcelGeometry){
+      const out=[];
+      for(const p of parcels){
+        const geom=geomById[p.parcelId];
+        const c=geom?.c;
+        if(Array.isArray(c)&&Number.isFinite(c[0])&&Number.isFinite(c[1])) out.push({p,x:c[0],y:c[1],geom});
+      }
+      return out;
+    }
+    const out=[];
+    for(const p of parcels){ if(p.eastCoord>0&&p.nrthCoord>0) out.push({p,x:p.eastCoord,y:p.nrthCoord,geom:null}); }
+    return out;
+  },[parcels,hasParcelGeometry,geomById]);
+
   const bounds=useMemo(()=>{
-    if(!mapped.length) return {minE:630000,maxE:660000,minN:955000,maxN:985000};
-    let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity;
-    for(const p of mapped){if(p.eastCoord<minE)minE=p.eastCoord;if(p.eastCoord>maxE)maxE=p.eastCoord;if(p.nrthCoord<minN)minN=p.nrthCoord;if(p.nrthCoord>maxN)maxN=p.nrthCoord;}
-    return {minE,maxE,minN,maxN};
+    if(!mapped.length) return {minX:630000,maxX:660000,minY:955000,maxY:985000};
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    for(const item of mapped){
+      const b=item.geom?.b;
+      if(Array.isArray(b)&&b.length===4){
+        if(b[0]<minX)minX=b[0]; if(b[2]>maxX)maxX=b[2];
+        if(b[1]<minY)minY=b[1]; if(b[3]>maxY)maxY=b[3];
+      } else {
+        if(item.x<minX)minX=item.x; if(item.x>maxX)maxX=item.x;
+        if(item.y<minY)minY=item.y; if(item.y>maxY)maxY=item.y;
+      }
+    }
+    if(minX===maxX){minX-=1;maxX+=1;}
+    if(minY===maxY){minY-=1;maxY+=1;}
+    return {minX,maxX,minY,maxY};
   },[mapped]);
 
   const hlSet=useMemo(()=>{
     const q=addrSearch.trim().toLowerCase(); if(!q) return null;
     const s=new Set();
-    for(const p of mapped){if(p.address.toLowerCase().includes(q)||p.owner1.toLowerCase().includes(q))s.add(p.parcelId);}
+    for(const item of mapped){
+      const p=item.p;
+      if((p._searchBlob||"").includes(q)||(p._ownerBlob||"").includes(q)) s.add(p.parcelId);
+    }
     return s.size?s:null;
   },[addrSearch,mapped]);
+
+  const streetLabels = useMemo(()=>{
+    if(useUploadedStreetCenterlines){
+      const out = [];
+      for(const s of uploadedStreetLines){
+        const c=s?.c, b=s?.b;
+        if(!Array.isArray(c) || c.length<2 || !Number.isFinite(c[0]) || !Number.isFinite(c[1])) continue;
+        const label=(s?.n||"").toString().trim();
+        if(!label) continue;
+        const rank = Array.isArray(b)&&b.length===4 ? ((b[2]-b[0])**2 + (b[3]-b[1])**2) : 0;
+        out.push({ label, x:c[0], y:c[1], a:Number.isFinite(s?.a)?s.a:0, n:rank });
+      }
+      out.sort((a,b)=>b.n-a.n || a.label.localeCompare(b.label));
+      return out;
+    }
+    const groups = new Map();
+    const streetFromAddr = (addr) => {
+      const s = (addr||"").toString().trim();
+      if(!s) return null;
+      const noNum = s.replace(/^\s*\d+[A-Za-z\-]*\s+/,"").trim();
+      if(!noNum) return null;
+      return noNum.replace(/\s+/g," ").trim();
+    };
+    const normStreet = (street) => street
+      .toLowerCase()
+      .replace(/\b(street|st)\b/g,"st")
+      .replace(/\b(avenue|ave)\b/g,"ave")
+      .replace(/\b(road|rd)\b/g,"rd")
+      .replace(/\b(place|pl)\b/g,"pl")
+      .replace(/\b(court|ct)\b/g,"ct")
+      .replace(/\b(terrace|ter)\b/g,"ter")
+      .replace(/\b(boulevard|blvd)\b/g,"blvd")
+      .replace(/\b(drive|dr)\b/g,"dr")
+      .replace(/\b(lane|ln)\b/g,"ln")
+      .replace(/\b(circle|cir)\b/g,"cir")
+      .replace(/\s+/g," ")
+      .trim();
+    for(const item of mapped){
+      const street = streetFromAddr(item.p.address);
+      if(!street) continue;
+      const norm = normStreet(street);
+      if(!norm) continue;
+      const scope = item.p.neighborhood || item.p.zip || "";
+      const key = `${norm}|${scope}`;
+      let g = groups.get(key);
+      if(!g){
+        g = {label: street, x:0, y:0, n:0, zipCounts:new Map()};
+        groups.set(key,g);
+      }
+      g.x += item.x;
+      g.y += item.y;
+      g.n += 1;
+      const z = item.p.zip || "";
+      if(z) g.zipCounts.set(z, (g.zipCounts.get(z)||0)+1);
+      if(street.length < g.label.length) g.label = street;
+    }
+    const out = [];
+    for(const [,g] of groups){
+      if(g.n < 4) continue;
+      out.push({
+        label: g.label,
+        x: g.x / g.n,
+        y: g.y / g.n,
+        n: g.n,
+      });
+    }
+    out.sort((a,b)=>b.n-a.n || a.label.localeCompare(b.label));
+    return out;
+  },[mapped,useUploadedStreetCenterlines,uploadedStreetLines]);
 
   const draw=useCallback(()=>{
     const canvas=canvasRef.current; if(!canvas) return;
     const ctx=canvas.getContext("2d");
     const {zoom,pan}=msRef.current;
-    const {minE,maxE,minN,maxN}=bounds;
-    const rx=e=>PAD+(e-minE)/(maxE-minE||1)*(W-PAD*2);
-    const ry=n=>H-PAD-(n-minN)/(maxN-minN||1)*(H-PAD*2);
+    const {minX,maxX,minY,maxY}=bounds;
+    const spanX=maxX-minX||1, spanY=maxY-minY||1;
+    const rx=x=>PAD+(x-minX)/spanX*(W-PAD*2);
+    const ry=y=>H-PAD-(y-minY)/spanY*(H-PAD*2);
+    const mapXToDataX=mx=>minX+((mx-PAD)/(W-PAD*2))*spanX;
+    const mapYToDataY=my=>minY+((H-PAD-my)/(H-PAD*2))*spanY;
+    const allowPolygons = hasParcelGeometry && showPropertyOverlay;
+    const colorForParcel=p=>{
+      if(colorBy==="fmv"){const v=p.fullMarketValue; return v>500000?"#f59e0b":v>300000?"#3b82f6":v>150000?"#0d9488":"#64748b";}
+      if(colorBy==="equity") return FC[eqFlagFast(p)];
+      if(colorBy==="class") return ({"210":"#3b82f6","220":"#0d9488","230":"#06b6d4","411":"#a78bfa","400":"#f97316","300":"#64748b","330":"#94a3b8"})[p.propClass]||"#94a3b8";
+      if(colorBy==="exemption") return p.exemptions?.length>0?"#f59e0b":"#475569";
+      if(colorBy==="absentee") return isAbsenteeFast(p)?"#f97316":"#22c55e";
+      return "#3b82f6";
+    };
+
     ctx.clearRect(0,0,W,H);
     ctx.fillStyle="#0d1829"; ctx.fillRect(0,0,W,H);
-    // grid
     ctx.strokeStyle="rgba(255,255,255,0.025)"; ctx.lineWidth=1;
     for(let gx=0;gx<W;gx+=40){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();}
     for(let gy=0;gy<H;gy+=40){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}
+
     ctx.save(); ctx.translate(pan.x,pan.y); ctx.scale(zoom,zoom);
-    // ZIP watermarks
+
     const zg={};
-    for(const p of mapped){if(!zg[p.zip])zg[p.zip]={sx:0,sy:0,n:0};zg[p.zip].sx+=rx(p.eastCoord);zg[p.zip].sy+=ry(p.nrthCoord);zg[p.zip].n++;}
+    for(const item of mapped){
+      const zip=item.p.zip||"Unknown";
+      if(!zg[zip])zg[zip]={sx:0,sy:0,n:0};
+      zg[zip].sx+=rx(item.x); zg[zip].sy+=ry(item.y); zg[zip].n++;
+    }
     ctx.font=`bold ${Math.max(8,16/zoom)}px sans-serif`; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,0.06)";
     for(const zip in zg){const g=zg[zip];ctx.fillText(zip,g.sx/g.n,g.sy/g.n);}
-    // parcel dots
-    const hl=hlSet; const r=Math.max(1.5,4.5/zoom);
-    for(const p of mapped){
-      const x=rx(p.eastCoord),y=ry(p.nrthCoord);
-      const isHl=hl?hl.has(p.parcelId):false;
-      if(hl&&!isHl){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle="rgba(100,116,139,0.18)";ctx.fill();}
-      else {
-        let color;
-        if(colorBy==="fmv"){const v=p.fullMarketValue;color=v>500000?"#f59e0b":v>300000?"#3b82f6":v>150000?"#0d9488":"#64748b";}
-        else if(colorBy==="equity")color=FC[eqFlag(p)];
-        else if(colorBy==="class")color=({"210":"#3b82f6","220":"#0d9488","230":"#06b6d4","411":"#a78bfa","400":"#f97316","300":"#64748b","330":"#94a3b8"})[p.propClass]||"#94a3b8";
-        else if(colorBy==="exemption")color=p.exemptions?.length>0?"#f59e0b":"#475569";
-        else if(colorBy==="absentee")color=isAbsentee(p)?"#f97316":"#22c55e";
-        else color="#3b82f6";
+
+    if(showStreetLabels && useUploadedStreetCenterlines && zoom>=0.95){
+      const viewMinMapX=(0-pan.x)/zoom, viewMaxMapX=(W-pan.x)/zoom;
+      const viewMinMapY=(0-pan.y)/zoom, viewMaxMapY=(H-pan.y)/zoom;
+      const vx0=Math.min(mapXToDataX(viewMinMapX),mapXToDataX(viewMaxMapX));
+      const vx1=Math.max(mapXToDataX(viewMinMapX),mapXToDataX(viewMaxMapX));
+      const vy0=Math.min(mapYToDataY(viewMinMapY),mapYToDataY(viewMaxMapY));
+      const vy1=Math.max(mapYToDataY(viewMinMapY),mapYToDataY(viewMaxMapY));
+      const lineStep = zoom<1.15 ? 4 : zoom<1.45 ? 3 : zoom<1.9 ? 2 : 1;
+      ctx.strokeStyle="rgba(255,255,255,0.10)";
+      ctx.lineWidth=Math.max(0.35,0.9/zoom);
+      ctx.lineCap="round";
+      for(let i=0;i<uploadedStreetLines.length;i+=lineStep){
+        const s=uploadedStreetLines[i];
+        const b=s?.b, lines=s?.g;
+        if(!Array.isArray(b)||!Array.isArray(lines)) continue;
+        if(b[2]<vx0||b[0]>vx1||b[3]<vy0||b[1]>vy1) continue;
+        ctx.beginPath();
+        for(const line of lines){
+          if(!Array.isArray(line)||line.length<2) continue;
+          ctx.moveTo(rx(line[0][0]),ry(line[0][1]));
+          for(let j=1;j<line.length;j++) ctx.lineTo(rx(line[j][0]),ry(line[j][1]));
+        }
+        ctx.stroke();
+      }
+    }
+
+    if(allowPolygons && zoom>=1.6){
+      const viewMinMapX=(0-pan.x)/zoom, viewMaxMapX=(W-pan.x)/zoom;
+      const viewMinMapY=(0-pan.y)/zoom, viewMaxMapY=(H-pan.y)/zoom;
+      const vx0=Math.min(mapXToDataX(viewMinMapX),mapXToDataX(viewMaxMapX));
+      const vx1=Math.max(mapXToDataX(viewMinMapX),mapXToDataX(viewMaxMapX));
+      const vy0=Math.min(mapYToDataY(viewMinMapY),mapYToDataY(viewMaxMapY));
+      const vy1=Math.max(mapYToDataY(viewMinMapY),mapYToDataY(viewMaxMapY));
+      let polyStep=1;
+      if(!hlSet){
+        if(mapped.length>25000 && zoom<2.2) polyStep=5;
+        else if(mapped.length>25000 && zoom<2.8) polyStep=3;
+        else if(mapped.length>12000 && zoom<3.4) polyStep=2;
+      }
+      const strokeW=Math.max(0.35,1/zoom);
+      for(let i=0;i<mapped.length;i+=polyStep){
+        const item=mapped[i];
+        const geom=item.geom; const b=geom?.b;
+        if(!geom||!Array.isArray(b)) continue;
+        if(b[2]<vx0||b[0]>vx1||b[3]<vy0||b[1]>vy1) continue;
+        const isHl=hlSet?hlSet.has(item.p.parcelId):false;
+        if(hlSet && !isHl){ ctx.globalAlpha=0.12; ctx.fillStyle="#64748b"; }
+        else { ctx.globalAlpha=isHl?0.55:0.22; ctx.fillStyle=isHl?"#fbbf24":colorForParcel(item.p); }
+        ctx.beginPath();
+        const polys=geom.g;
+        for(let pi=0;pi<polys.length;pi++){
+          const poly=polys[pi];
+          for(let ri=0;ri<poly.length;ri++){
+            const ring=poly[ri];
+            if(!ring||!ring.length) continue;
+            ctx.moveTo(rx(ring[0][0]),ry(ring[0][1]));
+            for(let j=1;j<ring.length;j++) ctx.lineTo(rx(ring[j][0]),ry(ring[j][1]));
+            ctx.closePath();
+          }
+        }
+        ctx.fill("evenodd");
+        if(zoom>=2.6){
+          ctx.globalAlpha=isHl?0.95:0.35;
+          ctx.strokeStyle=isHl?"#ffffff":"rgba(255,255,255,0.28)";
+          ctx.lineWidth=strokeW;
+          ctx.stroke();
+        }
+        ctx.globalAlpha=1;
+      }
+    }
+
+    const hl=hlSet; const r=Math.max(1.4,4.2/zoom);
+    const suppressCentroidDots = allowPolygons && zoom>=1.6;
+    let step = 1;
+    if(!hl){
+      if(mapped.length>60000 && zoom<1.2) step=8;
+      else if(mapped.length>30000 && zoom<1.35) step=6;
+      else if(mapped.length>15000 && zoom<1.7) step=4;
+      else if(mapped.length>6000 && zoom<2.1) step=2;
+    }
+    if(showParcelPoints){
+      for(let i=0;i<mapped.length;i+=step){
+        const item=mapped[i]; const p=item.p;
+        const x=rx(item.x),y=ry(item.y);
+        const isHl=hl?hl.has(p.parcelId):false;
+        if(suppressCentroidDots && !isHl) continue;
+        if(hl && !isHl){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle="rgba(100,116,139,0.16)"; ctx.fill(); continue; }
+        const color=colorForParcel(p);
         if(isHl){
-          ctx.beginPath();ctx.arc(x,y,r*2.4,0,Math.PI*2);ctx.fillStyle="#fbbf24";ctx.fill();
-          ctx.strokeStyle="white";ctx.lineWidth=1.5/zoom;ctx.stroke();
+          ctx.beginPath(); ctx.arc(x,y,r*2.5,0,Math.PI*2); ctx.fillStyle="#fbbf24"; ctx.fill();
+          ctx.strokeStyle="white"; ctx.lineWidth=Math.max(0.8,1.4/zoom); ctx.stroke();
         } else {
-          ctx.globalAlpha=0.8;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1;
+          ctx.globalAlpha=(suppressCentroidDots)?0.45:0.8;
+          ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=color; ctx.fill(); ctx.globalAlpha=1;
         }
       }
     }
+
+    const isTiny = tinyStreetLabels;
+    const minStreetLabelZoom = useUploadedStreetCenterlines
+      ? (isTiny ? 0.72 : (ultraDenseStreetLabels ? 0.9 : 1.05))
+      : (isTiny ? 1.45 : (ultraDenseStreetLabels ? 1.75 : 2.0));
+    if(showStreetLabels && zoom>=minStreetLabelZoom){
+      const fontPx = useUploadedStreetCenterlines
+        ? (isTiny ? Math.max(0.6, 1.05/zoom) : (ultraDenseStreetLabels ? Math.max(3.2, 5.2/zoom) : Math.max(4.5, 6.8/zoom)))
+        : (isTiny ? Math.max(0.9, 1.45/zoom) : (ultraDenseStreetLabels ? Math.max(4.8, 7.2/zoom) : Math.max(5.8, 8.8/zoom)));
+      const cellPx = useUploadedStreetCenterlines
+        ? (isTiny ? Math.max(2, 4.5/Math.max(zoom,1)) : (ultraDenseStreetLabels ? Math.max(12, 28/Math.max(zoom,1)) : Math.max(20, 46/Math.max(zoom,1))))
+        : (isTiny ? Math.max(4.5, 9.5/Math.max(zoom,1)) : (ultraDenseStreetLabels ? Math.max(28, 60/Math.max(zoom,1)) : Math.max(42, 92/Math.max(zoom,1))));
+      const usedCells = new Set();
+      ctx.font=`600 ${fontPx}px sans-serif`;
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      for(const s of streetLabels){
+        const x = rx(s.x), y = ry(s.y);
+        if(x < -20 || y < -20 || x > W+20 || y > H+20) continue;
+        const cx = Math.floor(x / cellPx), cy = Math.floor(y / cellPx);
+        const cellKey = `${cx},${cy}`;
+        if(usedCells.has(cellKey)) continue;
+        usedCells.add(cellKey);
+        ctx.strokeStyle=useUploadedStreetCenterlines?"rgba(8,15,30,0.78)":"rgba(8,15,30,0.88)";
+        ctx.lineWidth=Math.max((useUploadedStreetCenterlines?(isTiny?0.08:(ultraDenseStreetLabels?0.45:0.75)):(isTiny?0.125:(ultraDenseStreetLabels?0.65:1)))/zoom, isTiny?0.04:0.14);
+        ctx.fillStyle=useUploadedStreetCenterlines?(isTiny?"rgba(255,255,255,0.62)":(ultraDenseStreetLabels?"rgba(255,255,255,0.68)":"rgba(255,255,255,0.72)")):(isTiny?"rgba(255,255,255,0.74)":(ultraDenseStreetLabels?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.84)"));
+        if(useUploadedStreetCenterlines && Number.isFinite(s.a)){
+          ctx.save();
+          ctx.translate(x,y);
+          ctx.rotate(-s.a);
+          if((!ultraDenseStreetLabels && !isTiny) || (isTiny?zoom>1.6:zoom>1.25)) ctx.strokeText(s.label, 0, 0);
+          ctx.fillText(s.label, 0, 0);
+          ctx.restore();
+        } else {
+          if((!ultraDenseStreetLabels && !isTiny) || (isTiny?zoom>2.4:zoom>2)) ctx.strokeText(s.label, x, y);
+          ctx.fillText(s.label, x, y);
+        }
+      }
+    }
+
     ctx.restore();
-  },[mapped,bounds,hlSet,colorBy]);
+  },[mapped,bounds,hlSet,colorBy,hasParcelGeometry,showPropertyOverlay,showParcelPoints,showStreetLabels,streetLabels,useUploadedStreetCenterlines,uploadedStreetLines,ultraDenseStreetLabels,tinyStreetLabels]);
 
   useEffect(()=>{draw();},[draw]);
 
-  // Auto-pan to first search match
   useEffect(()=>{
     if(!hlSet||!hlSet.size) return;
-    const first=mapped.find(p=>hlSet.has(p.parcelId)); if(!first) return;
-    const {minE,maxE,minN,maxN}=bounds;
-    const sx=PAD+(first.eastCoord-minE)/(maxE-minE||1)*(W-PAD*2);
-    const sy=H-PAD-(first.nrthCoord-minN)/(maxN-minN||1)*(H-PAD*2);
+    const first=mapped.find(item=>hlSet.has(item.p.parcelId)); if(!first) return;
+    const {minX,maxX,minY,maxY}=bounds;
+    const sx=PAD+(first.x-minX)/(maxX-minX||1)*(W-PAD*2);
+    const sy=H-PAD-(first.y-minY)/(maxY-minY||1)*(H-PAD*2);
     const nz=Math.max(3,msRef.current.zoom);
     msRef.current.zoom=nz; msRef.current.pan={x:W/2-sx*nz,y:H/2-sy*nz};
     setZoomDisplay(Math.round(nz*100)); draw();
@@ -1534,7 +2446,7 @@ const MapView = ({parcels, onDrill}) => {
     const mx=e.clientX-rect.left,my=e.clientY-rect.top;
     const factor=e.deltaY<0?1.18:0.847;
     const ms=msRef.current;
-    const nz=Math.min(12,Math.max(0.3,ms.zoom*factor));
+    const nz=Math.min(MAX_ZOOM,Math.max(0.3,ms.zoom*factor));
     ms.pan.x=mx-(mx-ms.pan.x)*(nz/ms.zoom); ms.pan.y=my-(my-ms.pan.y)*(nz/ms.zoom);
     ms.zoom=nz; draw(); setZoomDisplay(Math.round(nz*100));
   },[draw]);
@@ -1546,18 +2458,37 @@ const MapView = ({parcels, onDrill}) => {
   },[handleWheel]);
 
   const hitTest=useCallback((mx,my,hitPx=10)=>{
-    const {zoom,pan}=msRef.current; const {minE,maxE,minN,maxN}=bounds;
+    const {zoom,pan}=msRef.current;
+    const {minX,maxX,minY,maxY}=bounds;
+    const spanX=maxX-minX||1, spanY=maxY-minY||1;
     const mapX=(mx-pan.x)/zoom, mapY=(my-pan.y)/zoom;
+    const dataX=minX+((mapX-PAD)/(W-PAD*2))*spanX;
+    const dataY=minY+((H-PAD-mapY)/(H-PAD*2))*spanY;
+
+    if(hasParcelGeometry && showPropertyOverlay && zoom>=2){
+      const hitMapRadius=Math.max(hitPx/zoom,4/zoom);
+      const hitX=hitMapRadius*(spanX/(W-PAD*2));
+      const hitY=hitMapRadius*(spanY/(H-PAD*2));
+      for(let i=0;i<mapped.length;i++){
+        const item=mapped[i]; const geom=item.geom; const b=geom?.b;
+        if(!b) continue;
+        if(dataX<b[0]-hitX||dataX>b[2]+hitX||dataY<b[1]-hitY||dataY>b[3]+hitY) continue;
+        if(pointInCompactMultiPoly(dataX,dataY,geom)) return item.p;
+      }
+    }
+
     const hr=Math.max(hitPx/zoom,hitPx);
     let best=null,bestD=Infinity;
-    for(const p of mapped){
-      const dx=PAD+(p.eastCoord-minE)/(maxE-minE||1)*(W-PAD*2)-mapX;
-      const dy=H-PAD-(p.nrthCoord-minN)/(maxN-minN||1)*(H-PAD*2)-mapY;
+    const step = hlSet ? 1 : (zoom<0.9?6:zoom<1.3?4:zoom<1.8?2:1);
+    for(let i=0;i<mapped.length;i+=step){
+      const item=mapped[i];
+      const dx=PAD+(item.x-minX)/spanX*(W-PAD*2)-mapX;
+      const dy=H-PAD-(item.y-minY)/spanY*(H-PAD*2)-mapY;
       if(Math.abs(dx)>hr||Math.abs(dy)>hr) continue;
-      const d=dx*dx+dy*dy; if(d<bestD){bestD=d;best=p;}
+      const d=dx*dx+dy*dy; if(d<bestD){bestD=d;best=item.p;}
     }
     return (best&&bestD<hr*hr)?best:null;
-  },[mapped,bounds]);
+  },[mapped,bounds,hlSet,hasParcelGeometry,showPropertyOverlay]);
 
   const handleMouseDown=useCallback(e=>{
     if(e.button!==0) return;
@@ -1571,8 +2502,7 @@ const MapView = ({parcels, onDrill}) => {
     const rect=canvasRef.current.getBoundingClientRect();
     const mx=e.clientX-rect.left,my=e.clientY-rect.top;
     const hit=hitTest(mx,my);
-    if(hit){setTooltip(hit);setTooltipPos({x:Math.min(mx+14,W-265),y:Math.max(my-10,8)});}
-    else setTooltip(null);
+    if(hit){setTooltip(hit);setTooltipPos({x:Math.min(mx+14,W-265),y:Math.max(my-10,8)});} else setTooltip(null);
   },[draw,hitTest]);
   const handleMouseUp=useCallback(()=>{
     msRef.current.drag=null;
@@ -1581,20 +2511,20 @@ const MapView = ({parcels, onDrill}) => {
   const handleClick=useCallback(e=>{
     const rect=canvasRef.current.getBoundingClientRect();
     const hit=hitTest(e.clientX-rect.left,e.clientY-rect.top,12);
-    if(hit&&onDrill) onDrill({title:`${hit.address} — ${hit.propClassDesc}`,parcels:[hit]});
+    if(hit&&onDrill) onDrill({title:`${hit.address} - ${propClassDescLabel(hit)}`,parcels:[hit]});
   },[hitTest,onDrill]);
 
   const stepZoom=useCallback(factor=>{
     const ms=msRef.current;
-    const nz=Math.min(12,Math.max(0.3,ms.zoom*factor));
+    const nz=Math.min(MAX_ZOOM,Math.max(0.3,ms.zoom*factor));
     ms.pan.x=W/2-(W/2-ms.pan.x)*(nz/ms.zoom); ms.pan.y=H/2-(H/2-ms.pan.y)*(nz/ms.zoom);
     ms.zoom=nz; draw(); setZoomDisplay(Math.round(nz*100));
   },[draw]);
   const resetView=useCallback(()=>{msRef.current.zoom=1;msRef.current.pan={x:0,y:0};draw();setZoomDisplay(100);},[draw]);
 
   const LEGEND={
-    fmv:[[">$500k","#f59e0b"],["$300–500k","#3b82f6"],["$150–300k","#0d9488"],["<$150k","#64748b"]],
-    equity:[["Under (<80%)","#f59e0b"],["Fair (80–120%)","#22c55e"],["Over (>120%)","#dc2626"],["No data","#64748b"]],
+    fmv:[[">$500k","#f59e0b"],["$300-500k","#3b82f6"],["$150-300k","#0d9488"],["<$150k","#64748b"]],
+    equity:[["Under (<80%)","#f59e0b"],["Fair (80-120%)","#22c55e"],["Over (>120%)","#dc2626"],["No data","#64748b"]],
     class:[["210 Single Family","#3b82f6"],["220 Two Family","#0d9488"],["230 Three Family","#06b6d4"],["411 Apartment","#a78bfa"],["400 Commercial","#f97316"],["300/330 Vacant","#64748b"]],
     exemption:[["Has Exemption","#f59e0b"],["No Exemption","#475569"]],
     absentee:[["Owner-Occupied","#22c55e"],["Absentee Owner","#f97316"]],
@@ -1603,13 +2533,14 @@ const MapView = ({parcels, onDrill}) => {
 
   return (
     <div className="fi">
-      <SectionTitle>Coordinate Map View</SectionTitle>
-      <Sub>Spatial layout from EAST/NRTH survey coordinates · Smooth scroll-to-zoom · Drag to pan</Sub>
+      <SectionTitle>{hasParcelGeometry?"Parcel Geometry Map View":"Coordinate Map View"}</SectionTitle>
+      <Sub>{hasParcelGeometry?`Parcel polygons + centroids (${parcelGeometry?.coordSystem||"uploaded geometry CRS"}) · Scroll to zoom · Drag to pan`:"Spatial layout from EAST/NRTH survey coordinates · Smooth scroll-to-zoom · Drag to pan"}</Sub>
       <InfoBox icon="🗺️" title="How This Map Works" color="#3b82f6">
-        Each parcel's EAST and NRTH survey coordinates place it accurately within Albany. <b style={{color:"var(--white)"}}>Scroll = zoom toward cursor · Drag = pan · Click any dot = detail panel.</b> Switch color modes to explore value tiers, equity ratios, property classes, exemptions, or absentee ownership. Use the search bar below to highlight matching addresses or owner names.
+        {hasParcelGeometry
+          ? <>Uploaded parcel polygons are used for map extent, rendering, and click/hover hit-testing. <b style={{color:"var(--white)"}}>Scroll = zoom toward cursor · Drag = pan · Click parcel/dot = detail panel.</b> Polygons appear as you zoom in; centroids remain as fast navigation markers.</>
+          : <>Each parcel's EAST and NRTH survey coordinates place it within Albany. <b style={{color:"var(--white)"}}>Scroll = zoom toward cursor · Drag = pan · Click any dot = detail panel.</b> Switch color modes to explore value tiers, equity ratios, property classes, exemptions, or absentee ownership. Use search to highlight matching addresses or owner names.</>}
       </InfoBox>
 
-      {/* Color mode buttons + zoom controls */}
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
         <span style={{fontSize:12,color:"var(--gray)"}}>Color:</span>
         {[["fmv","Market Value"],["equity","Equity Ratio"],["class","Property Class"],["exemption","Exemptions"],["absentee","Absentee"]].map(([k,l])=>(
@@ -1617,24 +2548,62 @@ const MapView = ({parcels, onDrill}) => {
         ))}
         <div style={{display:"flex",gap:4,marginLeft:"auto",alignItems:"center"}}>
           <button onClick={()=>stepZoom(1.3)} style={{...SI,width:32,height:32,padding:0,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace"}}>+</button>
-          <button onClick={()=>stepZoom(1/1.3)} style={{...SI,width:32,height:32,padding:0,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace"}}>−</button>
-          <button onClick={resetView} style={{...SI,fontSize:11,padding:"5px 10px"}}>⌂ Reset</button>
+          <button onClick={()=>stepZoom(1/1.3)} style={{...SI,width:32,height:32,padding:0,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace"}}>-</button>
+          <button onClick={resetView} style={{...SI,fontSize:11,padding:"5px 10px"}}>Reset</button>
           <span style={{fontSize:11,color:"var(--gray2)",marginLeft:2,fontFamily:"var(--fm)"}}>{zoomDisplay}%</span>
         </div>
       </div>
 
-      {/* Address / owner search */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:12,color:"var(--gray)"}}>Layers:</span>
+        <button
+          onClick={()=>setShowParcelPoints(v=>!v)}
+          style={{background:showParcelPoints?"rgba(37,99,235,.16)":"var(--card2)",border:`1px solid ${showParcelPoints?"rgba(37,99,235,.35)":"var(--border)"}`,color:showParcelPoints?"var(--blue3)":"var(--gray)",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer"}}
+          title="Toggle centroid points"
+        >
+          {showParcelPoints?"On ":""}Parcel data
+        </button>
+        <button
+          onClick={()=>hasParcelGeometry&&setShowPropertyOverlay(v=>!v)}
+          disabled={!hasParcelGeometry}
+          style={{background:(hasParcelGeometry&&showPropertyOverlay)?"rgba(13,148,136,.16)":"var(--card2)",border:`1px solid ${(hasParcelGeometry&&showPropertyOverlay)?"rgba(13,148,136,.35)":"var(--border)"}`,color:hasParcelGeometry?((showPropertyOverlay)?"var(--teal2)":"var(--gray)"):"var(--gray3)",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:hasParcelGeometry?"pointer":"not-allowed",opacity:hasParcelGeometry?1:.7}}
+          title={hasParcelGeometry?"Toggle parcel polygon overlay":"Load parcel geometry JSON to enable polygons"}
+        >
+          {(hasParcelGeometry&&showPropertyOverlay)?"On ":""}Property overlay
+        </button>
+        <button
+          onClick={()=>setShowStreetLabels(v=>!v)}
+          style={{background:showStreetLabels?"rgba(245,158,11,.16)":"var(--card2)",border:`1px solid ${showStreetLabels?"rgba(245,158,11,.35)":"var(--border)"}`,color:showStreetLabels?"var(--amber2)":"var(--gray)",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer"}}
+          title={useUploadedStreetCenterlines?"Toggle uploaded street centerlines + labels":"Toggle inferred street-name labels (derived from parcel addresses)"}
+        >
+          {showStreetLabels?"On ":""}Street labels
+        </button>
+        <button
+          onClick={()=>setUltraDenseStreetLabels(v=>!v)}
+          style={{background:ultraDenseStreetLabels?"rgba(250,204,21,.14)":"var(--card2)",border:`1px solid ${ultraDenseStreetLabels?"rgba(250,204,21,.32)":"var(--border)"}`,color:ultraDenseStreetLabels?"#ca8a04":"var(--gray)",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",opacity:showStreetLabels?1:.82}}
+          title="Make street labels much smaller and place more of them on the map"
+        >
+          {ultraDenseStreetLabels?"On ":""}Ultra dense
+        </button>
+        <button
+          onClick={()=>setTinyStreetLabels(v=>!v)}
+          style={{background:tinyStreetLabels?"rgba(239,68,68,.14)":"var(--card2)",border:`1px solid ${tinyStreetLabels?"rgba(239,68,68,.30)":"var(--border)"}`,color:tinyStreetLabels?"#fca5a5":"var(--gray)",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",opacity:showStreetLabels?1:.82}}
+          title="Make street labels as small and dense as possible"
+        >
+          {tinyStreetLabels?"On ":""}Tiny
+        </button>
+      </div>
+
       <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
         <input
           value={addrSearch} onChange={e=>setAddrSearch(e.target.value)}
-          placeholder="Search address or owner name to highlight on map…"
+          placeholder="Search address or owner name to highlight on map..."
           style={{flex:1,background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"8px 12px",fontSize:13,outline:"none"}}
         />
-        {addrSearch&&<button onClick={()=>setAddrSearch("")} style={{...SI,fontSize:11,padding:"5px 10px",background:"rgba(220,38,38,.15)",borderColor:"rgba(220,38,38,.3)"}}>✕</button>}
+        {addrSearch&&<button onClick={()=>setAddrSearch("")} style={{...SI,fontSize:11,padding:"5px 10px",background:"rgba(220,38,38,.15)",borderColor:"rgba(220,38,38,.3)"}}>x</button>}
         {hlSet&&<span style={{fontSize:12,color:"#fbbf24",whiteSpace:"nowrap"}}>{hlSet.size} found</span>}
       </div>
 
-      {/* Canvas map */}
       <div style={{position:"relative",display:"inline-block",borderRadius:14,overflow:"hidden",border:"1px solid var(--border)",maxWidth:"100%"}}>
         <canvas
           ref={canvasRef} width={W} height={H}
@@ -1642,7 +2611,6 @@ const MapView = ({parcels, onDrill}) => {
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onClick={handleClick}
         />
-        {/* Legend */}
         <div style={{position:"absolute",top:10,right:10,background:"rgba(8,15,30,0.92)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"10px 14px",minWidth:175,backdropFilter:"blur(6px)",pointerEvents:"none"}}>
           <div style={{fontSize:9,color:"var(--gray2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Legend</div>
           {(LEGEND[colorBy]||[]).map(([label,color])=>(
@@ -1652,34 +2620,33 @@ const MapView = ({parcels, onDrill}) => {
             </div>
           ))}
         </div>
-        {/* Hover tooltip */}
         {tooltip&&(
           <div style={{position:"absolute",top:tooltipPos.y,left:tooltipPos.x,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:"12px 14px",maxWidth:255,pointerEvents:"none",zIndex:10,boxShadow:"0 8px 30px rgba(0,0,0,.5)"}}>
-            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}>{tooltip.address}</div>
+            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}>{tooltip.address}{tooltip.neighborhood?` · ${tooltip.neighborhood}`:""}</div>
             <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{tooltip.parcelId} · {tooltip.zip}</div>
             <div style={{marginTop:8,display:"grid",gap:3}}>
               <div style={{fontSize:12}}>FMV: <span style={{color:"var(--amber)",fontFamily:"var(--fm)",fontWeight:600}}>{$f(tooltip.fullMarketValue)}</span></div>
               <div style={{fontSize:12}}>Assessed: <span style={{fontFamily:"var(--fm)"}}>{$f(tooltip.assessedValue)}</span></div>
-              <div style={{fontSize:12}}>Equity: <span style={{color:FC[eqFlag(tooltip)],fontFamily:"var(--fm)",fontWeight:600}}>{eqR(tooltip)}%</span></div>
+              <div style={{fontSize:12}}>Equity: <span style={{color:FC[eqFlagFast(tooltip)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(tooltip)}%</span></div>
               <div style={{fontSize:12}}>Owner: <span style={{color:"var(--gray2)"}}>{tooltip.owner1}</span></div>
               {tooltip.exemptions?.length>0&&<div style={{fontSize:11,color:"var(--amber2)"}}>{tooltip.exemptions.length} exemption{tooltip.exemptions.length>1?"s":""}</div>}
-              {isAbsentee(tooltip)&&<Badge color="#f97316" small>Absentee</Badge>}
+              {isAbsenteeFast(tooltip)&&<Badge color="#f97316" small>Absentee</Badge>}
             </div>
-            <div style={{fontSize:10,color:"var(--gray3)",marginTop:7}}>Click dot to view full detail →</div>
+            <div style={{fontSize:10,color:"var(--gray3)",marginTop:7}}>{hasParcelGeometry?"Click parcel or dot to view full detail ->":"Click dot to view full detail ->"}</div>
           </div>
         )}
-        {/* Status bar */}
         <div style={{position:"absolute",bottom:8,left:12,fontSize:10,color:"rgba(255,255,255,0.3)",pointerEvents:"none"}}>
-          {mapped.length.toLocaleString()} parcels plotted · {parcels.length-mapped.length} missing coords
+          {hasParcelGeometry
+            ? `${mapped.length.toLocaleString()} parcel polygons linked · ${(parcels.length-mapped.length).toLocaleString()} no geometry match`
+            : `${mapped.length.toLocaleString()} parcels plotted · ${(parcels.length-mapped.length).toLocaleString()} missing coords`}
         </div>
       </div>
       <div style={{marginTop:8,fontSize:11,color:"var(--gray2)",textAlign:"center"}}>
-        Scroll to zoom toward cursor · Drag to pan · Click any dot to drill in
+        {hasParcelGeometry?"Scroll to zoom · Drag to pan · Parcel polygons appear at higher zoom · Click parcel/dot to drill in":"Scroll to zoom toward cursor · Drag to pan · Click any dot to drill in"}
       </div>
     </div>
   );
 };
-
 /* ── 8. DATA QUALITY ── */
 const DataQuality = ({parcels, onDrill}) => {
   const [showAllInconsist,setShowAllInconsist]=useState(false);
@@ -1765,7 +2732,7 @@ const DataQuality = ({parcels, onDrill}) => {
                 <div key={p.parcelId} style={{background:"rgba(220,38,38,.07)",border:"1px solid rgba(220,38,38,.2)",borderRadius:9,padding:"11px 14px",marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13}}>{p.address}</div>
+                      <div style={{fontWeight:600,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                       <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} · Parcel {p.parcelId}</div>
                       <div style={{fontSize:11,marginTop:6}}>Street avg: <span style={{fontFamily:"var(--fm)",color:"var(--gray)"}}>{$f(p.streetAvg)}</span> · Deviation: <span style={{fontFamily:"var(--fm)",color:p.deviation>0?"var(--red2)":"var(--amber)"}}>{p.deviation>0?"+":""}{$f(p.deviation)}</span></div>
                     </div>
@@ -1785,7 +2752,7 @@ const DataQuality = ({parcels, onDrill}) => {
             {(()=>{const noCrd=parcels.filter(p=>!p.eastCoord||p.eastCoord===0);return(<div>
               {noCrd.slice(0,showAllNoCoords?noCrd.length:DQ_LIMIT).map(p=>(
                 <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"8px 12px",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-                  <div><div style={{fontSize:12,fontWeight:600}}>{p.address}</div><div style={{fontSize:10,color:"var(--gray2)"}}>{p.parcelId}</div></div>
+                  <div><div style={{fontSize:12,fontWeight:600}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div><div style={{fontSize:10,color:"var(--gray2)"}}>{p.parcelId}</div></div>
                   <Badge color="#64748b" small>No Coords</Badge>
                 </div>
               ))}
@@ -1800,20 +2767,28 @@ const DataQuality = ({parcels, onDrill}) => {
 };
 
 /* ── 9. COMPARE ── */
-const Compare = ({parcels,compareList,onRemove}) => {
+const Compare = ({parcels,compareList,onRemove,onAdd}) => {
   const [pick,setPick]=useState("");
-  const addBySearch=()=>{const p=parcels.find(x=>x.address.toLowerCase().includes(pick.toLowerCase())||x.parcelId===pick);if(p&&!compareList.some(x=>x.parcelId===p.parcelId)&&compareList.length<4){onRemove(null,p);setPick("");}};
+  const addBySearch=()=>{
+    const q = pick.trim().toLowerCase();
+    if(!q) return;
+    const p=parcels.find(x=>(x.address||"").toLowerCase().includes(q)||String(x.parcelId||"").toLowerCase()===q);
+    if(p && !compareList.some(x=>x.parcelId===p.parcelId) && compareList.length<4){
+      if(typeof onAdd==="function") onAdd(null,p);
+      setPick("");
+    }
+  };
   const fields=[
     {label:"Address",v:p=>p.address},{label:"Parcel ID",v:p=>p.parcelId,mono:true},
-    {label:"Owner",v:p=>p.owner1},{label:"Class",v:p=>`${p.propClass} ${p.propClassDesc}`},
+    {label:"Owner",v:p=>p.owner1},{label:"Class",v:p=>propClassLabel(p)},
     {label:"Neighborhood",v:p=>p.neighborhood||"—"},
     {label:"Full Market Value",v:p=>$f(p.fullMarketValue),hi:true,num:p=>p.fullMarketValue},
     {label:"Assessed Value",v:p=>$f(p.assessedValue),num:p=>p.assessedValue},
     {label:"Land Value",v:p=>$f(p.landValue),num:p=>p.landValue},
-    {label:"Equity Ratio",v:p=>eqR(p)+"%",hi:true,num:p=>parseFloat(eqR(p))||0},
+    {label:"Equity Ratio",v:p=>eqRFast(p)+"%",hi:true,num:p=>parseFloat(eqRFast(p))||0},
     {label:"County Taxable",v:p=>$f(p.countyTaxable)},{label:"City Taxable",v:p=>$f(p.cityTaxable)},{label:"School Taxable",v:p=>$f(p.schoolTaxable)},
     {label:"Lot Size",v:p=>p.frontage?`${p.frontage}×${p.depth} ft`:"—"},
-    {label:"Gentrifi. Index",v:p=>gentriIdx(p)+"%"},{label:"Absentee?",v:p=>isAbsentee(p)?"Yes":"No"},
+    {label:"Gentrifi. Index",v:p=>gentriIdx(p)+"%"},{label:"Absentee?",v:p=>isAbsenteeFast(p)?"Yes":"No"},
     {label:"Exemptions",v:p=>p.exemptions.map(e=>e.name).join(", ")||"None"},
     {label:"Last Sale Year",v:p=>p.deedYear||"—"},
   ];
@@ -1838,7 +2813,7 @@ const Compare = ({parcels,compareList,onRemove}) => {
             <th style={{padding:"10px 14px",textAlign:"left",color:"var(--gray2)",fontSize:11,textTransform:"uppercase",letterSpacing:.5,width:160,background:"var(--bg2)"}}>Field</th>
             {compareList.map(p=>(
               <th key={p.parcelId} style={{padding:"10px 14px",textAlign:"left",borderLeft:"1px solid var(--border)",background:"var(--bg2)"}}>
-                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}>{p.address}</div>
+                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
                 <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{p.parcelId}</div>
                 <button onClick={()=>onRemove(p)} style={{marginTop:6,background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.3)",color:"#f87171",borderRadius:4,padding:"2px 8px",fontSize:10,cursor:"pointer"}}>Remove</button>
               </th>
@@ -1852,7 +2827,9 @@ const Compare = ({parcels,compareList,onRemove}) => {
                 const nums=f.num?compareList.map(x=>f.num(x)):[];
                 const myNum=f.num?f.num(p):null;
                 const isMax=f.hi&&myNum!==null&&myNum===Math.max(...nums);
-                return <td key={p.parcelId} style={{padding:"9px 14px",borderLeft:"1px solid var(--border)",fontFamily:f.mono?"var(--fm)":"inherit",color:isMax?"var(--amber)":"var(--white)",fontWeight:isMax?600:400}}>{val}</td>;
+                return <td key={p.parcelId} style={{padding:"9px 14px",borderLeft:"1px solid var(--border)",fontFamily:f.mono?"var(--fm)":"inherit",color:isMax?"var(--amber)":"var(--white)",fontWeight:isMax?600:400}}>
+                  {f.label==="Address" ? <AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} stopPropagation={false}>{val}</AddrLink> : val}
+                </td>;
               })}
             </tr>
           ))}</tbody>
@@ -1906,12 +2883,12 @@ const HomebuyerGuide = ({parcels, myHome}) => {
           <button onClick={lookup} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Look Up</button>
         </div>
         {found&&<div className="fi" style={{marginTop:16}}>
-          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:14}}>{found.address} — Here's What It All Means</div>
+          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:14}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood}>{found.address}</AddrLink> — Here's What It All Means</div>
           {[
             ["What is the Full Market Value?",`The city assessor estimates this property is worth ${$f(found.fullMarketValue)} on the open market. This is their professional opinion of what a willing buyer and seller would agree on today.`],
             ["What is the Assessed Value?",`The city uses ${$f(found.assessedValue)} to calculate the property tax bill — not the full market value. Albany uses a specific percentage of market value for assessments.`],
-            ["Is this assessment fair?",`The equity ratio is ${eqR(found)}%. ${eqFlag(found)==="fair"?"✅ This falls in the fair range (80–120%) — the assessment appears proportional to market value.":eqFlag(found)==="under"?"⚠️ This is below 80%, meaning the property may be under-assessed. The owner pays taxes on less than the standard share of market value.":"🚨 This is above 120%, meaning the owner may be paying more than their fair share. They may have grounds to file an assessment grievance."}`],
-            ["Who owns this property?",`${found.owner1}${found.owner2?` and ${found.owner2}`:""}. ${isAbsentee(found)?"The mailing address is different from the property address, suggesting the owner may not live here (absentee/investment owner).":"The mailing address matches the property address, suggesting the owner likely lives here."}`],
+            ["Is this assessment fair?",`The equity ratio is ${eqRFast(found)}%. ${eqFlagFast(found)==="fair"?"✅ This falls in the fair range (80–120%) — the assessment appears proportional to market value.":eqFlagFast(found)==="under"?"⚠️ This is below 80%, meaning the property may be under-assessed. The owner pays taxes on less than the standard share of market value.":"🚨 This is above 120%, meaning the owner may be paying more than their fair share. They may have grounds to file an assessment grievance."}`],
+            ["Who owns this property?",`${found.owner1}${found.owner2?` and ${found.owner2}`:""}. ${isAbsenteeFast(found)?"The mailing address is different from the property address, suggesting the owner may not live here (absentee/investment owner).":"The mailing address matches the property address, suggesting the owner likely lives here."}`],
             ["What tax exemptions are active?",found.exemptions.length>0?`This property has ${found.exemptions.length} active exemption(s): ${found.exemptions.map(e=>`${e.name} (code §${e.code})`).join(", ")}. These reduce the taxable value, lowering the annual tax bill.`:`No active exemptions were found on this record. If this is a homestead, the owner may qualify for STAR (up to $30,000 off school taxes) and should check with the city assessor.`],
             ["How big is the lot?",found.frontage&&found.depth?`The lot is ${found.frontage} feet wide (frontage) by ${found.depth} feet deep — approximately ${nf(found.frontage*found.depth)} square feet total.`:"Lot dimensions are not available in this record."],
             ["When did it last sell?",found.deedYear?`According to the deed book reference, this property last changed ownership around ${found.deedYear}.`:"No deed year information is available for this parcel."],
@@ -1941,8 +2918,15 @@ const HomebuyerGuide = ({parcels, myHome}) => {
    ROOT APP
 ════════════════════════════════════════ */
 export default function App() {
-  const [parcels,setParcels]=useState(SAMPLE);
+  const ALLOWED_UPLOAD_FILES = [
+    "albany-roll.json",
+    "albany_street_centerlines.geojson",
+    "albany-parcel-geometry.json",
+  ];
+  const [parcels,setParcels]=useState(()=>preprocessParcels(SAMPLE));
   const [meta,setMeta]=useState({});
+  const [parcelGeometry,setParcelGeometry]=useState(null);
+  const [streetCenterlines,setStreetCenterlines]=useState(null);
   const [dataSource,setDataSource]=useState("sample");
   const [tab,setTab]=useState("browse");
   const [compareList,setCompareList]=useState([]);
@@ -1952,36 +2936,99 @@ export default function App() {
   const [homeSetupAddr,setHomeSetupAddr]=useState("");
   const [drillList,setDrillList]=useState(null);
   const fileRef=useRef();
+  const geomCoverage=useMemo(()=>{
+    const gp = parcelGeometry?.parcels;
+    if(!gp || Array.isArray(gp)) return null;
+    let matched=0;
+    for(const p of parcels) if(gp[p.parcelId]) matched++;
+    return {
+      matched,
+      parcelCount: parcels.length,
+      geomCount: parcelGeometry.count || Object.keys(gp).length,
+      pct: Math.round((matched/Math.max(1,parcels.length))*1000)/10,
+      coordSystem: parcelGeometry.coordSystem || null,
+    };
+  },[parcelGeometry,parcels]);
 
   const handleFile=useCallback(e=>{
     const f=e.target.files[0];if(!f)return;
+    const allowedSet = new Set(ALLOWED_UPLOAD_FILES);
+    const exactName = (f.name||"").trim();
+    const fname = exactName.toLowerCase();
+    if(!allowedSet.has(fname)){
+      alert(
+        "Only these 3 files can be uploaded:\n\n" +
+        "1. albany-roll.json\n" +
+        "2. albany-parcel-geometry.json\n" +
+        "3. albany_street_centerlines.geojson\n\n" +
+        `You selected: ${exactName || "(unnamed file)"}`
+      );
+      try{ e.target.value=""; }catch{}
+      return;
+    }
     setUploading(true);
     const r=new FileReader();
     r.onload=ev=>{
       const raw=ev.target.result;
-      const fname=f.name.toLowerCase();
-      // Defer heavy processing so the browser paints the loading spinner first
       setTimeout(()=>{
-        // ── JSON fast-load (pre-converted roll, ~50-100x faster than TXT) ──
-        if(fname.endsWith(".json")){
-          try{
-            const payload=JSON.parse(raw);
-            const arr=payload.parcels||payload;
-            if(Array.isArray(arr)&&arr.length>0){
-              if(payload.meta)setMeta(payload.meta);
-              setParcels(arr);setDataSource("json");
-            }
-            else alert("JSON file does not contain a parcels array.");
-          }catch(err){alert("Could not parse JSON: "+err.message);}
-          setUploading(false);
-          return;
-        }
-        // ── TXT / CSV path ──
-        const isRoll=fname.endsWith(".txt")||raw.includes("HOMESTEAD PARCEL")||raw.includes("FULL MARKET VALUE");
-        const parsed=isRoll?parseTextRoll(raw):parseCSV(raw);
-        if(parsed.length>0){setParcels(parsed);setDataSource(isRoll?"roll":"csv");}
-        else alert("Could not parse file — ensure it is an Albany CSV, Final Roll .txt, or converted .json file.");
-        setUploading(false);
+        const finish=(nextParcels,nextSource,nextMeta={})=>{ setMeta(nextMeta||{}); setParcels(preprocessParcels(nextParcels)); setDataSource(nextSource); setUploading(false); };
+        const fail=(msg)=>{ alert(msg); setUploading(false); };
+        const isJsonLike = fname.endsWith(".json") || fname.endsWith(".geojson");
+        const parseOnMainThread=()=>{
+          if(isJsonLike){
+            try{
+              const payload=JSON.parse(raw);
+              const isGeometryPayload = payload && payload.geometryType==="MultiPolygon" && payload.parcels && !Array.isArray(payload.parcels);
+              if(isGeometryPayload){
+                setParcelGeometry(payload);
+                setUploading(false);
+                return;
+              }
+              const isStreetCenterlinePayload = payload && (payload.kind==="streetCenterlines" || payload.geometryType==="MultiLineString") && Array.isArray(payload.streets);
+              if(isStreetCenterlinePayload){
+                setStreetCenterlines(payload);
+                setUploading(false);
+                return;
+              }
+              const compactFromGeoJson = convertGeoJsonFeatureCollectionToCompactGeometry(payload, f.name || fname);
+              if(compactFromGeoJson){
+                setParcelGeometry(compactFromGeoJson);
+                setUploading(false);
+                return;
+              }
+              const compactStreetFromGeoJson = convertGeoJsonFeatureCollectionToStreetCenterlines(payload, f.name || fname);
+              if(compactStreetFromGeoJson){
+                setStreetCenterlines(compactStreetFromGeoJson);
+                setUploading(false);
+                return;
+              }
+              const arr=payload.parcels||payload;
+              if(Array.isArray(arr)&&arr.length>0) finish(arr,"json",payload.meta||{});
+              else fail("JSON/GeoJSON file does not contain a parcels array (or supported parcel/street geometry payload).");
+            }catch(err){ fail("Could not parse JSON: "+err.message); }
+            return;
+          }
+          const isRoll=fname.endsWith(".txt")||raw.includes("HOMESTEAD PARCEL")||raw.includes("FULL MARKET VALUE");
+          const parsed=isRoll?parseTextRoll(raw):parseCSV(raw);
+          if(parsed.length>0) finish(parsed,isRoll?"roll":"csv",{});
+          else fail("Could not parse file - ensure it is an Albany CSV, Final Roll .txt, or converted .json file.");
+        };
+        const looksLikeGeometryJson = isJsonLike && (
+          raw.includes('"geometryType"') ||
+          (raw.includes("FeatureCollection") && raw.includes('"features"'))
+        );
+        if(looksLikeGeometryJson){ parseOnMainThread(); return; }
+        const worker=createDataParseWorker();
+        if(!worker){ parseOnMainThread(); return; }
+        const cleanup=()=>{ try{worker.terminate();}catch{} try{if(worker.__blobUrl)URL.revokeObjectURL(worker.__blobUrl);}catch{} };
+        worker.onmessage=(msgEv)=>{
+          const msg=msgEv.data||{};
+          if(!msg.ok){ cleanup(); parseOnMainThread(); return; }
+          finish(Array.isArray(msg.parcels)?msg.parcels:[], msg.sourceType||"csv", msg.meta||{});
+          cleanup();
+        };
+        worker.onerror=()=>{ cleanup(); parseOnMainThread(); };
+        worker.postMessage({raw,fname});
       },50);
     };
     r.readAsText(f);
@@ -2006,7 +3053,7 @@ export default function App() {
     avgFMV:parcels.length>0?Math.round(parcels.reduce((s,p)=>s+p.fullMarketValue,0)/parcels.length):0,
     exemptCount:parcels.filter(p=>p.exemptions.length>0).length,
     homesteadPct:parcels.length>0?Math.round(parcels.filter(p=>p.parcelType==="HOMESTEAD").length/parcels.length*100):0,
-    absenteeCount:parcels.filter(p=>isAbsentee(p)).length,
+    absenteeCount:parcels.filter(p=>isAbsenteeFast(p)).length,
   }),[parcels]);
 
   const TABS=[
@@ -2043,18 +3090,26 @@ export default function App() {
               </div>
               {myHome&&(
                 <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(34,197,94,.1)",border:"1px solid rgba(34,197,94,.3)",borderRadius:8,padding:"5px 12px",cursor:"pointer"}} onClick={()=>setTab("browse")} title="Click to browse My Home">
-                  <span>🏡</span>
-                  <span style={{fontSize:11,color:"var(--green2)",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{myHome.address}</span>
+                  <span>Home</span>
+                  <span style={{fontSize:11,color:"var(--green2)",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={myHome.address} zip={myHome.parcel?.zip} neighborhood={myHome.parcel?.neighborhood} stopPropagation={false}>{myHome.address}</AddrLink></span>
                   <button onClick={e=>{e.stopPropagation();setMyHome(null);}} style={{background:"none",border:"none",color:"var(--gray3)",cursor:"pointer",fontSize:12,padding:0,marginLeft:2}}>✕</button>
                 </div>
               )}
               <button onClick={()=>setShowHomeSetup(true)} style={{background:myHome?"rgba(34,197,94,.15)":"var(--card2)",color:myHome?"var(--green2)":"var(--gray)",border:`1px solid ${myHome?"rgba(34,197,94,.35)":"var(--border)"}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                {myHome?"🏡 My Home":"🏡 Set My Home"}
+                {myHome?"My Home":"Set My Home"}
               </button>
-              <button onClick={()=>fileRef.current.click()} disabled={uploading} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                {uploading?"⏳ Parsing…":"⬆ Upload CSV / Roll / JSON"}
+              {geomCoverage&&<div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(13,148,136,.1)",border:"1px solid rgba(13,148,136,.28)",borderRadius:8,padding:"5px 12px"}} title={geomCoverage.coordSystem?`Parcel polygons loaded (${geomCoverage.coordSystem})`:"Parcel polygons loaded"}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:"#0d9488",display:"inline-block"}}></span>
+                <span style={{fontSize:11,color:"var(--teal2)",fontFamily:"var(--fm)"}}>Parcel geometry ✓ {geomCoverage.matched.toLocaleString()}/{geomCoverage.parcelCount.toLocaleString()} ({geomCoverage.pct}%)</span>
+              </div>}
+              {streetCenterlines&&Array.isArray(streetCenterlines.streets)&&<div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.28)",borderRadius:8,padding:"5px 12px"}} title={streetCenterlines.coordSystem?`Street centerlines loaded (${streetCenterlines.coordSystem})`:"Street centerlines loaded"}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:"#f59e0b",display:"inline-block"}}></span>
+                <span style={{fontSize:11,color:"var(--amber2)",fontFamily:"var(--fm)"}}>Street centerlines OK {(streetCenterlines.count||streetCenterlines.streets.length).toLocaleString()}</span>
+              </div>}
+              <button onClick={()=>fileRef.current.click()} disabled={uploading} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}} title="Allowed files: albany-roll.json, albany-parcel-geometry.json, albany_street_centerlines.geojson">
+                {uploading?"⏳ Parsing…":"⬆ Upload Roll / Geometry"}
               </button>
-              <input ref={fileRef} type="file" accept=".csv,.txt,.json" style={{display:"none"}} onChange={handleFile}/>
+              <input ref={fileRef} type="file" accept=".json,.geojson" style={{display:"none"}} onChange={handleFile}/>
             </div>
           </div>
         </div>
@@ -2067,7 +3122,7 @@ export default function App() {
             <StatCard label="Average FMV" value={"$"+(stats.avgFMV/1000).toFixed(0)+"K"} icon="📈" color="#0d9488" sub="Per parcel market value"/>
             <StatCard label="With Exemptions" value={nf(stats.exemptCount)} icon="🏷️" color="#a78bfa" sub={`${Math.round(stats.exemptCount/Math.max(stats.total,1)*100)}% have tax relief`} onClick={()=>setDrillList({title:"All Parcels With Exemptions",parcels:parcels.filter(p=>p.exemptions?.length>0)})}/>
             <StatCard label="Homestead Rate" value={stats.homesteadPct+"%"} icon="🏠" color="#22c55e" sub="Owner-occupied homes"/>
-            <StatCard label="Absentee Owners" value={nf(stats.absenteeCount)} icon="📬" color="#f97316" sub={`${Math.round(stats.absenteeCount/Math.max(stats.total,1)*100)}% investor/rental owned`} onClick={()=>setDrillList({title:"All Absentee-Owned Parcels",parcels:parcels.filter(p=>isAbsentee(p))})}/>
+            <StatCard label="Absentee Owners" value={nf(stats.absenteeCount)} icon="📬" color="#f97316" sub={`${Math.round(stats.absenteeCount/Math.max(stats.total,1)*100)}% investor/rental owned`} onClick={()=>setDrillList({title:"All Absentee-Owned Parcels",parcels:parcels.filter(p=>isAbsenteeFast(p))})}/>
           </div>
         </div>
 
@@ -2092,7 +3147,7 @@ export default function App() {
           {tab==="equity"&&<Equity parcels={parcels} onDrill={setDrillList}/>}
           {tab==="opportunity"&&<Opportunity parcels={parcels} onDrill={setDrillList}/>}
           {tab==="taxtools"&&<TaxTools parcels={parcels} myHome={myHome}/>}
-          {tab==="mapview"&&<MapView parcels={parcels} onDrill={setDrillList}/>}
+          {tab==="mapview"&&<MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} onDrill={setDrillList}/>}
           {tab==="dataquality"&&<DataQuality parcels={parcels} onDrill={setDrillList}/>}
           {tab==="compare"&&<Compare parcels={parcels} compareList={compareList} onRemove={removeCompare} onAdd={addToCompare}/>}
           {tab==="guide"&&<HomebuyerGuide parcels={parcels} myHome={myHome}/>}
@@ -2110,7 +3165,7 @@ export default function App() {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(4px)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowHomeSetup(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:28,maxWidth:520,width:"100%",boxShadow:"0 25px 60px rgba(0,0,0,.5)"}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
-              <span style={{fontSize:28}}>🏡</span>
+              <span style={{fontSize:28}}>Home</span>
               <div>
                 <div style={{fontFamily:"var(--fd)",fontWeight:800,fontSize:20}}>Set My Home</div>
                 <div style={{fontSize:12,color:"var(--gray)",marginTop:1}}>Save your address once — pre-filled everywhere</div>
@@ -2123,7 +3178,7 @@ export default function App() {
               <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.25)",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:11,fontWeight:600,color:"var(--green2)"}}>Currently Saved Home</div>
-                  <div style={{fontSize:14,fontWeight:600,marginTop:2}}>{myHome.address}</div>
+                  <div style={{fontSize:14,fontWeight:600,marginTop:2}}>{myHome.address}{myHome.parcel?.neighborhood?` · ${myHome.parcel.neighborhood}`:""}</div>
                   <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:1}}>Parcel {myHome.parcelId}</div>
                 </div>
                 <button onClick={()=>{saveHome(myHome.parcel);setShowHomeSetup(false);}} style={{background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.3)",color:"#f87171",borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✕ Clear</button>
@@ -2154,3 +3209,12 @@ export default function App() {
     </>
   );
 }
+
+
+
+
+
+
+
+
+

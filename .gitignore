@@ -8,3 +8,20 @@ desktop.ini
 
 # Build artifacts (keep the compiled HTML, exclude node_modules etc)
 node_modules/
+__build_perf/
+albany-dashboard-fixed.html
+index2.html
+
+# Local GIS / QGIS working files
+*.gdb/
+qgis/
+*.qmd
+
+# Local raw/derived datasets (keep out of git; load via uploader)
+*.geojson
+albany-roll.json
+albany-parcel-geometry.json
+albany_parcels.json
+
+# Local debug/helper scripts
+__check*.js
