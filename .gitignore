@@ -24,6 +24,7 @@ albany-parcel-geometry.json
 albany_parcels.json
 !albany-roll.json
 !albany-parcel-geometry.json
+!albany.geojson
 !albany_street_centerlines.geojson
 
 # Local debug/helper scripts
