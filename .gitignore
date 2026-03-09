@@ -28,3 +28,8 @@ albany_parcels.json
 
 # Local debug/helper scripts
 __check*.js
+
+.claude/
+site/
+__dump_live.html
+__live_index.html

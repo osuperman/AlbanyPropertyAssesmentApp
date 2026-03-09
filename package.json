@@ -4,7 +4,15 @@
   "description": "An interactive data intelligence application for exploring Albany, NY property assessment data from the 2025 Final Assessment Roll.",
   "main": "convert-roll.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node build-app.js",
+    "convert:roll": "node convert-roll.js \"Albany 2025 Final Roll conv.txt\" albany-roll.json",
+    "prepare:data": "node prepare-albany-data.js albany-roll.json Albany_County_Parcels_2024_-1728787929616575091.csv albany-parcel-geometry.json albany-roll.json",
+    "refresh:data": "npm run convert:roll && npm run prepare:data",
+    "serve": "node serve.js",
+    "start": "node serve.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:site": "node stage-pages.js",
+    "check:publish": "npm run build && npm run build:site"
   },
   "repository": {
     "type": "git",
