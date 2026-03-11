@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { LeafletMapView } from "./leaflet-map.jsx";
 import { AddressAutocompleteInput, findBestAddressMatch } from "./address-autocomplete.jsx";
 import propertyTypeClassificationCodes from "./property-type-classification-codes.json";
+import grievanceSettings from "./grievance-settings.json";
 
 /* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ GLOBAL STYLES ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const GS = () => (
@@ -1460,7 +1461,136 @@ const comparableDeltaTone = (value, betterWhenLower=false) => {
   if(value == null || !Number.isFinite(value)) return "var(--gray3)";
   if(value === 0) return "var(--gray2)";
   if(betterWhenLower) return value < 0 ? "var(--green2)" : "var(--red2)";
-  return value > 0 ? "var(--green2)" : "var(--amber2)";
+  return value > 0 ? "var(--green2)" : "var(--red2)";
+};
+const grievanceResourceUrls = {
+  rp524FormUrl: grievanceSettings?.resources?.rp524FormUrl || "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
+  grievanceBookletUrl: grievanceSettings?.resources?.grievanceBookletUrl || "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
+};
+const classifyGrievanceComparable = (subject, comp) => {
+  const subjectAssessed = Number(subject?.assessedValue);
+  const compAssessed = Number(comp?.assessedValue);
+  if(!Number.isFinite(subjectAssessed) || !Number.isFinite(compAssessed)) return {
+    kind: "neutral",
+    badge: "Neutral",
+    headline: "Assessment comparison unavailable",
+    detail: "This comp stays in the research list, but missing assessment data means it cannot strengthen your grievance package.",
+    tone: "var(--gray2)",
+    border: "rgba(100,116,139,.24)",
+    background: "rgba(148,163,184,.10)",
+  };
+  if(compAssessed < subjectAssessed) return {
+    kind: "supports",
+    badge: "Supports grievance",
+    headline: "Assessed lower than yours",
+    detail: "Assessed lower than yours - supports an RP-524 grievance argument that your property is over-assessed.",
+    tone: "var(--green2)",
+    border: "rgba(34,197,94,.24)",
+    background: "rgba(34,197,94,.08)",
+  };
+  if(compAssessed > subjectAssessed) return {
+    kind: "does_not_support",
+    badge: "Does not support grievance",
+    headline: "Assessed higher than yours",
+    detail: "Assessed higher than yours - this comp would not help your grievance. It suggests your current assessment may be reasonable relative to this similar home.",
+    tone: "var(--red2)",
+    border: "rgba(220,38,38,.22)",
+    background: "rgba(220,38,38,.07)",
+  };
+  return {
+    kind: "neutral",
+    badge: "Neutral",
+    headline: "Assessed the same as yours",
+    detail: "Assessed the same as yours - confirms your assessment is in line with this similar home but does not strengthen a grievance argument.",
+    tone: "var(--gray2)",
+    border: "rgba(100,116,139,.24)",
+    background: "rgba(148,163,184,.10)",
+  };
+};
+const buildComparableDeltaInfo = (metricKey, value) => {
+  if(value == null || !Number.isFinite(value)) return "";
+  if(metricKey === "assessed"){
+    if(value < 0) return "(i) This comp is assessed lower than yours, which supports a grievance argument.";
+    if(value > 0) return "(i) This comp is assessed higher than yours, so it does not support a grievance argument.";
+    return "(i) This comp is assessed the same as yours, which is neutral for a grievance.";
+  }
+  if(metricKey === "equity"){
+    if(value < 0) return "(i) This comp has a lower equity ratio than yours, which supports an over-assessment claim.";
+    if(value > 0) return "(i) This comp has a higher equity ratio than yours, which weakens an over-assessment claim.";
+    return "(i) This comp has the same equity ratio as yours, which is neutral for a grievance.";
+  }
+  if(metricKey === "fmv"){
+    if(value < 0) return "(i) This comp has a lower FMV than yours, which can support a lower value argument, but it is weaker evidence than a lower assessment.";
+    if(value > 0) return "(i) This comp has a higher FMV than yours, which weakens a lower value argument but still provides market context.";
+    return "(i) This comp has the same FMV as yours, which is neutral market context.";
+  }
+  if(metricKey === "livingArea"){
+    if(value < 0) return "(i) This comp is smaller than yours. That does not prove over-assessment by itself; it only affects how comparable the home is.";
+    if(value > 0) return "(i) This comp is larger than yours. That does not prove over-assessment by itself; it only affects comparability.";
+    return "(i) This comp has the same living area as yours, which strengthens comparability.";
+  }
+  if(metricKey === "yearBuilt"){
+    if(value < 0) return "(i) This comp is older than yours. That is comparability context, not direct grievance evidence.";
+    if(value > 0) return "(i) This comp is newer than yours. That is comparability context, not direct grievance evidence.";
+    return "(i) This comp was built in the same year as yours, which strengthens comparability.";
+  }
+  if(metricKey === "bedrooms"){
+    if(value < 0) return "(i) This comp has fewer bedrooms than yours. That affects comparability, not the grievance by itself.";
+    if(value > 0) return "(i) This comp has more bedrooms than yours. That affects comparability, not the grievance by itself.";
+    return "(i) This comp has the same bedroom count as yours, which strengthens comparability.";
+  }
+  if(metricKey === "baths"){
+    if(value < 0) return "(i) This comp has fewer baths than yours. That affects comparability, not the grievance by itself.";
+    if(value > 0) return "(i) This comp has more baths than yours. That affects comparability, not the grievance by itself.";
+    return "(i) This comp has the same bath count as yours, which strengthens comparability.";
+  }
+  return "";
+};
+const formatNarrativeCompList = (comps=[]) => {
+  if(!comps.length) return "";
+  const items = comps.map(parcel => `${parcel.address} is assessed at ${$f(parcel.assessedValue)}`);
+  if(items.length===1) return items[0];
+  if(items.length===2) return items[0] + " and " + items[1];
+  return items.slice(0, -1).join(", ") + ", and " + items[items.length - 1];
+};
+const buildGrievanceNarrative = (subject, subjectProfile, neighborResult) => {
+  const supports = neighborResult?.grievanceCandidates || [];
+  if(!supports.length || neighborResult?.grievanceAvgAssessed == null || neighborResult?.grievanceDeltaAssessed == null) return "";
+  const comparisonFields = ["property class"].concat((subjectProfile?.availablePhysicalFields || []).map(field => field.toLowerCase()));
+  const basis = comparisonFields.length > 1 ? comparisonFields.slice(0, -1).join(", ") + ", and " + comparisonFields[comparisonFields.length - 1] : comparisonFields[0];
+  const compExamples = formatNarrativeCompList(supports.slice(0, 3));
+  return `The subject property at ${subject.address} is currently assessed at ${$f(subject.assessedValue)}. Several physically comparable homes${subjectProfile?.neighborhood ? ` in the same ${subjectProfile.neighborhood} neighborhood` : ""} - matching in ${basis} - carry lower assessments. For example, ${compExamples}. The average assessed value across supporting comparable homes is ${$f(neighborResult.grievanceAvgAssessed)}, which is ${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} less than the subject's current assessment. This disparity indicates the subject property is over-assessed relative to its peers and the assessed value should be reduced to align with comparable properties.`;
+};
+const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, meta={}) => {
+  const comps = neighborResult?.grievanceCandidates || [];
+  const mailingAddress = (subject?.mailAddressClean || subject?.mailAddress || "").trim();
+  const municipality = subject?.municipality || meta?.municipality || "City of Albany";
+  const county = subject?.county || meta?.county || "Albany";
+  const checklist = [
+    { label: "Owner name", value: subject?.owner1 || "-", note: "RP-524 owner or complainant field" },
+    { label: "Mailing address", value: mailingAddress || "-", note: "Use the assessment roll mailing address unless it needs correction" },
+    { label: "Property address", value: subject?.address || "-", note: "Location of the property being grieved" },
+    { label: "Parcel / tax map ID", value: subject?.parcelId || "-", note: "Section, block, lot / parcel identifier" },
+    { label: "Municipality / county", value: municipality + ", " + county + " County", note: "Complaint venue" },
+    { label: "Property class", value: subjectProfile?.classLabel || "-", note: "Assessment roll property class" },
+    { label: "Current assessed value", value: Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-", note: "Roll value from the assessment record" },
+    { label: "Current full market value", value: Number.isFinite(subject?.fullMarketValue) ? $f(subject.fullMarketValue) : "-", note: "Roll full market value" },
+    { label: "Equity ratio", value: subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-", note: "Useful grievance talking point from this app" },
+    { label: "Supporting comp FMV average", value: Number.isFinite(neighborResult?.grievanceAvgFMV) ? $f(neighborResult.grievanceAvgFMV) : "-", note: "Average FMV across only the comps that support your grievance" },
+    { label: "Supporting comp assessed average", value: Number.isFinite(neighborResult?.grievanceAvgAssessed) ? $f(neighborResult.grievanceAvgAssessed) : "-", note: "Average assessed value across only the comps that support your grievance" },
+    { label: "Supporting comp list", value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}%`).join("; ") : "-", note: "Only lower-assessed comps are included in the grievance package" },
+  ];
+  const missing = [];
+  if(!subject?.owner1) missing.push("Owner / complainant name");
+  if(!mailingAddress) missing.push("Mailing address confirmation");
+  if(!subject?.address) missing.push("Property street address");
+  if(!subject?.parcelId) missing.push("Tax map / parcel number");
+  if(!comps.length) missing.push("Supporting comparable evidence - the current match set does not contain lower-assessed comps for an RP-524 package");
+  missing.push("Reason for complaint selection on RP-524 (unequal, excessive, unlawful, or misclassification)");
+  missing.push("Owner contact information and any representative details");
+  missing.push("Your requested value opinion or narrative explanation of the correction sought");
+  missing.push("Signature, filing date, and any hearing attendance details required by the board");
+  return { checklist, missing, narrative: buildGrievanceNarrative(subject, subjectProfile, neighborResult) };
 };
 const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
   const candidate = buildComparableCandidate(subject, comp);
@@ -1669,32 +1799,55 @@ const buildComparableResult = (subject, parcels, options={}) => {
         };
       });
   }
+  neighbors = neighbors.map(comp => ({
+    ...comp,
+    _grievanceRelevance: classifyGrievanceComparable(subject, comp),
+  }));
+  const grievanceSupportPool = neighbors.filter(comp => comp._grievanceRelevance?.kind === "supports");
+  const grievanceCandidates = grievanceSupportPool.slice(0,4);
   const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/neighbors.length) : null;
   const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/neighbors.length) : null;
   const avgEquity = neighbors.length ? +(neighbors.reduce((sum, comp)=>sum+(parseFloat(eqRFast(comp))||0),0)/neighbors.length).toFixed(1) : null;
+  const grievanceAvgFMV = grievanceSupportPool.length ? Math.round(grievanceSupportPool.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/grievanceSupportPool.length) : null;
+  const grievanceAvgAssessed = grievanceSupportPool.length ? Math.round(grievanceSupportPool.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/grievanceSupportPool.length) : null;
+  const grievanceAvgEquity = grievanceSupportPool.length ? +(grievanceSupportPool.reduce((sum, comp)=>sum+(parseFloat(eqRFast(comp))||0),0)/grievanceSupportPool.length).toFixed(1) : null;
   const subjectEquity = subjectProfile.equity;
   const deltaFMV = avgFMV!=null ? subject.fullMarketValue-avgFMV : null;
   const deltaFMVPct = (avgFMV && deltaFMV!=null) ? (deltaFMV/avgFMV)*100 : null;
   const deltaAssessed = avgAssessed!=null ? subject.assessedValue-avgAssessed : null;
   const deltaEquity = (avgEquity!=null && subjectEquity!=null) ? +(subjectEquity-avgEquity).toFixed(1) : null;
+  const grievanceDeltaFMV = grievanceAvgFMV!=null ? subject.fullMarketValue-grievanceAvgFMV : null;
+  const grievanceDeltaFMVPct = (grievanceAvgFMV && grievanceDeltaFMV!=null) ? (grievanceDeltaFMV/grievanceAvgFMV)*100 : null;
+  const grievanceDeltaAssessed = grievanceAvgAssessed!=null ? subject.assessedValue-grievanceAvgAssessed : null;
+  const grievanceDeltaEquity = (grievanceAvgEquity!=null && subjectEquity!=null) ? +(subjectEquity-grievanceAvgEquity).toFixed(1) : null;
   const fairnessSignal = deltaEquity==null ? null : (deltaEquity>8 ? "Assessed above physically similar homes" : deltaEquity<-8 ? "Assessed below physically similar homes" : "Assessment is broadly in line with similar homes");
+  const grievanceSignal = grievanceDeltaEquity==null ? null : (grievanceDeltaEquity>8 ? "Supporting grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity<-8 ? "Supporting grievance comps carry higher equity ratios than your home." : "Supporting grievance comps show equity ratios in line with your home.");
   return {
     p: subject,
     neighbors,
     avgFMV,
     avgAssessed,
     avgEquity,
+    grievanceAvgFMV,
+    grievanceAvgAssessed,
+    grievanceAvgEquity,
     deltaFMV,
     deltaFMVPct,
     deltaAssessed,
     deltaEquity,
+    grievanceDeltaFMV,
+    grievanceDeltaFMVPct,
+    grievanceDeltaAssessed,
+    grievanceDeltaEquity,
     fairnessSignal,
+    grievanceSignal,
     comparableMode,
     usedInventory: residential && hasInventoryProfile(subject),
     scopeNeighborhood: subjectProfile.neighborhood || null,
     streetKey: streetNameKeyForComp(subject.address),
     subjectProfile,
-    grievanceCandidates: neighbors.slice(0,4),
+    grievanceSupportPool,
+    grievanceCandidates,
     snapshot,
   };
 };
@@ -3064,6 +3217,7 @@ const Opportunity = ({parcels, onDrill}) => {
 
 /* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 6. TAX TOOLS ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
+  const grievanceHelperLinks = grievanceResourceUrls;
   const [view,setView]=useState("estimator");
   const [query,setQuery]=useState("");
   const [found,setFound]=useState(null);
@@ -3198,13 +3352,18 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
     };
   }, [compareScrollTick, neighborResult]);
 
-  const CompareMetricCard = ({label, youValue, compValue, deltaValue, deltaTone="var(--gray2)"}) => (
+  const DeltaInfoNote = ({text, tone="var(--gray3)"}) => {
+    if(!text) return null;
+    return <div style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:10,color:tone,lineHeight:1.45,minWidth:0}}><span style={{fontFamily:"var(--fm)",fontWeight:700}}>(i)</span><span style={{overflowWrap:"anywhere",wordBreak:"break-word"}}>{text}</span></div>;
+  };
+  const CompareMetricCard = ({label, youValue, compValue, deltaValue, deltaTone="var(--gray2)", deltaInfo=""}) => (
     <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:6,minWidth:0}}>
       <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6}}>{label}</div>
       <div style={{display:"grid",gap:4,minWidth:0}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>You</span><span style={{fontWeight:700,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{youValue}</span></div>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>Comp</span><span style={{fontWeight:700,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{compValue}</span></div>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>Delta</span><span style={{fontWeight:700,textAlign:"right",color:deltaTone,minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{deltaValue}</span></div>
+        <DeltaInfoNote text={deltaInfo} tone={deltaTone} />
       </div>
     </div>
   );
@@ -3291,6 +3450,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
       {view==="neighbor"&&<div>
         <InfoBox icon="Compare" title="Comparable Homes for an Assessment Grievance" color="#a78bfa">
           This tool ranks <b style={{color:"var(--white)"}}>physically similar homes</b> and now creates a <b style={{color:"var(--white)"}}>shareable snapshot link</b> that opens the same parcel and the same comparable set on GitHub Pages or locally. Each comparable card shows value, home details, absentee context, and owner-portfolio context so residents can evaluate the evidence without leaving this view.
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+            <a href={grievanceHelperLinks.rp524FormUrl} target="_blank" rel="noreferrer" style={{background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.24)",color:"var(--blue3)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open RP-524 form</a>
+            <a href={grievanceHelperLinks.grievanceBookletUrl} target="_blank" rel="noreferrer" style={{background:"rgba(13,148,136,.12)",border:"1px solid rgba(13,148,136,.24)",color:"var(--teal2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open grievance booklet</a>
+          </div>
+          <div style={{fontSize:10,color:"var(--gray3)",marginTop:10}}>Document URLs are managed in <b style={{color:"var(--gray2)"}}>grievance-settings.json</b>.</div>
         </InfoBox>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Enter Your Address to Compare</div>
@@ -3303,8 +3467,9 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
             const subject = neighborResult.p;
             const subjectProfile = neighborResult.subjectProfile || buildComparableProfile(subject);
             const grievanceComparisons = [{kind:"subject", parcel:subject, label:"Your parcel"}].concat(
-              (((neighborResult.grievanceCandidates||[]).length ? neighborResult.grievanceCandidates : neighborResult.neighbors.slice(0,4))).map((parcel, idx)=>({kind:"comp", parcel, label:"Comp " + (idx+1)}))
+              (neighborResult.grievanceCandidates||[]).map((parcel, idx)=>({kind:"comp", parcel, label:"Comp " + (idx+1)}))
             );
+            const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, neighborResult, meta);
             return <div ref={compareResultRef} className="fi">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
                 <div>
@@ -3345,7 +3510,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
                 </div>
                 <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px",minWidth:0}}>
                   <div style={{fontSize:11,color:"var(--gray2)",marginBottom:4,fontWeight:600}} title="Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available.">
-                    Best Comparable Homes ({neighborResult.neighbors.length} matches)
+                    Best Comparable Homes ({neighborResult.neighbors.length} comps)
                   </div>
                   <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5,marginBottom:8}}>
                     {neighborResult.comparableMode==="snapshot"
@@ -3355,16 +3520,21 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
                         : <>Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class.</>}
                     {neighborResult.usedInventory&&<><br/>Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.</>}
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
-                    <div title="Average Full Market Value across the best comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV avg</div></div>
-                    <div title="Average assessed value across the best comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgAssessed)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp assessed avg</div></div>
-                    <div title="Average equity ratio across the best comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:(neighborResult.deltaEquity??0)>8?"var(--red2)":(neighborResult.deltaEquity??0)<-8?"var(--green2)":"var(--gray)"}}>{neighborResult.avgEquity!=null?neighborResult.avgEquity + "%":"-"}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp equity avg</div></div>
-                  </div>
-                  {(neighborResult.avgFMV!=null || neighborResult.avgEquity!=null)&&<div style={{fontSize:10,color:"var(--gray3)",marginTop:8,lineHeight:1.55}}>
-                    {neighborResult.deltaFMV!=null&&<>Your FMV is <b style={{color:(neighborResult.deltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{(neighborResult.deltaFMV>=0?"+":"-") + $f(Math.abs(neighborResult.deltaFMV))}</b>{neighborResult.deltaFMVPct!=null&&<> ({neighborResult.deltaFMVPct>=0?"+":""}{neighborResult.deltaFMVPct.toFixed(1)}%)</>} versus the comparable-home average. </>}
-                    {neighborResult.deltaAssessed!=null&&<>Your assessed value is <b style={{color:neighborResult.deltaAssessed>=0?"var(--red2)":"var(--green2)"}}>{(neighborResult.deltaAssessed>=0?"+":"-") + $f(Math.abs(neighborResult.deltaAssessed))}</b> relative to the comparable-home assessed average. </>}
-                    {neighborResult.deltaEquity!=null&&<>Your equity ratio is <b style={{color:neighborResult.deltaEquity>8?"var(--red2)":neighborResult.deltaEquity<-8?"var(--green2)":"var(--gray2)"}}>{neighborResult.deltaEquity>=0?"+":""}{neighborResult.deltaEquity}%</b> relative to the comparable-home average. {neighborResult.fairnessSignal}.</>}
-                  </div>}
+                  <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.55,marginBottom:10}}>{neighborResult.grievanceSupportPool.length
+                    ? <>Only <b style={{color:"var(--green2)"}}>{neighborResult.grievanceSupportPool.length}</b> of these physically similar homes support an RP-524 grievance because they are assessed lower than your home. The rest remain below for market context.</>
+                    : <>These are physical matches for research, but none of the current comps are assessed lower than your home, so the grievance package will stay empty until a supportive comp is found.</>}</div>
+                  {neighborResult.grievanceSupportPool.length>0 ? <>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+                      <div title="Average Full Market Value across the grievance-supporting comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.grievanceAvgFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Supporting comp FMV avg</div></div>
+                      <div title="Average assessed value across the grievance-supporting comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.grievanceAvgAssessed)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Supporting comp assessed avg</div></div>
+                      <div title="Average equity ratio across the grievance-supporting comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:(neighborResult.grievanceDeltaEquity??0)>8?"var(--red2)":(neighborResult.grievanceDeltaEquity??0)<-8?"var(--green2)":"var(--gray)"}}>{neighborResult.grievanceAvgEquity!=null?neighborResult.grievanceAvgEquity + "%":"-"}</div><div style={{fontSize:10,color:"var(--gray)"}}>Supporting comp equity avg</div></div>
+                    </div>
+                    <div style={{fontSize:10,color:"var(--gray3)",marginTop:8,lineHeight:1.55,display:"grid",gap:6}}>
+                      {neighborResult.grievanceDeltaFMV!=null&&<div>Your FMV is <b style={{color:(neighborResult.grievanceDeltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{(neighborResult.grievanceDeltaFMV>=0?"+":"-") + $f(Math.abs(neighborResult.grievanceDeltaFMV))}</b>{neighborResult.grievanceDeltaFMVPct!=null&&<> ({neighborResult.grievanceDeltaFMVPct>=0?"+":""}{neighborResult.grievanceDeltaFMVPct.toFixed(1)}%)</>} versus the grievance-supporting comp average.<DeltaInfoNote text={buildComparableDeltaInfo("fmv", -neighborResult.grievanceDeltaFMV)} tone={(neighborResult.grievanceDeltaFMV??0)>=0?"var(--green2)":"var(--red2)"} /></div>}
+                      {neighborResult.grievanceDeltaAssessed!=null&&<div>Your assessed value is <b style={{color:neighborResult.grievanceDeltaAssessed>=0?"var(--red2)":"var(--green2)"}}>{(neighborResult.grievanceDeltaAssessed>=0?"+":"-") + $f(Math.abs(neighborResult.grievanceDeltaAssessed))}</b> relative to the grievance-supporting assessed average.<DeltaInfoNote text={buildComparableDeltaInfo("assessed", -neighborResult.grievanceDeltaAssessed)} tone={neighborResult.grievanceDeltaAssessed>=0?"var(--red2)":"var(--green2)"} /></div>}
+                      {neighborResult.grievanceDeltaEquity!=null&&<div>Your equity ratio is <b style={{color:neighborResult.grievanceDeltaEquity>8?"var(--red2)":neighborResult.grievanceDeltaEquity<-8?"var(--green2)":"var(--gray2)"}}>{neighborResult.grievanceDeltaEquity>=0?"+":""}{neighborResult.grievanceDeltaEquity}%</b> relative to the grievance-supporting comp average. {neighborResult.grievanceSignal}<DeltaInfoNote text={buildComparableDeltaInfo("equity", -neighborResult.grievanceDeltaEquity)} tone={neighborResult.grievanceDeltaEquity>8?"var(--red2)":neighborResult.grievanceDeltaEquity<-8?"var(--green2)":"var(--gray2)"} /></div>}
+                    </div>
+                  </> : <div style={{background:"rgba(148,163,184,.10)",border:"1px solid rgba(148,163,184,.18)",borderRadius:8,padding:"10px 12px",fontSize:10,color:"var(--gray3)",lineHeight:1.55}}>No lower-assessed comps are available in this physical match set, so the grievance summary uses no evidence yet. Review the physical matches below for context, but do not include them in an RP-524 package unless they are assessed lower than your home.</div>}
                 </div>
               </div>
 
@@ -3375,10 +3545,36 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
                 </div>
               </div>
 
-              {neighborResult.neighbors.length>0&&<>
+              <div style={{background:"rgba(13,148,136,.06)",border:"1px solid rgba(13,148,136,.18)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--teal2)",marginBottom:6}}>RP-524 filing helper</div>
+                <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.6,marginBottom:10}}>Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and only the lower-assessed comparable evidence below. Higher-assessed comps stay visible later for research, but they are excluded from the grievance package automatically.</div>
+                {grievanceHelper.narrative ? <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray3)",lineHeight:1.65,marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Auto-generated grievance narrative</div>
+                  {grievanceHelper.narrative}
+                </div> : <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray3)",lineHeight:1.55,marginBottom:12}}>No narrative is generated yet because the current physical match set does not contain a lower-assessed comp that supports your grievance.</div>}
+                <div className="cols-2" style={{display:"grid",gap:12}}>
+                  <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Data this app can fill for you</div>
+                    <div style={{display:"grid",gap:6}}>
+                      {grievanceHelper.checklist.map((item, idx)=><div key={item.label + idx} style={{display:"grid",gap:2}}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>{item.label}</span><span style={{fontWeight:700,textAlign:"right",maxWidth:"62%",overflowWrap:"anywhere",wordBreak:"break-word"}}>{item.value}</span></div>
+                        <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.45}}>{item.note}</div>
+                      </div>)}
+                    </div>
+                  </div>
+                  <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Still needed from the homeowner</div>
+                    <div style={{display:"grid",gap:6}}>
+                      {grievanceHelper.missing.map((item, idx)=><div key={item + idx} style={{fontSize:11,color:"var(--gray3)",lineHeight:1.5}}>- {item}</div>)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {neighborResult.grievanceCandidates.length>0&&<>
                 <div style={{background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--purple)",marginBottom:5}}>Side-by-Side Grievance Table</div>
-                  <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.55}}>Subject parcel plus the top {Math.min(4, neighborResult.neighbors.length)} strongest comparable homes. This is the fast screening view. The full cards below include absentee explanations and expandable owner portfolios.</div>
+                  <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.55}}>Subject parcel plus the top {Math.min(4, neighborResult.grievanceCandidates.length)} strongest grievance-supporting comps. Only lower-assessed comps appear here.</div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:14}}>
                   {grievanceComparisons.map(entry=>{
@@ -3402,8 +3598,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
                       </div>
                       <div style={{display:"grid",gap:6}}>
                         {profileRows.map(([label, value])=><div key={label} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>{label}</span><span style={{fontWeight:600,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{value}</span></div>)}
-                        {!isSubject&&<div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Assessed vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.assessed, true)}}>{formatSignedComparableMoney(delta?.assessed)}</span></div>}
-                        {!isSubject&&<div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Equity vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.equity, true)}}>{formatSignedComparableCount(delta?.equity, "%")}</span></div>}
+                        {!isSubject&&<><div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Assessed vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.assessed, true)}}>{formatSignedComparableMoney(delta?.assessed)}</span></div><DeltaInfoNote text={buildComparableDeltaInfo("assessed", delta?.assessed)} tone={comparableDeltaTone(delta?.assessed, true)} /></>}
+                        {!isSubject&&<><div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Equity vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.equity, true)}}>{formatSignedComparableCount(delta?.equity, "%")}</span></div><DeltaInfoNote text={buildComparableDeltaInfo("equity", delta?.equity)} tone={comparableDeltaTone(delta?.equity, true)} /></>}
                       </div>
                     </div>;
                   })}
@@ -3411,7 +3607,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
               </>}
 
               {neighborResult.neighbors.length>0?<div style={{display:"grid",gap:12}}>
-                <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These parcels drive the comparable-home summary above.">Best Comparable Parcels ({neighborResult.neighbors.length})</div>
+                <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These parcels drive the comparable-home summary above.">Best Comparable Parcels ({neighborResult.neighbors.length} comps)</div>
                 {neighborResult.neighbors.map((parcel, idx)=>{
                   const compProfile = parcel._compProfile || buildComparableProfile(parcel);
                   const delta = parcel._compDelta || {};
@@ -3420,9 +3616,16 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
                       <div style={{minWidth:0,flex:"1 1 320px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                           <div style={{fontSize:15,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} parcelId={parcel.parcelId}>{parcel.address}</AddrLink></div>
-                          <Badge color="#8b5cf6" small>{"Match " + (idx+1)}</Badge>
+                          <Badge color="#8b5cf6" small>{"Comp " + (idx+1)}</Badge>
                           <Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge>
                           <ComparableOwnershipBadges parcel={parcel} small />
+                        </div>
+                        <div style={{background:parcel._grievanceRelevance.background,border:`1px solid ${parcel._grievanceRelevance.border}`,borderRadius:8,padding:"9px 10px",marginTop:10,display:"grid",gap:4}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                            <Badge color={parcel._grievanceRelevance.kind==="supports"?"#16a34a":parcel._grievanceRelevance.kind==="does_not_support"?"#dc2626":"#64748b"} small>{parcel._grievanceRelevance.badge}</Badge>
+                            <span style={{fontSize:11,fontWeight:700,color:parcel._grievanceRelevance.tone}}>{parcel._grievanceRelevance.headline}</span>
+                          </div>
+                          <div style={{fontSize:10,color:parcel._grievanceRelevance.tone,lineHeight:1.5}}>{parcel._grievanceRelevance.detail}</div>
                         </div>
                         <div style={{fontSize:11,color:"var(--gray2)",marginTop:4,overflowWrap:"anywhere",wordBreak:"break-word"}}>{parcel.owner1} | {parcel.parcelId} | {parcelNeighborhoodName(parcel)||"Neighborhood unknown"}</div>
                         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
@@ -3443,19 +3646,19 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
                     <div style={{display:"grid",gap:10}}>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Value comparison</div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
-                        <CompareMetricCard label="FMV" youValue={$f(subject.fullMarketValue)} compValue={$f(parcel.fullMarketValue)} deltaValue={formatSignedComparableMoney(delta.fmv)} deltaTone="var(--gray2)" />
-                        <CompareMetricCard label="Assessed" youValue={$f(subject.assessedValue)} compValue={$f(parcel.assessedValue)} deltaValue={formatSignedComparableMoney(delta.assessed)} deltaTone={comparableDeltaTone(delta.assessed, true)} />
-                        <CompareMetricCard label="Equity %" youValue={subjectProfile.equity != null ? subjectProfile.equity + "%" : "-"} compValue={compProfile.equity != null ? compProfile.equity + "%" : "-"} deltaValue={formatSignedComparableCount(delta.equity, "%")} deltaTone={comparableDeltaTone(delta.equity, true)} />
+                        <CompareMetricCard label="FMV" youValue={$f(subject.fullMarketValue)} compValue={$f(parcel.fullMarketValue)} deltaValue={formatSignedComparableMoney(delta.fmv)} deltaTone={comparableDeltaTone(delta.fmv)} deltaInfo={buildComparableDeltaInfo("fmv", delta.fmv)} />
+                        <CompareMetricCard label="Assessed" youValue={$f(subject.assessedValue)} compValue={$f(parcel.assessedValue)} deltaValue={formatSignedComparableMoney(delta.assessed)} deltaTone={comparableDeltaTone(delta.assessed, true)} deltaInfo={buildComparableDeltaInfo("assessed", delta.assessed)} />
+                        <CompareMetricCard label="Equity %" youValue={subjectProfile.equity != null ? subjectProfile.equity + "%" : "-"} compValue={compProfile.equity != null ? compProfile.equity + "%" : "-"} deltaValue={formatSignedComparableCount(delta.equity, "%")} deltaTone={comparableDeltaTone(delta.equity, true)} deltaInfo={buildComparableDeltaInfo("equity", delta.equity)} />
                       </div>
                     </div>
 
                     <div style={{display:"grid",gap:10}}>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Physical comparison</div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
-                        <CompareMetricCard label="Living area" youValue={subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-"} compValue={compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-"} deltaValue={delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-"} />
-                        <CompareMetricCard label="Year built" youValue={subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-"} compValue={compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-"} deltaValue={delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-"} />
-                        <CompareMetricCard label="Bedrooms" youValue={subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-"} compValue={compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-"} deltaValue={delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-"} />
-                        <CompareMetricCard label="Baths" youValue={subjectProfile.bathText || "-"} compValue={compProfile.bathText || "-"} deltaValue={delta.baths != null ? formatSignedComparableCount(delta.baths) : "-"} />
+                        <CompareMetricCard label="Living area" youValue={subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-"} compValue={compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-"} deltaValue={delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-"} deltaTone={comparableDeltaTone(delta.livingArea)} deltaInfo={buildComparableDeltaInfo("livingArea", delta.livingArea)} />
+                        <CompareMetricCard label="Year built" youValue={subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-"} compValue={compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-"} deltaValue={delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-"} deltaTone={comparableDeltaTone(delta.yearBuilt)} deltaInfo={buildComparableDeltaInfo("yearBuilt", delta.yearBuilt)} />
+                        <CompareMetricCard label="Bedrooms" youValue={subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-"} compValue={compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-"} deltaValue={delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-"} deltaTone={comparableDeltaTone(delta.bedrooms)} deltaInfo={buildComparableDeltaInfo("bedrooms", delta.bedrooms)} />
+                        <CompareMetricCard label="Baths" youValue={subjectProfile.bathText || "-"} compValue={compProfile.bathText || "-"} deltaValue={delta.baths != null ? formatSignedComparableCount(delta.baths) : "-"} deltaTone={comparableDeltaTone(delta.baths)} deltaInfo={buildComparableDeltaInfo("baths", delta.baths)} />
                       </div>
                     </div>
 
@@ -5383,6 +5586,17 @@ const handleFile=useCallback(e=>{
     </>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
