@@ -1492,7 +1492,7 @@ const classifyGrievanceComparable = (subject, comp) => {
     kind: "does_not_support",
     badge: "Does not support grievance",
     headline: "Assessed higher than yours",
-    detail: "Assessed higher than yours - this comp would not help your grievance. It suggests your current assessment may be reasonable relative to this similar home.",
+    detail: "Assessed higher than yours - this comp would not help your grievance. It suggests your current assessment may be reasonable relative to this similar home. This comp is shown for context because it is the type of evidence the assessor could use to refute your grievance.",
     tone: "var(--red2)",
     border: "rgba(220,38,38,.22)",
     background: "rgba(220,38,38,.07)",
@@ -1588,11 +1588,144 @@ const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, met
   if(!comps.length) missing.push("Supporting comparable evidence - the current match set does not contain lower-assessed comps for an RP-524 package");
   missing.push("Reason for complaint selection on RP-524 (unequal, excessive, unlawful, or misclassification)");
   missing.push("Owner contact information and any representative details");
-  missing.push("Your requested value opinion or narrative explanation of the correction sought");
+  missing.push("Your requested value opinion or narrative explanation of the correction sought - use the auto-generated narrative above as a draft you can copy or modify.");
   missing.push("Signature, filing date, and any hearing attendance details required by the board");
   return { checklist, missing, narrative: buildGrievanceNarrative(subject, subjectProfile, neighborResult) };
 };
-const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
+const escapePrintableHtml = (value) => (value == null ? "" : String(value))
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;");
+const buildComparablePrintReportHtml = ({subject, subjectProfile, neighborResult, grievanceHelper, shareLink, includeContextComps=false}) => {
+  const reportTitle = includeContextComps ? "Comparable research report" : "RP-524 grievance package";
+  const comps = includeContextComps ? (neighborResult?.neighbors || []) : (neighborResult?.grievanceCandidates || []);
+  const generatedAt = new Date().toLocaleString();
+  const checklistRows = (grievanceHelper?.checklist || []).map(item => `
+    <tr>
+      <td>${escapePrintableHtml(item.label)}</td>
+      <td>${escapePrintableHtml(item.value)}</td>
+      <td>${escapePrintableHtml(item.note)}</td>
+    </tr>`).join("");
+  const missingRows = (grievanceHelper?.missing || []).map(item => `<li>${escapePrintableHtml(item)}</li>`).join("");
+  const compSections = comps.map((parcel, idx) => {
+    const profile = parcel?._compProfile || buildComparableProfile(parcel);
+    const delta = parcel?._compDelta || {};
+    const relevance = parcel?._grievanceRelevance || classifyGrievanceComparable(subject, parcel);
+    const reasons = (parcel?._compReasons || []).map(reason => `<li>${escapePrintableHtml(reason)}</li>`).join("");
+    return `
+      <section class="comp-card ${escapePrintableHtml(relevance.kind)}">
+        <div class="comp-head">
+          <div>
+            <div class="comp-title">Comp ${idx + 1}: ${escapePrintableHtml(parcel?.address || parcel?.parcelId || "Comparable")}</div>
+            <div class="comp-meta">${escapePrintableHtml(parcel?.parcelId || "")}${parcel?.owner1 ? ` | ${escapePrintableHtml(parcel.owner1)}` : ""}</div>
+          </div>
+          <div class="status ${escapePrintableHtml(relevance.kind)}">${escapePrintableHtml(relevance.badge)}</div>
+        </div>
+        <div class="status-copy"><strong>${escapePrintableHtml(relevance.headline)}.</strong> ${escapePrintableHtml(relevance.detail)}</div>
+        <table>
+          <thead><tr><th>Metric</th><th>You</th><th>Comp</th><th>Delta</th></tr></thead>
+          <tbody>
+            <tr><td>Assessed</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml($f(parcel?.assessedValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.assessed))}</td></tr>
+            <tr><td>FMV</td><td>${escapePrintableHtml($f(subject?.fullMarketValue))}</td><td>${escapePrintableHtml($f(parcel?.fullMarketValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.fmv))}</td></tr>
+            <tr><td>Equity %</td><td>${escapePrintableHtml(subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-")}</td><td>${escapePrintableHtml(profile?.equity != null ? profile.equity + "%" : "-")}</td><td>${escapePrintableHtml(formatSignedComparableCount(delta.equity, "%"))}</td></tr>
+            <tr><td>Living area</td><td>${escapePrintableHtml(subjectProfile?.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(profile?.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-")}</td></tr>
+            <tr><td>Year built</td><td>${escapePrintableHtml(subjectProfile?.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(profile?.yearBuilt != null ? String(profile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-")}</td></tr>
+            <tr><td>Bedrooms</td><td>${escapePrintableHtml(subjectProfile?.bedrooms != null ? String(subjectProfile.bedrooms) : "-")}</td><td>${escapePrintableHtml(profile?.bedrooms != null ? String(profile.bedrooms) : "-")}</td><td>${escapePrintableHtml(delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-")}</td></tr>
+            <tr><td>Baths</td><td>${escapePrintableHtml(subjectProfile?.bathText || "-")}</td><td>${escapePrintableHtml(profile?.bathText || "-")}</td><td>${escapePrintableHtml(delta.baths != null ? formatSignedComparableCount(delta.baths) : "-")}</td></tr>
+          </tbody>
+        </table>
+        <div class="why-title">Why this home was selected</div>
+        <ul>${reasons || "<li>No selection reasons were recorded for this comp.</li>"}</ul>
+      </section>`;
+  }).join("");
+  const summaryHtml = neighborResult?.grievanceSupportPool?.length ? `
+    <section>
+      <h2>Grievance summary</h2>
+      <div class="summary-grid">
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgFMV))}</div><div>Supporting comp FMV average</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgAssessed))}</div><div>Supporting comp assessed average</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.grievanceAvgEquity != null ? neighborResult.grievanceAvgEquity + "%" : "-")}</div><div>Supporting comp equity average</div></div>
+      </div>
+    </section>` : `
+    <section>
+      <h2>Grievance summary</h2>
+      <p>No lower-assessed comps are available in the current physical match set, so the grievance package has no supporting comp evidence yet.</p>
+    </section>`;
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${escapePrintableHtml(reportTitle)}</title>
+<style>
+  body{font-family:Arial,sans-serif;color:#0f172a;margin:32px;line-height:1.45}
+  h1,h2,h3{margin:0 0 10px}
+  h1{font-size:24px}
+  h2{font-size:17px;margin-top:22px}
+  p{margin:0 0 10px}
+  .meta{color:#475569;font-size:12px;margin-bottom:18px}
+  .links a{color:#166534;text-decoration:none;font-weight:700}
+  .section{margin-top:22px}
+  .hero{background:#ecfdf5;border:1px solid #86efac;border-radius:12px;padding:16px}
+  .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .summary-box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px}
+  .summary-value{font-weight:700;font-size:18px;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #cbd5e1;padding:8px;vertical-align:top;text-align:left;font-size:12px}
+  th{background:#f8fafc}
+  ul{margin:8px 0 0 18px}
+  .comp-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:14px;page-break-inside:avoid}
+  .comp-card.supports{border-color:#86efac;background:#f0fdf4}
+  .comp-card.does_not_support{border-color:#fecaca;background:#fef2f2}
+  .comp-card.neutral{border-color:#cbd5e1;background:#f8fafc}
+  .comp-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .comp-title{font-size:16px;font-weight:700}
+  .comp-meta{font-size:12px;color:#475569;margin-top:3px}
+  .status{font-size:11px;font-weight:700;border-radius:999px;padding:5px 10px;border:1px solid currentColor}
+  .status.supports{color:#166534}
+  .status.does_not_support{color:#b91c1c}
+  .status.neutral{color:#475569}
+  .status-copy{font-size:12px;margin-top:10px}
+  .why-title{font-weight:700;font-size:12px;margin-top:10px}
+  @media print{
+    body{margin:16px}
+    a{text-decoration:none;color:inherit}
+  }
+</style>
+</head>
+<body>
+  <h1>${escapePrintableHtml(reportTitle)}</h1>
+  <div class="meta">Generated ${escapePrintableHtml(generatedAt)} | Subject: ${escapePrintableHtml(subject?.address || "-")} | Parcel ID: ${escapePrintableHtml(subject?.parcelId || "-")}</div>
+  <section class="hero">
+    <h2>Shareable comparable snapshot</h2>
+    <p>${escapePrintableHtml(shareLink || "No share link available")}</p>
+    <p class="links"><a href="${escapePrintableHtml(grievanceResourceUrls.rp524FormUrl)}">RP-524 form</a> | <a href="${escapePrintableHtml(grievanceResourceUrls.grievanceBookletUrl)}">Grievance booklet</a></p>
+    <p>Use the browser print dialog destination to print on paper or choose Save as PDF.</p>
+  </section>
+  ${summaryHtml}
+  <section class="section">
+    <h2>Auto-generated grievance narrative</h2>
+    <p>${escapePrintableHtml(grievanceHelper?.narrative || "No grievance narrative is available because no lower-assessed supporting comp is currently in the match set.")}</p>
+  </section>
+  <section class="section">
+    <h2>Data this app can fill for you</h2>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th><th>How to use it</th></tr></thead>
+      <tbody>${checklistRows}</tbody>
+    </table>
+  </section>
+  <section class="section">
+    <h2>Still needed from the homeowner</h2>
+    <ul>${missingRows}</ul>
+  </section>
+  <section class="section">
+    <h2>${includeContextComps ? "Comparable homes shown in this report" : "Supporting comparable homes in this grievance package"}</h2>
+    ${compSections || "<p>No comparable homes are available for this print selection.</p>"}
+  </section>
+</body>
+</html>`;
+};const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
   const candidate = buildComparableCandidate(subject, comp);
   if(candidate) return candidate;
   const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
@@ -3225,6 +3358,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
   const [neighborResult,setNeighborResult]=useState(null);
   const [compareSnapshotMessage,setCompareSnapshotMessage]=useState("");
   const [copiedShareLink,setCopiedShareLink]=useState(false);
+  const [printMessage,setPrintMessage]=useState("");
   const [compareScrollTick,setCompareScrollTick]=useState(0);
   const requestedSnapshotRef = useRef(parseComparableSnapshotSearch(typeof window!=="undefined" ? window.location.search : ""));
   const hydratedSnapshotRef = useRef(false);
@@ -3260,6 +3394,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     setNeighborAddr(parcel.address || "");
     setNeighborResult(nextResult);
     setCopiedShareLink(false);
+    setPrintMessage("");
     setView("neighbor");
     const warnings = [];
     if(nextResult?.snapshot?.datasetMismatch){
@@ -3282,6 +3417,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     if(!parcel){
       setNeighborResult(null);
       setCompareSnapshotMessage("");
+      setPrintMessage("");
       return;
     }
     focusNeighborParcel(parcel);
@@ -3300,6 +3436,24 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     const ok = await copyTextToClipboard(shareLink);
     setCopiedShareLink(!!ok);
   }, [shareLink]);
+  const openPrintableReport = useCallback((includeContextComps=false) => {
+    if(!neighborResult?.p) return;
+    const subject = neighborResult.p;
+    const subjectProfile = neighborResult.subjectProfile || buildComparableProfile(subject);
+    const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, neighborResult, meta);
+    const reportHtml = buildComparablePrintReportHtml({ subject, subjectProfile, neighborResult, grievanceHelper, shareLink, includeContextComps });
+    const printWindow = typeof window!=="undefined" ? window.open("", "_blank") : null;
+    if(!printWindow){
+      setPrintMessage("The print window was blocked. Allow pop-ups for this site, then try again.");
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => printWindow.print();
+    setPrintMessage(includeContextComps ? "Opened a printable report with both grievance-supporting and context comps. Use the print destination to print or Save as PDF." : "Opened a grievance-only print package. Use the print destination to print or Save as PDF.");
+  }, [meta, neighborResult, shareLink]);
 
   useEffect(()=>{
     const requestedSnapshot = requestedSnapshotRef.current;
@@ -3453,15 +3607,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
       {view==="neighbor"&&<div>
         <InfoBox icon="Compare" title="Comparable Homes for an Assessment Grievance" color="#a78bfa">
           This tool ranks <b style={{color:"var(--white)"}}>physically similar homes</b> and now creates a <b style={{color:"var(--white)"}}>shareable snapshot link</b> that opens the same parcel and the same comparable set on GitHub Pages or locally. Each comparable card shows value, home details, absentee context, and owner-portfolio context so residents can evaluate the evidence without leaving this view.
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
-            <a href={grievanceHelperLinks.rp524FormUrl} target="_blank" rel="noreferrer" style={{background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.24)",color:"var(--blue3)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open RP-524 form</a>
-            <a href={grievanceHelperLinks.grievanceBookletUrl} target="_blank" rel="noreferrer" style={{background:"rgba(13,148,136,.12)",border:"1px solid rgba(13,148,136,.24)",color:"var(--teal2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open grievance booklet</a>
-          </div>
           <div style={{fontSize:10,color:"var(--gray3)",marginTop:10}}>Document URLs are managed in <b style={{color:"var(--gray2)"}}>grievance-settings.json</b>.</div>
         </InfoBox>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Enter Your Address to Compare</div>
-          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");}}} label="Load My Home"/>
+          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setPrintMessage("");}}} label="Load My Home"/>
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
             <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Compare</button>
@@ -3474,7 +3624,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
             );
             const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, neighborResult, meta);
             return <div ref={compareResultRef} className="fi">
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+              <div className="print-hide" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
                 <div>
                   <div style={{fontSize:11,color:"var(--gray2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Shareable comparable snapshot</div>
                   <div style={{fontSize:11,color:"var(--gray3)",marginTop:4,maxWidth:760}}>Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.</div>
@@ -3482,10 +3632,12 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   {copiedShareLink&&<span style={{fontSize:11,color:"var(--green2)",fontWeight:700}}>Link copied</span>}
                   <button onClick={copyShareLink} disabled={!shareLink} style={{background:shareLink?"var(--blue)":"rgba(148,163,184,.18)",color:shareLink?"white":"var(--gray3)",border:"none",borderRadius:8,padding:"8px 14px",cursor:shareLink?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Copy share link</button>
+                  <button onClick={()=>openPrintableReport(false)} disabled={!neighborResult?.p} style={{background:"var(--green2)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Print grievance package</button>
+                  <button onClick={()=>openPrintableReport(true)} disabled={!neighborResult?.p} style={{background:"rgba(15,23,42,.06)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Print with context comps</button>
                 </div>
               </div>
 
-              {compareSnapshotMessage&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12}}>{compareSnapshotMessage}</div>}
+              {(compareSnapshotMessage || printMessage)&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12,display:"grid",gap:6}}>{compareSnapshotMessage&&<div>{compareSnapshotMessage}</div>}{printMessage&&<div>{printMessage}</div>}</div>}
 
               <div className="cols-2" style={{display:"grid",gap:14,marginBottom:14}}>
                 <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px",minWidth:0}}>
@@ -3548,28 +3700,38 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
                 </div>
               </div>
 
-              <div style={{background:"rgba(13,148,136,.06)",border:"1px solid rgba(13,148,136,.18)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:700,color:"var(--teal2)",marginBottom:6}}>RP-524 filing helper</div>
-                <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.6,marginBottom:10}}>Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and only the lower-assessed comparable evidence below. Higher-assessed comps stay visible later for research, but they are excluded from the grievance package automatically.</div>
-                {grievanceHelper.narrative ? <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray3)",lineHeight:1.65,marginBottom:12}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Auto-generated grievance narrative</div>
+              <div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--green2)",marginBottom:6}}>RP-524 filing helper</div>
+                    <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,maxWidth:920}}>Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and only the lower-assessed comparable evidence below. Higher-assessed comps stay visible later for research, but they are excluded from the grievance package automatically.</div>
+                  </div>
+                  <div className="print-hide" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <a href={grievanceHelperLinks.rp524FormUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.14)",border:"1px solid rgba(21,128,61,.26)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open RP-524 form</a>
+                    <a href={grievanceHelperLinks.grievanceBookletUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open grievance booklet</a>
+                  </div>
+                </div>
+                <div style={{fontSize:10,color:"var(--gray2)",marginBottom:12}}>These links are included here because this is the section the homeowner will use to complete RP-524. Document URLs are managed in <b style={{color:"var(--gray)"}}>grievance-settings.json</b>.</div>
+                {grievanceHelper.narrative ? <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.65,marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Auto-generated grievance narrative</div>
                   {grievanceHelper.narrative}
-                </div> : <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray3)",lineHeight:1.55,marginBottom:12}}>No narrative is generated yet because the current physical match set does not contain a lower-assessed comp that supports your grievance.</div>}
+                </div> : <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.55,marginBottom:12}}>No narrative is generated yet because the current physical match set does not contain a lower-assessed comp that supports your grievance.</div>}
                 <div className="cols-2" style={{display:"grid",gap:12}}>
-                  <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Data this app can fill for you</div>
+                  <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Data this app can fill for you</div>
                     <div style={{display:"grid",gap:6}}>
                       {grievanceHelper.checklist.map((item, idx)=><div key={item.label + idx} style={{display:"grid",gap:2}}>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>{item.label}</span><span style={{fontWeight:700,textAlign:"right",maxWidth:"62%",overflowWrap:"anywhere",wordBreak:"break-word"}}>{item.value}</span></div>
-                        <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.45}}>{item.note}</div>
+                        <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.45}}>{item.note}</div>
                       </div>)}
                     </div>
                   </div>
-                  <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(15,23,42,.08)",borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Still needed from the homeowner</div>
+                  <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Still needed from the homeowner</div>
                     <div style={{display:"grid",gap:6}}>
-                      {grievanceHelper.missing.map((item, idx)=><div key={item + idx} style={{fontSize:11,color:"var(--gray3)",lineHeight:1.5}}>- {item}</div>)}
+                      {grievanceHelper.missing.map((item, idx)=><div key={item + idx} style={{fontSize:11,color:"var(--gray)",lineHeight:1.5}}>- {item}</div>)}
                     </div>
+                    <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55,marginTop:10}}>For the requested value narrative, the draft paragraph above is already prepared for the homeowner to use as-is or edit before filing.</div>
                   </div>
                 </div>
               </div>
@@ -5589,6 +5751,16 @@ const handleFile=useCallback(e=>{
     </>
   );
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
