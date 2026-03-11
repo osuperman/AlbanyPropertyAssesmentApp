@@ -53686,6 +53686,8 @@ self.onmessage = function(ev){
     const [neighborResult, setNeighborResult] = (0, import_react45.useState)(null);
     const [compareSnapshotMessage, setCompareSnapshotMessage] = (0, import_react45.useState)("");
     const [copiedShareLink, setCopiedShareLink] = (0, import_react45.useState)(false);
+    const [copiedNarrative, setCopiedNarrative] = (0, import_react45.useState)(false);
+    const [filingChecklistState, setFilingChecklistState] = (0, import_react45.useState)({});
     const [printMessage, setPrintMessage] = (0, import_react45.useState)("");
     const [compareScrollTick, setCompareScrollTick] = (0, import_react45.useState)(0);
     const requestedSnapshotRef = (0, import_react45.useRef)(parseComparableSnapshotSearch(typeof window !== "undefined" ? window.location.search : ""));
@@ -53719,6 +53721,8 @@ self.onmessage = function(ev){
       setNeighborAddr(parcel.address || "");
       setNeighborResult(nextResult);
       setCopiedShareLink(false);
+      setCopiedNarrative(false);
+      setFilingChecklistState({});
       setPrintMessage("");
       setView("neighbor");
       const warnings = [];
@@ -53742,6 +53746,8 @@ self.onmessage = function(ev){
       if (!parcel) {
         setNeighborResult(null);
         setCompareSnapshotMessage("");
+        setCopiedNarrative(false);
+        setFilingChecklistState({});
         setPrintMessage("");
         return;
       }
@@ -53761,6 +53767,14 @@ self.onmessage = function(ev){
       const ok = await copyTextToClipboard(shareLink);
       setCopiedShareLink(!!ok);
     }, [shareLink]);
+    const copyNarrative = (0, import_react45.useCallback)(async (narrative) => {
+      if (!narrative) return;
+      const ok = await copyTextToClipboard(narrative);
+      setCopiedNarrative(!!ok);
+    }, []);
+    const toggleChecklistItem = (0, import_react45.useCallback)((key) => {
+      setFilingChecklistState((prev) => ({ ...prev, [key]: !prev[key] }));
+    }, []);
     const openPrintableReport = (0, import_react45.useCallback)((includeContextComps = false) => {
       if (!neighborResult?.p) return;
       const subject = neighborResult.p;
@@ -53820,6 +53834,11 @@ self.onmessage = function(ev){
       const id = setTimeout(() => setCopiedShareLink(false), 1800);
       return () => clearTimeout(id);
     }, [copiedShareLink]);
+    (0, import_react45.useEffect)(() => {
+      if (!copiedNarrative) return;
+      const id = setTimeout(() => setCopiedNarrative(false), 2e3);
+      return () => clearTimeout(id);
+    }, [copiedNarrative]);
     (0, import_react45.useEffect)(() => {
       if (!compareScrollTick || !neighborResult) return;
       const runner = () => compareResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });

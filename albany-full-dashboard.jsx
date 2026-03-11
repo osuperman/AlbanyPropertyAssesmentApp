@@ -3380,6 +3380,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
   const [neighborResult,setNeighborResult]=useState(null);
   const [compareSnapshotMessage,setCompareSnapshotMessage]=useState("");
   const [copiedShareLink,setCopiedShareLink]=useState(false);
+  const [copiedNarrative,setCopiedNarrative]=useState(false);
+  const [filingChecklistState,setFilingChecklistState]=useState({});
   const [printMessage,setPrintMessage]=useState("");
   const [compareScrollTick,setCompareScrollTick]=useState(0);
   const requestedSnapshotRef = useRef(parseComparableSnapshotSearch(typeof window!=="undefined" ? window.location.search : ""));
@@ -3416,6 +3418,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     setNeighborAddr(parcel.address || "");
     setNeighborResult(nextResult);
     setCopiedShareLink(false);
+    setCopiedNarrative(false);
+    setFilingChecklistState({});
     setPrintMessage("");
     setView("neighbor");
     const warnings = [];
@@ -3439,6 +3443,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     if(!parcel){
       setNeighborResult(null);
       setCompareSnapshotMessage("");
+      setCopiedNarrative(false);
+      setFilingChecklistState({});
       setPrintMessage("");
       return;
     }
@@ -3458,6 +3464,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     const ok = await copyTextToClipboard(shareLink);
     setCopiedShareLink(!!ok);
   }, [shareLink]);
+  const copyNarrative = useCallback(async (narrative) => {
+    if(!narrative) return;
+    const ok = await copyTextToClipboard(narrative);
+    setCopiedNarrative(!!ok);
+  }, []);
+  const toggleChecklistItem = useCallback((key) => {
+    setFilingChecklistState(prev=>({ ...prev, [key]: !prev[key] }));
+  }, []);
   const openPrintableReport = useCallback((includeContextComps=false) => {
     if(!neighborResult?.p) return;
     const subject = neighborResult.p;
@@ -3520,6 +3534,12 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
     const id = setTimeout(()=>setCopiedShareLink(false), 1800);
     return ()=>clearTimeout(id);
   }, [copiedShareLink]);
+
+  useEffect(()=>{
+    if(!copiedNarrative) return;
+    const id = setTimeout(()=>setCopiedNarrative(false), 2000);
+    return ()=>clearTimeout(id);
+  }, [copiedNarrative]);
 
   useEffect(()=>{
     if(!compareScrollTick || !neighborResult) return;
@@ -5790,6 +5810,8 @@ const handleFile=useCallback(e=>{
     </>
   );
 }
+
+
 
 
 
