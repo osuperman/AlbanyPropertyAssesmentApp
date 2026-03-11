@@ -48988,7 +48988,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   var ALBANY_SAFE_BOUNDS = { south: 42.57, west: -73.91, north: 42.76, east: -73.67 };
   var BOUNDARY_RENDER_MIN_ZOOM = 12;
   var POINT_RENDER_MIN_ZOOM = 14;
-  var POLYGON_RENDER_MIN_ZOOM = 15;
+  var POLYGON_RENDER_MIN_ZOOM = 12;
   var MAX_POLYGON_FEATURES = 1800;
   var MAX_POINT_FEATURES = 1400;
   var BOUNDARY_PALETTE = [
@@ -49108,7 +49108,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     for (let i = 0; i < text.length; i += 1) hash = (hash << 5) - hash + text.charCodeAt(i) | 0;
     return BOUNDARY_PALETTE[Math.abs(hash) % BOUNDARY_PALETTE.length];
   };
-  var LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, advanced = true, utils }) => {
+  var LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, utils }) => {
     const {
       normalizeParcelId: normalizeParcelId2,
       FC: FC2,
@@ -49117,12 +49117,20 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       eqRFast: eqRFast2,
       propClassLabel: propClassLabel2,
       isAbsenteeFast: isAbsenteeFast2,
+      getAbsenteeModelFast: getAbsenteeModelFast2,
       getParcelWarnings: getParcelWarnings2,
       $f: $f2,
       SectionTitle: SectionTitle2,
       Sub: Sub2,
       Card: Card2,
-      Badge: Badge2
+      Badge: Badge2,
+      inventoryStyle: inventoryStyle2,
+      inventoryYearBuilt: inventoryYearBuilt2,
+      inventorySqft: inventorySqft2,
+      inventoryBedrooms: inventoryBedrooms2,
+      inventoryBathText: inventoryBathText2,
+      hasInventoryProfile: hasInventoryProfile2,
+      getOwnerPortfolioGroup
     } = utils;
     const mapElRef = (0, import_react44.useRef)(null);
     const mapRef = (0, import_react44.useRef)(null);
@@ -49154,12 +49162,18 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     const [showNeighborhoodOverlay, setShowNeighborhoodOverlay] = (0, import_react44.useState)(true);
     const [showAssociationOverlay, setShowAssociationOverlay] = (0, import_react44.useState)(false);
     const [legendOpen, setLegendOpen] = (0, import_react44.useState)({ coloring: true, boundaries: true });
+    const [ownerPortfolioOpen, setOwnerPortfolioOpen] = (0, import_react44.useState)(false);
+    const pendingJumpRef = (0, import_react44.useRef)(null);
+    const handledJumpTokenRef = (0, import_react44.useRef)(null);
     (0, import_react44.useEffect)(() => {
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
       };
     }, []);
+    (0, import_react44.useEffect)(() => {
+      setOwnerPortfolioOpen(false);
+    }, [selectedParcelId]);
     const [renderStats, setRenderStats] = (0, import_react44.useState)({ visible: 0, polygons: 0, points: 0, neighborhoods: 0, associations: 0, polygonCandidates: 0, pointCandidates: 0, polygonCapped: false, pointCapped: false });
     (0, import_react44.useEffect)(() => {
       if (advanced) return;
@@ -49362,6 +49376,27 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       if (!bounds.isValid()) return;
       map3.fitBounds(bounds, { padding: [36, 36], maxZoom: 17 });
     }, [focusParcel, mappedById, searchMatches]);
+    (0, import_react44.useEffect)(() => {
+      if (!jumpRequest || !jumpRequest.token || handledJumpTokenRef.current === jumpRequest.token) return;
+      handledJumpTokenRef.current = jumpRequest.token;
+      pendingJumpRef.current = jumpRequest;
+      didFitInitialRef.current = true;
+      if (jumpRequest.address) setAddrSearch(jumpRequest.address);
+      if (jumpRequest.parcelId) setSelectedParcelId(jumpRequest.parcelId);
+    }, [jumpRequest]);
+    (0, import_react44.useEffect)(() => {
+      const pending = pendingJumpRef.current;
+      if (!pending || !mapRef.current) return;
+      if (pending.parcelId && mappedById.has(pending.parcelId)) {
+        focusParcel(pending.parcelId, 18);
+        pendingJumpRef.current = null;
+        return;
+      }
+      if (!pending.parcelId && searchMatches[0]) {
+        focusParcel(searchMatches[0].parcelId, 18);
+        pendingJumpRef.current = null;
+      }
+    }, [focusParcel, mappedById, searchMatches, viewport]);
     const stepZoom = (0, import_react44.useCallback)((direction) => {
       const map3 = mapRef.current;
       if (!map3) return;
@@ -49400,10 +49435,10 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }, [mapRuntimeReady]);
     (0, import_react44.useEffect)(() => {
       const map3 = mapRef.current;
-      if (!map3 || !datasetLatLngBounds || didFitInitialRef.current) return;
+      if (!map3 || !datasetLatLngBounds || didFitInitialRef.current || pendingJumpRef.current || selectedParcelId) return;
       map3.fitBounds(datasetLatLngBounds, { padding: [30, 30], maxZoom: 16 });
       didFitInitialRef.current = true;
-    }, [datasetLatLngBounds]);
+    }, [datasetLatLngBounds, selectedParcelId]);
     (0, import_react44.useEffect)(() => {
       const map3 = mapRef.current;
       const L = getLeafletRuntime();
@@ -49558,9 +49593,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         associationVisibleCount ? "Association boundaries" : null
       ].filter(Boolean);
       if (currentZoom < BOUNDARY_RENDER_MIN_ZOOM) {
-        setMapStatus(`Zoom to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood boundaries, then z${POINT_RENDER_MIN_ZOOM}+ for parcel locations.`);
+        setMapStatus(`Zoom to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries, then z${POINT_RENDER_MIN_ZOOM}+ for parcel locations.`);
       } else if (currentZoom < POINT_RENDER_MIN_ZOOM) {
-        setMapStatus(`Neighborhood boundaries are active. Zoom to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`);
+        setMapStatus(`Neighborhood and parcel boundaries are active. Zoom to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`);
       } else if (polygonCapped || pointCapped) {
         const cappedKinds = [polygonCapped ? "boundaries" : null, pointCapped ? "markers" : null].filter(Boolean).join(" and ");
         setMapStatus(`This view is limiting ${cappedKinds} for performance. Zoom in for full parcel detail.`);
@@ -49578,21 +49613,1456 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }, [onDrill, selectedParcel]);
     const selectedWarnings = selectedParcel ? getParcelWarnings2(selectedParcel) : [];
     const selectedParcelMapsUrl = selectedParcel ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedParcel.address || selectedParcel.parcelId}, Albany, NY ${selectedParcel.zip || ""}`.trim())}` : "#";
+    const selectedInventoryRows = selectedParcel && hasInventoryProfile2(selectedParcel) ? [
+      ["Building style", inventoryStyle2(selectedParcel) || "Not available"],
+      ["Year built", inventoryYearBuilt2(selectedParcel) || "Not available"],
+      ["Living area", inventorySqft2(selectedParcel) ? `${inventorySqft2(selectedParcel).toLocaleString()} sq ft` : "Not available"],
+      ["Bedrooms / baths", [
+        inventoryBedrooms2(selectedParcel) != null ? `${inventoryBedrooms2(selectedParcel)} bed` : null,
+        inventoryBathText2(selectedParcel) || null
+      ].filter(Boolean).join(" | ") || "Not available"]
+    ] : [];
+    const selectedOwnerPortfolio = (0, import_react44.useMemo)(() => {
+      if (!selectedParcel || typeof getOwnerPortfolioGroup !== "function") return null;
+      const group = getOwnerPortfolioGroup(selectedParcel);
+      return group && group.propertyCount > 1 && Array.isArray(group.parcels) ? group : null;
+    }, [getOwnerPortfolioGroup, selectedParcel]);
     const selectedInCompare = selectedParcel ? compareIds.has(selectedParcel.parcelId) : false;
     const legendItems = LEGEND[colorBy] || [];
     const overlayNotice = (0, import_react44.useMemo)(() => {
-      if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
+      if (zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM) return `Zoom in to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries.`;
+      if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Parcel boundaries are active. Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
       if (renderStats.polygonCapped || renderStats.pointCapped) return "This view is trimmed for speed. Zoom in for complete parcel detail.";
       if (!hasParcelGeometry) return "Point locations are active because parcel boundary geometry is not loaded.";
       return null;
     }, [hasParcelGeometry, renderStats.pointCapped, renderStats.polygonCapped, zoomDisplay]);
-    return /* @__PURE__ */ import_react44.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react44.default.createElement(SectionTitle2, null, advanced ? "Research Map" : "Neighborhood Map"), /* @__PURE__ */ import_react44.default.createElement(Sub2, null, advanced ? hasParcelGeometry ? "Leaflet parcel map with Albany parcel boundaries and point fallback for unmatched records." : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map can only show point fallback." : hasParcelGeometry ? "Resident map uses parcel boundaries when available and keeps the controls limited to the civic questions most people actually ask." : "Resident map is active, but the parcel boundary file is not loaded so the map is limited to point fallback."), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", fontWeight: 700 } }, advanced ? "Color by" : "Resident view"), advanced ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setColorBy(k2), style: { background: colorBy === k2 ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k2 ? "var(--teal)" : "var(--border)"}`, color: colorBy === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)) : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setViewPreset(k2), style: { background: viewPreset === k2 ? "var(--blue)" : "var(--card2)", border: `1px solid ${viewPreset === k2 ? "var(--blue)" : "var(--border)"}`, color: viewPreset === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)), advanced ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowPropertyOverlay((v) => !v), disabled: !hasParcelGeometry, style: { background: hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.16)" : "var(--card2)", border: `1px solid ${hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.35)" : "var(--border)"}`, color: hasParcelGeometry ? showPropertyOverlay ? "var(--teal2)" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasParcelGeometry ? "pointer" : "not-allowed", opacity: hasParcelGeometry ? 1 : 0.72 } }, "Parcel boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowParcelPoints((v) => !v), style: { background: showParcelPoints ? "rgba(37,99,235,.16)" : "var(--card2)", border: `1px solid ${showParcelPoints ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: showParcelPoints ? "var(--blue3)" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, hasParcelGeometry ? "Show point markers" : "Point locations"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowAssociationOverlay((v) => !v), disabled: !hasAssociationOverlayData, style: { background: showAssociationOverlay ? "rgba(124,58,237,.14)" : "var(--card2)", border: `1px solid ${showAssociationOverlay ? "rgba(124,58,237,.28)" : "var(--border)"}`, color: hasAssociationOverlayData ? showAssociationOverlay ? "#7c3aed" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasAssociationOverlayData ? "pointer" : "not-allowed", opacity: hasAssociationOverlayData ? 1 : 0.72 } }, "Association boundaries")) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", flex: "1 1 280px" } }, { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset]), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "+"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(-1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "-"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: resetView, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Reset view"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" } }, zoomDisplay ? `z${zoomDisplay}` : "..."))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement(AddressAutocompleteInput, { parcels, value: addrSearch, onChange: setAddrSearch, onSelectParcel: (p) => {
+    return /* @__PURE__ */ import_react44.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react44.default.createElement(SectionTitle2, null, "Application Map"), /* @__PURE__ */ import_react44.default.createElement(Sub2, null, hasParcelGeometry ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace." : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", fontWeight: 700 } }, advanced ? "Color by" : "Resident view"), advanced ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setColorBy(k2), style: { background: colorBy === k2 ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k2 ? "var(--teal)" : "var(--border)"}`, color: colorBy === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)) : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setViewPreset(k2), style: { background: viewPreset === k2 ? "var(--blue)" : "var(--card2)", border: `1px solid ${viewPreset === k2 ? "var(--blue)" : "var(--border)"}`, color: viewPreset === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)), advanced ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowPropertyOverlay((v) => !v), disabled: !hasParcelGeometry, style: { background: hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.16)" : "var(--card2)", border: `1px solid ${hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.35)" : "var(--border)"}`, color: hasParcelGeometry ? showPropertyOverlay ? "var(--teal2)" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasParcelGeometry ? "pointer" : "not-allowed", opacity: hasParcelGeometry ? 1 : 0.72 } }, "Parcel boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowParcelPoints((v) => !v), style: { background: showParcelPoints ? "rgba(37,99,235,.16)" : "var(--card2)", border: `1px solid ${showParcelPoints ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: showParcelPoints ? "var(--blue3)" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, hasParcelGeometry ? "Show point markers" : "Point locations"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowAssociationOverlay((v) => !v), disabled: !hasAssociationOverlayData, style: { background: showAssociationOverlay ? "rgba(124,58,237,.14)" : "var(--card2)", border: `1px solid ${showAssociationOverlay ? "rgba(124,58,237,.28)" : "var(--border)"}`, color: hasAssociationOverlayData ? showAssociationOverlay ? "#7c3aed" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasAssociationOverlayData ? "pointer" : "not-allowed", opacity: hasAssociationOverlayData ? 1 : 0.72 } }, "Association boundaries")) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", flex: "1 1 280px" } }, { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset]), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "+"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(-1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "-"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: resetView, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Reset view"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" } }, zoomDisplay ? `z${zoomDisplay}` : "..."))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement(AddressAutocompleteInput, { parcels, value: addrSearch, onChange: setAddrSearch, onSelectParcel: (p) => {
       setAddrSearch(p.address);
       focusParcel(p.parcelId, 18);
     }, onEnter: () => {
       if (searchMatches[0]) focusParcel(searchMatches[0].parcelId, 18);
-    }, placeholder: "Search address, owner, or parcel ID", inputStyle: { width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }, wrapperStyle: { flex: 1, minWidth: 220 } }), addrSearch && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setAddrSearch(""), style: { ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" } }, "Clear"), searchMatches.length > 1 && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: fitSearchMatches, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Fit matches"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" } }, hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, mapStatus)))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,360px)", gap: 14, alignItems: "start" } }, /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ import_react44.default.createElement("div", null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, advanced ? "Leaflet parcel inspection" : "Leaflet resident parcel map"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, hasParcelGeometry ? `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, parcel locations at z${POINT_RENDER_MIN_ZOOM}+, and parcel boundaries at z${POLYGON_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : `${renderStats.visible.toLocaleString()} visible parcels`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "relative", borderTop: "none" } }, !mapRuntimeReady ? /* @__PURE__ */ import_react44.default.createElement("div", { style: { height: 620, display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { maxWidth: 520, textAlign: "center" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 } }, "Leaflet is not ready"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, color: "var(--gray2)", lineHeight: 1.7, marginTop: 10 } }, "The base mapping assets did not load. Check internet access for the browser session, then refresh."))) : /* @__PURE__ */ import_react44.default.createElement("div", { ref: mapElRef, style: { height: 620, width: "100%", background: "#dbe4ee" } }), overlayNotice && /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", top: 14, left: 14, maxWidth: 360, background: "rgba(248,250,252,0.96)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 12, padding: "10px 12px", fontSize: 12, color: "#0f172a", boxShadow: "0 8px 20px rgba(15,23,42,.08)" } }, overlayNotice), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", bottom: 10, left: 12, right: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", pointerEvents: "none" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, renderStats.visible.toLocaleString(), " visible parcels | ", renderStats.polygons.toLocaleString(), " parcel boundaries | ", renderStats.points.toLocaleString(), " markers", renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : "", renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, "Scroll to zoom | Drag to pan | Click to inspect | Double-click parcel to fit")))), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, selectedParcel ? "Selected parcel" : "Map inspector"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0 } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement("a", { href: selectedParcelMapsUrl, target: "_blank", rel: "noreferrer", style: { color: "inherit", textDecoration: "underline", textUnderlineOffset: 3 } }, selectedParcel.address || selectedParcel.parcelId) : addrSearch ? "Search results" : "Use the map")), selectedParcel && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setSelectedParcelId(null), style: { background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", display: "grid", gap: 14 } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#6366f1" }, propClassLabel2(selectedParcel)), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: selectedItem?.geom ? "#0d9488" : "#f59e0b" }, selectedItem?.geom ? "Boundary loaded" : "Point location only"), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: FC2[eqFlagFast2(selectedParcel)] }, FL2[eqFlagFast2(selectedParcel)]), isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#f97316" }, "Absentee")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Full market value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5 } }, $f2(selectedParcel.fullMarketValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Assessed value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5 } }, $f2(selectedParcel.assessedValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700, marginTop: 4 } }, selectedParcel.owner1 || "Unknown owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6 } }, selectedParcel.mailAddress || "Mailing address not available"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6 } }, selectedParcel.neighborhood || selectedParcel.neighborhoodAssociation || "Neighborhood unknown", selectedParcel.neighborhoodAssociation && selectedParcel.neighborhoodAssociation !== selectedParcel.neighborhood ? ` | ${selectedParcel.neighborhoodAssociation}` : "")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Equity ratio"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, color: FC2[eqFlagFast2(selectedParcel)] } }, eqRFast2(selectedParcel), "%"))), selectedWarnings.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" } }, selectedWarnings.slice(0, 4).map((w) => /* @__PURE__ */ import_react44.default.createElement("div", { key: w, style: { fontSize: 12, color: "var(--gray2)" } }, w.replace(/_/g, " ")))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => focusParcel(selectedParcel.parcelId, 18), style: { background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px" } }, "Center on parcel"), typeof onCompare === "function" && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => onCompare(selectedParcel), style: { background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px" } }, selectedInCompare ? "\u2713 Compare" : "+ Compare"))) : addrSearch ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 8 } }, searchMatches.length > 0 ? searchMatches.map((p) => /* @__PURE__ */ import_react44.default.createElement("button", { key: p.parcelId, onClick: () => focusParcel(p.parcelId, 18), style: { textAlign: "left", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, p.address || "Address unavailable"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 3 } }, p.owner1 || "Unknown owner", " | Parcel ", p.parcelId))) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7 } }, "No mapped parcels match that search."))) : /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, residentMode ? "Current resident view" : "Start here"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7, marginTop: 6 } }, residentMode ? { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset] : "Search an address or owner name, or click a parcel directly.")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, coloring: !prev.coloring })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Current coloring"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.coloring ? "Hide" : "Show")), legendOpen.coloring && /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 } }, legendItems.map(([label, color2]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: color2, border: "1px solid rgba(255,255,255,.18)", flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, label))))), boundaryLegendItems.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, boundaries: !prev.boundaries })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Boundary legend"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.boundaries ? "Hide" : "Show")), legendOpen.boundaries && /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "0 14px 12px", marginTop: -2 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 5 } }, advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 } }, boundaryLegendItems.map((item) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${item.kind}:${item.label}`, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, item.label)))))))))));
+    }, placeholder: "Search address, owner, or parcel ID", inputStyle: { width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }, wrapperStyle: { flex: 1, minWidth: 220 } }), addrSearch && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setAddrSearch(""), style: { ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" } }, "Clear"), searchMatches.length > 1 && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: fitSearchMatches, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Fit matches"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" } }, hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, mapStatus)))), /* @__PURE__ */ import_react44.default.createElement("div", { className: "leaflet-layout" }, /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ import_react44.default.createElement("div", null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Application map workspace"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : `${renderStats.visible.toLocaleString()} visible parcels`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "relative", borderTop: "none" } }, !mapRuntimeReady ? /* @__PURE__ */ import_react44.default.createElement("div", { style: { height: "min(620px, 70vh)", display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { maxWidth: 520, textAlign: "center" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 } }, "Leaflet is not ready"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, color: "var(--gray2)", lineHeight: 1.7, marginTop: 10 } }, "The base mapping assets did not load. Check internet access for the browser session, then refresh."))) : /* @__PURE__ */ import_react44.default.createElement("div", { ref: mapElRef, style: { height: "min(620px, 70vh)", width: "100%", background: "#dbe4ee" } }), overlayNotice && /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", top: 14, left: 14, maxWidth: 360, background: "rgba(248,250,252,0.96)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 12, padding: "10px 12px", fontSize: 12, color: "#0f172a", boxShadow: "0 8px 20px rgba(15,23,42,.08)" } }, overlayNotice), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", bottom: 10, left: 12, right: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", pointerEvents: "none" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, renderStats.visible.toLocaleString(), " visible parcels | ", renderStats.polygons.toLocaleString(), " parcel boundaries | ", renderStats.points.toLocaleString(), " markers", renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : "", renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, "Scroll to zoom | Drag to pan | Click to inspect | Double-click parcel to fit")))), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, selectedParcel ? "Selected parcel" : "Map inspector"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0, lineHeight: 1.08, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement("a", { href: selectedParcelMapsUrl, target: "_blank", rel: "noreferrer", style: { color: "inherit", textDecoration: "underline", textUnderlineOffset: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.address || selectedParcel.parcelId) : addrSearch ? "Search results" : "Use the map")), selectedParcel && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setSelectedParcelId(null), "aria-label": "Close selected parcel", style: { background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 } }, "x")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", display: "grid", gap: 14, minWidth: 0 } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#6366f1" }, propClassLabel2(selectedParcel)), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: selectedItem?.geom ? "#0d9488" : "#f59e0b" }, selectedItem?.geom ? "Boundary loaded" : "Point location only"), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: FC2[eqFlagFast2(selectedParcel)] }, FL2[eqFlagFast2(selectedParcel)]), isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#f97316" }, "Absentee")), isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement("details", { style: { background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react44.default.createElement("summary", { style: { cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" } }, "Why flagged as absentee?"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 4, marginTop: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 } }, getAbsenteeModelFast2(selectedParcel).label, " (", getAbsenteeModelFast2(selectedParcel).confidence, ", score ", getAbsenteeModelFast2(selectedParcel).score, ")"), (getAbsenteeModelFast2(selectedParcel).signals?.length ? getAbsenteeModelFast2(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${selectedParcel.parcelId}-absentee-${idx}`, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 } }, signal)))), /* @__PURE__ */ import_react44.default.createElement("div", { className: "metric-grid-2", style: { display: "grid", gap: 10, minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Full market value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, $f2(selectedParcel.fullMarketValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Assessed value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, $f2(selectedParcel.assessedValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700, marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.owner1 || "Unknown owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.mailAddress || "Mailing address not available"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.neighborhood || selectedParcel.neighborhoodAssociation || "Neighborhood unknown", selectedParcel.neighborhoodAssociation && selectedParcel.neighborhoodAssociation !== selectedParcel.neighborhood ? ` | ${selectedParcel.neighborhoodAssociation}` : "")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Equity ratio"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, color: FC2[eqFlagFast2(selectedParcel)], overflowWrap: "anywhere", wordBreak: "break-word" } }, eqRFast2(selectedParcel), "%"))), selectedInventoryRows.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Residential profile"), /* @__PURE__ */ import_react44.default.createElement("div", { className: "metric-grid-2", style: { display: "grid", gap: 10, marginTop: 10, minWidth: 0 } }, selectedInventoryRows.map(([label, value]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, label), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.55, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, value))))), selectedOwnerPortfolio && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setOwnerPortfolioOpen((v) => !v),
+        style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer", textAlign: "left", minWidth: 0 }
+      },
+      /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Owner portfolio"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginTop: 6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedOwnerPortfolio.propertyCount.toLocaleString(), " parcel", selectedOwnerPortfolio.propertyCount === 1 ? "" : "s", " potentially owned by same owner")),
+      /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", fontWeight: 700, flexShrink: 0 } }, ownerPortfolioOpen ? "Hide list" : "Show list")
+    ), ownerPortfolioOpen && /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 10, padding: "0 14px 14px", marginTop: -2, minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Grouped by normalized owner name across the loaded Albany roll. Verify manually before treating this as confirmed common ownership."), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 2 } }, selectedOwnerPortfolio.parcels.map((p) => {
+      const current = p.parcelId === selectedParcel.parcelId;
+      return /* @__PURE__ */ import_react44.default.createElement(
+        "button",
+        {
+          key: p.parcelId,
+          type: "button",
+          onClick: () => focusParcel(p.parcelId, 18),
+          style: { textAlign: "left", background: current ? "rgba(37,99,235,.10)" : "var(--card)", border: `1px solid ${current ? "rgba(37,99,235,.28)" : "var(--border)"}`, borderRadius: 9, padding: "11px 12px", cursor: "pointer", minWidth: 0 }
+        },
+        /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: "1 1 180px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, p.address || p.parcelId), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4, lineHeight: 1.5, overflowWrap: "anywhere", wordBreak: "break-word" } }, p.parcelId, " | ", p.neighborhood || "Neighborhood unknown", current ? " | Current parcel" : "")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { textAlign: "right", minWidth: 0, flex: "0 1 auto" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" } }, $f2(p.fullMarketValue)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 4 } }, propClassLabel2(p))))
+      );
+    })))), "              ", selectedWarnings.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" } }, selectedWarnings.slice(0, 4).map((w) => /* @__PURE__ */ import_react44.default.createElement("div", { key: w, style: { fontSize: 12, color: "var(--gray2)" } }, w.replace(/_/g, " ")))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => focusParcel(selectedParcel.parcelId, 18), style: { background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 } }, "Center on parcel"), typeof onCompare === "function" && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => onCompare(selectedParcel), style: { background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 } }, selectedInCompare ? "In Compare" : "+ Compare"))) : addrSearch ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 8 } }, searchMatches.length > 0 ? searchMatches.map((p) => /* @__PURE__ */ import_react44.default.createElement("button", { key: p.parcelId, onClick: () => focusParcel(p.parcelId, 18), style: { textAlign: "left", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, p.address || "Address unavailable"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 3 } }, p.owner1 || "Unknown owner", " | Parcel ", p.parcelId))) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7 } }, "No mapped parcels match that search."))) : /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, residentMode ? "Current resident view" : "Start here"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7, marginTop: 6 } }, residentMode ? { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset] : "Search an address or owner name, or click a parcel directly.")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, coloring: !prev.coloring })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Current coloring"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.coloring ? "Hide" : "Show")), legendOpen.coloring && /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 } }, legendItems.map(([label, color2]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: color2, border: "1px solid rgba(255,255,255,.18)", flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, label))))), boundaryLegendItems.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, boundaries: !prev.boundaries })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Boundary legend"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.boundaries ? "Hide" : "Show")), legendOpen.boundaries && /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "0 14px 12px", marginTop: -2 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 5 } }, advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 } }, boundaryLegendItems.map((item) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${item.kind}:${item.label}`, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, item.label)))))))))));
   };
+
+  // property-type-classification-codes.json
+  var property_type_classification_codes_default = [
+    {
+      Code: "100",
+      Title: "AGRICULTURAL",
+      Description: ""
+    },
+    {
+      Code: "105",
+      Title: "Agricultural Vacant Land (Productive)",
+      Description: "Land used as part of an operating farm. It does not have living accommodations and cannot be specifically related to any of the other divisions in the agricultural category. Usually found when an operating farm is made up of a number of contiguous parcels."
+    },
+    {
+      Code: "110",
+      Title: "Livestock and Products",
+      Description: ""
+    },
+    {
+      Code: "111",
+      Title: "Poultry and Poultry Products: eggs, chickens, turkeys, ducks and geese",
+      Description: ""
+    },
+    {
+      Code: "112",
+      Title: "Dairy Products: milk, butter and cheese",
+      Description: ""
+    },
+    {
+      Code: "113",
+      Title: "Cattle, Calves, Hogs",
+      Description: ""
+    },
+    {
+      Code: "114",
+      Title: "Sheep and Wool",
+      Description: ""
+    },
+    {
+      Code: "115",
+      Title: "Honey and Beeswax",
+      Description: ""
+    },
+    {
+      Code: "116",
+      Title: "Other Livestock: donkeys, goats",
+      Description: ""
+    },
+    {
+      Code: "117",
+      Title: "Horse Farms",
+      Description: ""
+    },
+    {
+      Code: "120",
+      Title: "Field Crops",
+      Description: "Potatoes, wheat, hay, dry beans, corn, oats, and other field crops."
+    },
+    {
+      Code: "129",
+      Title: "Acquired Development Rights",
+      Description: "Land for which development rights have been acquired by a governmental agency (e.g., certain agricultural lands in Suffolk County)."
+    },
+    {
+      Code: "130",
+      Title: "Truck Crops - Mucklands",
+      Description: "Muckland used to grow potatoes, sugar beets, onions, snap beans, tomatoes, cabbage, lettuce, cauliflower, sweet corn, celery, etc."
+    },
+    {
+      Code: "140",
+      Title: "Truck Crops - Not Mucklands",
+      Description: "Nonmuckland used to grow onions, snap beans, tomatoes, cabbage, lettuce, cauliflower, sweet corn, celery, carrots, beets, peas, etc."
+    },
+    {
+      Code: "150",
+      Title: "Orchard Crops",
+      Description: ""
+    },
+    {
+      Code: "151",
+      Title: "Apples, Pears, Peaches, Cherries, etc",
+      Description: ""
+    },
+    {
+      Code: "152",
+      Title: "Vineyards",
+      Description: ""
+    },
+    {
+      Code: "160",
+      Title: "Other Fruits",
+      Description: "Strawberries, raspberries, dewberries, currants, etc."
+    },
+    {
+      Code: "170",
+      Title: "Nursery and Greenhouse",
+      Description: "Buildings, greenhouses and land used for growing nursery stock, trees, flowers, hothouse plants, mushrooms, etc."
+    },
+    {
+      Code: "180",
+      Title: "Specialty Farms",
+      Description: ""
+    },
+    {
+      Code: "181",
+      Title: "Fur Products: mink, chinchilla, etc",
+      Description: ""
+    },
+    {
+      Code: "182",
+      Title: "Pheasant, etc",
+      Description: ""
+    },
+    {
+      Code: "183",
+      Title: "Aquatic: oysterlands, fish and aquatic plants",
+      Description: ""
+    },
+    {
+      Code: "184",
+      Title: "Livestock: deer, moose, llamas, buffalo, etc",
+      Description: ""
+    },
+    {
+      Code: "190",
+      Title: "Fish, Game and Wildlife Preserves",
+      Description: ""
+    },
+    {
+      Code: "200",
+      Title: "RESIDENTIAL",
+      Description: ""
+    },
+    {
+      Code: "210",
+      Title: "One Family Year-Round Residence",
+      Description: "A one family dwelling constructed for year-round occupancy (adequate insulation, heating, etc.). NOTE: If not constructed for year-round occupancy, see code 260."
+    },
+    {
+      Code: "215",
+      Title: "One Family Year-Round Residence with Accessory Apartment",
+      Description: "A one family, year round residence with a secondary self contained dwelling unit. Accessory apartments are usually contained within or added to the principle residence and are often occupied by immediate family members."
+    },
+    {
+      Code: "220",
+      Title: "Two Family Year-Round Residence",
+      Description: "A two family dwelling constructed for year-round occupancy."
+    },
+    {
+      Code: "230",
+      Title: "Three Family Year-Round Residence",
+      Description: "A three family dwelling constructed for year-round occupancy."
+    },
+    {
+      Code: "240",
+      Title: "Rural Residence with Acreage",
+      Description: "A year-round residence with 10 or more acres of land; it may have up to three year-round dwelling units."
+    },
+    {
+      Code: "241",
+      Title: "Primarily residential, also used in agricultural production",
+      Description: ""
+    },
+    {
+      Code: "242",
+      Title: "Recreational use",
+      Description: ""
+    },
+    {
+      Code: "250",
+      Title: "Estate",
+      Description: "A residential property of not less than 5 acres with a luxurious residence and auxiliary buildings."
+    },
+    {
+      Code: "260",
+      Title: "Seasonal Residences",
+      Description: "Dwelling units generally used for seasonal occupancy; not constructed for year-round occupancy (inadequate insulation, heating, etc.). If the value of the land and timber exceeds the value of the seasonal dwelling, the property should be listed as forest land (see category 900). NOTE: If constructed for year-round occupancy, see code 210."
+    },
+    {
+      Code: "270",
+      Title: "Mobile Home",
+      Description: "A portable structure built on a chassis and used as a permanent dwelling unit."
+    },
+    {
+      Code: "271",
+      Title: "Multiple Mobile Homes",
+      Description: "More than one mobile home on one parcel of land; not a commercial enterprise."
+    },
+    {
+      Code: "280",
+      Title: "Residential - Multi-Purpose / Multi-Structure",
+      Description: ""
+    },
+    {
+      Code: "281",
+      Title: "Multiple Residences",
+      Description: "More than one residential dwelling on one parcel of land. May be a mixture of codes 210's, 220's and 230's, or all one type"
+    },
+    {
+      Code: "283",
+      Title: "Residence with Incidental Commercial Use",
+      Description: "A residence which has been partially converted or adapted for commercial use (e.g. residence with small office in basement). Primary use is residential"
+    },
+    {
+      Code: "300",
+      Title: "VACANT LAND",
+      Description: ""
+    },
+    {
+      Code: "310",
+      Title: "Residential",
+      Description: ""
+    },
+    {
+      Code: "311",
+      Title: "Residential Vacant Land",
+      Description: "Vacant lots or acreage located in residential areas"
+    },
+    {
+      Code: "312",
+      Title: "Residential Land",
+      Description: "Including a Small Improvement (not used for living accommodations) Includes a private garage on a parcel of land separate from the residence. Does not include a small garage where space is being rented out (see code 439)."
+    },
+    {
+      Code: "314",
+      Title: "Rural Vacant Lots of 10 Acres or Less",
+      Description: "Located in rural residential areas."
+    },
+    {
+      Code: "315",
+      Title: "Underwater Vacant Land",
+      Description: "Underwater land, in a seasonal residential area, not owned by a governmental jurisdiction"
+    },
+    {
+      Code: "320",
+      Title: "Rural",
+      Description: ""
+    },
+    {
+      Code: "321",
+      Title: "Abandoned Agricultural Land",
+      Description: "Nonproductive; not part of an operating farm."
+    },
+    {
+      Code: "322",
+      Title: "Residential Vacant Land Over 10 Acres",
+      Description: "Located in rural areas."
+    },
+    {
+      Code: "323",
+      Title: "Other Rural Vacant Lands",
+      Description: "Waste lands, sand dunes, salt marshes, swamps, rocky areas, and woods and brush of noncommercial tree species not associated with forest lands."
+    },
+    {
+      Code: "330",
+      Title: "Vacant Land Located in Commercial Areas",
+      Description: ""
+    },
+    {
+      Code: "331",
+      Title: "Commercial Vacant with minor improvements",
+      Description: ""
+    },
+    {
+      Code: "340",
+      Title: "Vacant Land Located in Industrial Areas",
+      Description: ""
+    },
+    {
+      Code: "341",
+      Title: "Industrial Vacant with minor improvements",
+      Description: ""
+    },
+    {
+      Code: "350",
+      Title: "Urban Renewal or Slum Clearance",
+      Description: "Vacant lots or acreage undergoing urban renewal or slum clearance; improvements must be abandoned."
+    },
+    {
+      Code: "380",
+      Title: "Public Utility Vacant Land",
+      Description: "Public utility company vacant lands."
+    },
+    {
+      Code: "400",
+      Title: "COMMERCIAL",
+      Description: ""
+    },
+    {
+      Code: "410",
+      Title: "Living Accommodations",
+      Description: ""
+    },
+    {
+      Code: "411",
+      Title: "Apartments",
+      Description: ""
+    },
+    {
+      Code: "414",
+      Title: "Hotel",
+      Description: ""
+    },
+    {
+      Code: "415",
+      Title: "Motel",
+      Description: ""
+    },
+    {
+      Code: "416",
+      Title: "Mobile Home Parks (trailer parks, trailer courts)",
+      Description: "The mobile homes are usually owner occupied but the land and facilities are rented or leased. (See code 270 for individual mobile homes.)"
+    },
+    {
+      Code: "417",
+      Title: "Camps, Cottages, Bungalows",
+      Description: "Usually rented on a seasonal basis"
+    },
+    {
+      Code: "418",
+      Title: "Inns, Lodges, Boarding and Rooming Houses, Tourist Homes, Fraternity and Sorority Houses",
+      Description: "Sleeping accommodations with or without meals or kitchen privileges."
+    },
+    {
+      Code: "420",
+      Title: "Dining Establishments",
+      Description: ""
+    },
+    {
+      Code: "421",
+      Title: "Restaurants",
+      Description: "Facilities which serve full course meals with or without legal beverages"
+    },
+    {
+      Code: "422",
+      Title: "Diners and Luncheonettes",
+      Description: "Usually year-round facilities with counter service and limited seating"
+    },
+    {
+      Code: "423",
+      Title: "Snack Bars, Drive-Ins, Ice Cream Bars",
+      Description: "Usually seasonal, with window and/or car service, possibly limited counter service (e.g., A & W Root Beer, Tastee Freeze Ice Cream, etc.)"
+    },
+    {
+      Code: "424",
+      Title: "Night Clubs",
+      Description: "Facilities which feature an extensive menu, legal beverages and live entertainment"
+    },
+    {
+      Code: "425",
+      Title: "Bar",
+      Description: "Facilities which serve only legal beverages, not food."
+    },
+    {
+      Code: "426",
+      Title: "Fast Food Franchises",
+      Description: "Year-round, with counter service, limited menus and a drive-up window (e.g., McDonald's, Burger King, etc.)"
+    },
+    {
+      Code: "430",
+      Title: "Motor Vehicle Services",
+      Description: ""
+    },
+    {
+      Code: "431",
+      Title: "Auto Dealers - Sales and Service",
+      Description: "Includes truck or farm machinery dealerships, auto or truck rental agencies, motor home sales and service facilities, etc"
+    },
+    {
+      Code: "432",
+      Title: "Service and Gas Stations",
+      Description: "Sell gasoline and/or provide minor repairs and services"
+    },
+    {
+      Code: "433",
+      Title: "Auto Body, Tire Shops, Other Related Auto Sales",
+      Description: "Specialized auto equipment and repair (e.g., Goodyear Tire Center, Firestone Stores, etc.)"
+    },
+    {
+      Code: "434",
+      Title: "Automatic Car Wash",
+      Description: "Car is pulled through a series of cleaning processes"
+    },
+    {
+      Code: "435",
+      Title: "Manual Car Wash",
+      Description: "Car is driven into a stall; revolving brushes rotate around the car (semiautomatic)"
+    },
+    {
+      Code: "436",
+      Title: "Self-Service Car Wash",
+      Description: "Usually a multi stall structure featuring a car owner operated coin system with spray type hoses for washing and rinsing a car"
+    },
+    {
+      Code: "437",
+      Title: "Parking Garage",
+      Description: "Usually a multistory structure with elevators and/or ramps, used mainly for car storage"
+    },
+    {
+      Code: "438",
+      Title: "Parking Lot",
+      Description: "A commercial open parking lot for motor vehicles"
+    },
+    {
+      Code: "439",
+      Title: "Small Parking Garage",
+      Description: "A garage with two or more stalls, usually found in a residential area, being rented for parking"
+    },
+    {
+      Code: "440",
+      Title: "Storage, Warehouse and Distribution Facilities",
+      Description: ""
+    },
+    {
+      Code: "441",
+      Title: "Fuel Storage and Distribution",
+      Description: "Facilities Facility for fuel storage and distribution including gasoline, oil, liquid petroleum bottled gas, natural gas, and coal"
+    },
+    {
+      Code: "442",
+      Title: "Mini Warehouse (Self Service Storage)",
+      Description: "This use reflects the partitioned warehouse space used for multiple tenant self service storage"
+    },
+    {
+      Code: "443",
+      Title: "Grain and Feed Elevators, Mixers, Sales Outlets",
+      Description: ""
+    },
+    {
+      Code: "444",
+      Title: "Lumber Yards, Sawmills",
+      Description: ""
+    },
+    {
+      Code: "446",
+      Title: "Cold Storage Facilities",
+      Description: "Used for perishables, produce or other items."
+    },
+    {
+      Code: "447",
+      Title: "Trucking Terminals",
+      Description: ""
+    },
+    {
+      Code: "448",
+      Title: "Piers, Wharves, Docks and Related Facilities",
+      Description: ""
+    },
+    {
+      Code: "449",
+      Title: "Other Storage, Warehouse and Distribution",
+      Description: "Facilities."
+    },
+    {
+      Code: "450",
+      Title: "Retail Services",
+      Description: ""
+    },
+    {
+      Code: "451",
+      Title: "Regional Shopping Centers",
+      Description: "Multi occupant facilities with ten or more stores, usually featuring a large department store or two, and ample paved parking"
+    },
+    {
+      Code: "452",
+      Title: "Area or Neighborhood Shopping Centers",
+      Description: "Smaller shopping facilities which usually feature a junior department store, several other stores, and ample parking; may include a supermarket."
+    },
+    {
+      Code: "453",
+      Title: "Large Retail Outlets",
+      Description: "These facilities are usually complemented by a large supermarket and have ample parking (e.g., Ames, Wal-mart, etc.)."
+    },
+    {
+      Code: "454",
+      Title: "Large Retail Food Stores",
+      Description: "These facilities usually belong to a chain and sell food and sundry items (e.g., Price Chopper, Hannaford, Topps, Wegmans, P&C, Big M, etc.)."
+    },
+    {
+      Code: "455",
+      Title: "Dealerships - Sales and Service (other than auto with large sales operation) Boats (also refer to code 570), snowmobiles, garden equipment, etc",
+      Description: ""
+    },
+    {
+      Code: "460",
+      Title: "Banks and Office Buildings",
+      Description: ""
+    },
+    {
+      Code: "461",
+      Title: "Standard Bank/Single Occupant",
+      Description: ""
+    },
+    {
+      Code: "462",
+      Title: "Drive-In Branch Bank",
+      Description: ""
+    },
+    {
+      Code: "463",
+      Title: "Bank Complex with Office Building",
+      Description: ""
+    },
+    {
+      Code: "464",
+      Title: "Office Building",
+      Description: ""
+    },
+    {
+      Code: "465",
+      Title: "Professional Building",
+      Description: ""
+    },
+    {
+      Code: "470",
+      Title: "Miscellaneous Services",
+      Description: ""
+    },
+    {
+      Code: "471",
+      Title: "Funeral Homes",
+      Description: ""
+    },
+    {
+      Code: "472",
+      Title: "Dog Kennels, Veterinary Clinics",
+      Description: ""
+    },
+    {
+      Code: "473",
+      Title: "Greenhouses",
+      Description: ""
+    },
+    {
+      Code: "474",
+      Title: "Billboards",
+      Description: ""
+    },
+    {
+      Code: "475",
+      Title: "Junkyards",
+      Description: ""
+    },
+    {
+      Code: "480",
+      Title: "Multiple Use or Multipurpose",
+      Description: "A building readily adaptable, with little physical change, for more than one use or purpose."
+    },
+    {
+      Code: "481",
+      Title: "Downtown Row Type (with common wall)",
+      Description: "Usually a two or three story older structure with retail sales/services on the first floor and offices and/or apartments on the upper floors; little or no on-site parking."
+    },
+    {
+      Code: "482",
+      Title: "Downtown Row Type (detached)",
+      Description: "The same type of use as in code 481, above, but this is a separate structure without party walls"
+    },
+    {
+      Code: "483",
+      Title: "Converted Residence",
+      Description: "A building usually located in a residential area, which has been partially converted or adapted for office space (e.g., a doctor's or dentist's office with an apartment upstairs)."
+    },
+    {
+      Code: "484",
+      Title: "One Story Small Structure",
+      Description: "Usually a modern, one occupant, building adaptable for several uses (e.g., retail clothing store, small office, warehouse, pet shop, etc.)"
+    },
+    {
+      Code: "485",
+      Title: "One Story Small Structure - Multi occupant",
+      Description: "Usually partitioned for two or more occupants, such as a liquor store, drug store, and a laundromat; limited parking on site"
+    },
+    {
+      Code: "486",
+      Title: "Minimart",
+      Description: "Combination snack bar, market and gas station."
+    },
+    {
+      Code: "500",
+      Title: "RECREATION AND ENTERTAINMENT",
+      Description: ""
+    },
+    {
+      Code: "510",
+      Title: "Entertainment Assembly",
+      Description: ""
+    },
+    {
+      Code: "511",
+      Title: "Legitimate Theaters",
+      Description: "Used primarily for live presentations of the performing arts (opera, drama, musicals, symphonies, ballet, etc.)."
+    },
+    {
+      Code: "512",
+      Title: "Motion Picture Theaters (excludes drive-in theaters)",
+      Description: ""
+    },
+    {
+      Code: "513",
+      Title: "Drive-In Theaters",
+      Description: ""
+    },
+    {
+      Code: "514",
+      Title: "Auditoriums, Exhibition and Exposition Halls",
+      Description: ""
+    },
+    {
+      Code: "515",
+      Title: "Radio, T.V. and Motion Picture Studios",
+      Description: ""
+    },
+    {
+      Code: "520",
+      Title: "Sports Assembly",
+      Description: ""
+    },
+    {
+      Code: "521",
+      Title: "Stadiums, Arenas, Armories, Field Houses",
+      Description: ""
+    },
+    {
+      Code: "522",
+      Title: "Racetracks",
+      Description: "Used for auto, horse, motorcycle, go-cart, or drag racing."
+    },
+    {
+      Code: "530",
+      Title: "Amusement Facilities",
+      Description: ""
+    },
+    {
+      Code: "531",
+      Title: "Fairgrounds",
+      Description: ""
+    },
+    {
+      Code: "532",
+      Title: "Amusement Parks",
+      Description: ""
+    },
+    {
+      Code: "533",
+      Title: "Game Farms",
+      Description: ""
+    },
+    {
+      Code: "534",
+      Title: "Social Organizations",
+      Description: "Elks, Moose, Eagles, and Veterans' Posts, etc., whose primary purpose is social activities for members"
+    },
+    {
+      Code: "540",
+      Title: "Indoor Sports Facilities",
+      Description: ""
+    },
+    {
+      Code: "541",
+      Title: "Bowling Centers",
+      Description: ""
+    },
+    {
+      Code: "542",
+      Title: "Ice or Roller Skating Rinks",
+      Description: ""
+    },
+    {
+      Code: "543",
+      Title: "YMCA's, YWCA's, etc",
+      Description: ""
+    },
+    {
+      Code: "544",
+      Title: "Health Spas",
+      Description: ""
+    },
+    {
+      Code: "545",
+      Title: "Indoor Swimming Pools",
+      Description: ""
+    },
+    {
+      Code: "546",
+      Title: "Other Indoor Sports",
+      Description: "Tennis courts, archery ranges, billiard centers, etc."
+    },
+    {
+      Code: "550",
+      Title: "Outdoor Sports Activities",
+      Description: ""
+    },
+    {
+      Code: "551",
+      Title: "Skiing Centers",
+      Description: "May include sleeping and dining facilities; not ski facilities of resort complexes."
+    },
+    {
+      Code: "552",
+      Title: "Public Golf Courses",
+      Description: "May include other associated sports facilities and/or dining facilities."
+    },
+    {
+      Code: "553",
+      Title: "Private Golf Country Clubs",
+      Description: "Includes those with other sports and dining facilities"
+    },
+    {
+      Code: "554",
+      Title: "Outdoor Swimming Pools",
+      Description: ""
+    },
+    {
+      Code: "555",
+      Title: "Riding Stables",
+      Description: ""
+    },
+    {
+      Code: "556",
+      Title: "Ice or Roller Skating Rinks (may be covered)",
+      Description: ""
+    },
+    {
+      Code: "557",
+      Title: "Other Outdoor Sports",
+      Description: "Driving ranges, miniature golf, tennis, baseball, batting ranges, polo fields, etc."
+    },
+    {
+      Code: "560",
+      Title: "Improved Beaches",
+      Description: "Improvements include bath houses, parking facilities, etc."
+    },
+    {
+      Code: "570",
+      Title: "Marinas",
+      Description: "Improvements include docks and piers, boat storage facilities, repair shops, etc."
+    },
+    {
+      Code: "580",
+      Title: "Camps, Camping Facilities and Resorts",
+      Description: ""
+    },
+    {
+      Code: "581",
+      Title: "Camps",
+      Description: "Used by groups of children and/or adults."
+    },
+    {
+      Code: "582",
+      Title: "Camping Facilities",
+      Description: "Improved areas/parks with accommodations for tents, campers or travel trailers or RV's."
+    },
+    {
+      Code: "583",
+      Title: "Resort Complexes",
+      Description: "Dude ranches, resort hotels with sports facilities, etc"
+    },
+    {
+      Code: "590",
+      Title: "Parks",
+      Description: ""
+    },
+    {
+      Code: "591",
+      Title: "Playgrounds",
+      Description: ""
+    },
+    {
+      Code: "592",
+      Title: "Athletic Fields",
+      Description: ""
+    },
+    {
+      Code: "593",
+      Title: "Picnic Grounds",
+      Description: ""
+    },
+    {
+      Code: "600",
+      Title: "COMMUNITY SERVICES",
+      Description: ""
+    },
+    {
+      Code: "610",
+      Title: "Education",
+      Description: ""
+    },
+    {
+      Code: "611",
+      Title: "Libraries",
+      Description: ""
+    },
+    {
+      Code: "612",
+      Title: "Schools",
+      Description: "General, elementary and secondary."
+    },
+    {
+      Code: "613",
+      Title: "Colleges and Universities",
+      Description: ""
+    },
+    {
+      Code: "614",
+      Title: "Special Schools and Institutions",
+      Description: "Used for the physically or mentally impaired."
+    },
+    {
+      Code: "615",
+      Title: "Other Educational Facilities",
+      Description: ""
+    },
+    {
+      Code: "620",
+      Title: "Religious",
+      Description: ""
+    },
+    {
+      Code: "630",
+      Title: "Welfare",
+      Description: ""
+    },
+    {
+      Code: "631",
+      Title: "Orphanages",
+      Description: ""
+    },
+    {
+      Code: "632",
+      Title: "Benevolent and Moral Associations",
+      Description: ""
+    },
+    {
+      Code: "633",
+      Title: "Homes for the Aged",
+      Description: ""
+    },
+    {
+      Code: "640",
+      Title: "Health",
+      Description: ""
+    },
+    {
+      Code: "641",
+      Title: "Hospitals",
+      Description: ""
+    },
+    {
+      Code: "642",
+      Title: "All Other Health Facilities",
+      Description: ""
+    },
+    {
+      Code: "650",
+      Title: "Government",
+      Description: ""
+    },
+    {
+      Code: "651",
+      Title: "Highway Garage",
+      Description: "Used for the storage and maintenance of highway equipment by any governmental jurisdiction; includes associated land."
+    },
+    {
+      Code: "652",
+      Title: "Office Building Owned by any governmental jurisdiction",
+      Description: "includes associated land"
+    },
+    {
+      Code: "653",
+      Title: "Parking Lots Owned by any governmental jurisdiction",
+      Description: "includes land and appurtenant structures such as open single level lots as well as multilevel parking garages"
+    },
+    {
+      Code: "660",
+      Title: "Protection",
+      Description: ""
+    },
+    {
+      Code: "661",
+      Title: "Army, Navy, Air Force, Marine and Coast Guard, Installations, Radar, etc",
+      Description: ""
+    },
+    {
+      Code: "662",
+      Title: "Police and Fire Protection, Electrical Signal",
+      Description: "Equipment and Other Facilities for Fire, Police, Civil Defense, etc."
+    },
+    {
+      Code: "670",
+      Title: "Correctional",
+      Description: "Used by any governmental jurisdiction for housing within the criminal justice system."
+    },
+    {
+      Code: "680",
+      Title: "Cultural and Recreational",
+      Description: ""
+    },
+    {
+      Code: "681",
+      Title: "Cultural Facilities",
+      Description: "Museums, art galleries, etc."
+    },
+    {
+      Code: "682",
+      Title: "Recreational Facilities",
+      Description: "Nature trails, bike paths, etc."
+    },
+    {
+      Code: "690",
+      Title: "Miscellaneous",
+      Description: ""
+    },
+    {
+      Code: "691",
+      Title: "Professional Associations",
+      Description: ""
+    },
+    {
+      Code: "692",
+      Title: "Roads, Streets, Highways and Parkways, Express or Otherwise (if listed)",
+      Description: "Including Adjoining Land"
+    },
+    {
+      Code: "693",
+      Title: "Indian Reservations",
+      Description: ""
+    },
+    {
+      Code: "694",
+      Title: "Animal Welfare Shelters",
+      Description: ""
+    },
+    {
+      Code: "695",
+      Title: "Cemeteries",
+      Description: ""
+    },
+    {
+      Code: "700",
+      Title: "INDUSTRIAL",
+      Description: "A parcel including an office building on land located adjacent to or near an automobile assembly plant and used principally by the automobile manufacturer for its own offices should be coded as industrial under the appropriate division below. However, if such building is used principally by tenants leasing space therein, the parcel should be coded as commercial. Also, an office building used principally by an industrial concern but located remote from its manufacturing plant should be coded as commercial rather than industrial (e.g., office buildings in Manhattan occupied principally by industrial companies whose manufacturing activities are located elsewhere throughout the country). Parcels used for research aimed primarily at improving products should be coded as industrial, while parcels used for marketing research should be coded as commercial. High Tech Manufacturing 712 NA and Processing Light Industrial 714 NA Manufacturing and Processing Heavy Manufacturing and 715 NA Processing Mining and Quarrying 720 721 Sand and Gravel \u201C 720 722 Limestone \u201C 720 723 Trap Rock \u201C 720 724 Salt \u201C 720 725 Iron and Titanium \u201C 720 726 Talc \u201C 720 727 Lead and Zinc \u201C 720 728 Gypsum \u201C 720 729 Other"
+    },
+    {
+      Code: "710",
+      Title: "Manufacturing and Processing",
+      Description: ""
+    },
+    {
+      Code: "712",
+      Title: "High Tech. Manufacturing and Processing",
+      Description: "These buildings are used as research laboratories with a high percentage of office/laboratory space. The construction costs of these facilities are higher than other warehouse/manufacturing facilities reflecting their architectural design, super adequate upgrades, and more comprehensive finish"
+    },
+    {
+      Code: "714",
+      Title: "Light Industrial Manufacturing and Processing",
+      Description: "These structures may have been built for a specific manufacturing process. They feature high ceilings and open construction which allows for good workflow"
+    },
+    {
+      Code: "715",
+      Title: "Heavy Manufacturing and Processing",
+      Description: "These are large area structures design and built for production. They will have extensive concrete foundations for industrial equipment and a high voltage electrical system"
+    },
+    {
+      Code: "720",
+      Title: "Mining and Quarrying",
+      Description: "This category includes parcels used in or necessary adjunct to the provision of mining and quarrying, i.e., sand and gravel, limestone, trap rock, salt, iron and titanium, talc, lead and zinc, gypsum, and other mining and quarrying."
+    },
+    {
+      Code: "730",
+      Title: "Wells",
+      Description: ""
+    },
+    {
+      Code: "731",
+      Title: "Oil - Natural Flow (for production)",
+      Description: ""
+    },
+    {
+      Code: "732",
+      Title: "Oil - Forced Flow (for production)",
+      Description: ""
+    },
+    {
+      Code: "733",
+      Title: "Gas (for production)",
+      Description: ""
+    },
+    {
+      Code: "734",
+      Title: "Junk",
+      Description: ""
+    },
+    {
+      Code: "735",
+      Title: "Water",
+      Description: "used for Oil Production"
+    },
+    {
+      Code: "736",
+      Title: "Gas or Oil Storage Wells",
+      Description: ""
+    },
+    {
+      Code: "740",
+      Title: "Industrial Product Pipelines",
+      Description: "Pipelines used by nonutility companies, and not in Special Franchise."
+    },
+    {
+      Code: "741",
+      Title: "Gas",
+      Description: ""
+    },
+    {
+      Code: "742",
+      Title: "Water",
+      Description: ""
+    },
+    {
+      Code: "743",
+      Title: "Brine",
+      Description: ""
+    },
+    {
+      Code: "744",
+      Title: "Petroleum Products",
+      Description: ""
+    },
+    {
+      Code: "749",
+      Title: "Other",
+      Description: ""
+    },
+    {
+      Code: "800",
+      Title: "PUBLIC SERVICES",
+      Description: "This category includes, but is not limited to, parcels used in or as a necessary adjunct to the provision of public services. Therefore, a parcel which includ a building used principally by a telephone company for accounting or customer billing should be coded in this category. Similarly, parcels which are used to store, garage or repair motor vehicles and/or equipment used in providing these public utility services should be coded in the appropriate division below."
+    },
+    {
+      Code: "820",
+      Title: "Water",
+      Description: ""
+    },
+    {
+      Code: "821",
+      Title: "Flood Control",
+      Description: "Land used for the accumulation, storage or diversion of water for flood control purposes only."
+    },
+    {
+      Code: "822",
+      Title: "Water Supply",
+      Description: "Land used for the accumulation, storage, transmission or distribution of water for purposes other than flood control or production of electricity (e.g., aqueducts and pipelines)"
+    },
+    {
+      Code: "823",
+      Title: "Water Treatment Facilities",
+      Description: ""
+    },
+    {
+      Code: "826",
+      Title: "Water Transmission - Improvements",
+      Description: ""
+    },
+    {
+      Code: "827",
+      Title: "Water Transmission - Outside Plant",
+      Description: ""
+    },
+    {
+      Code: "830",
+      Title: "Communication",
+      Description: "Includes all telephones, telecommunications, telegraph, radio, television and CATV property."
+    },
+    {
+      Code: "831",
+      Title: "Telephone",
+      Description: "Telephone and telecommunications land, buildings, towers, antennae, etc., except cellular telephone towers - see 837"
+    },
+    {
+      Code: "832",
+      Title: "Telegraph",
+      Description: ""
+    },
+    {
+      Code: "833",
+      Title: "Radio",
+      Description: ""
+    },
+    {
+      Code: "834",
+      Title: "Television other than Community Antenna Television",
+      Description: ""
+    },
+    {
+      Code: "835",
+      Title: "Community Antenna Television CATV",
+      Description: "Facility CATV land, buildings, antennae, towers, etc."
+    },
+    {
+      Code: "836",
+      Title: "Telephone Outside Plant",
+      Description: "Poles, wires, cable, etc"
+    },
+    {
+      Code: "837",
+      Title: "Cellular Telephone Towers",
+      Description: ""
+    },
+    {
+      Code: "840",
+      Title: "Transportation",
+      Description: ""
+    },
+    {
+      Code: "841",
+      Title: "Motor Vehicle",
+      Description: "Land used in the provision of transportation services by motor vehicles (e.g., bus terminals, taxicab garages, truck terminals and warehouses, etc.). Does not include public highways, bridges, tunnels, subways and property used in the maintenance (except by persons providing transportation services), manufacture and sale of motor vehicles."
+    },
+    {
+      Code: "842",
+      Title: "Ceiling Railroad",
+      Description: "Real property for which the State Board establishes the maximum taxable assessed value."
+    },
+    {
+      Code: "843",
+      Title: "Nonceiling Railroad",
+      Description: ""
+    },
+    {
+      Code: "844",
+      Title: "Air",
+      Description: ""
+    },
+    {
+      Code: "845",
+      Title: "Water",
+      Description: "Land used for water transportation (e.g., canal)."
+    },
+    {
+      Code: "846",
+      Title: "Bridges, Tunnels and Subways",
+      Description: ""
+    },
+    {
+      Code: "847",
+      Title: "Pipelines",
+      Description: "Pipelines used by utility companies for the transportation of petroleum products. NOTE : This code will be deleted once the Utility Company Assessment Roll Standards (UCARS) have been adopted. After that the appropriate Pipeline designation should be chosen from the 740 series."
+    },
+    {
+      Code: "850",
+      Title: "Waste Disposal",
+      Description: "Does not include facilities used exclusively for the disposal of waste from an industrial process, which should be coded as industrial property."
+    },
+    {
+      Code: "851",
+      Title: "Solid Wastes",
+      Description: "Incinerators and waste compacting facilities. Does not include landfills and dumps (see code 852)."
+    },
+    {
+      Code: "852",
+      Title: "Landfills and Dumps",
+      Description: ""
+    },
+    {
+      Code: "853",
+      Title: "Sewage Treatment and Water Pollution Control",
+      Description: ""
+    },
+    {
+      Code: "854",
+      Title: "Air Pollution Control",
+      Description: ""
+    },
+    {
+      Code: "860",
+      Title: "Special Franchise Property",
+      Description: "Real property for which the State Board establishes assessments."
+    },
+    {
+      Code: "861",
+      Title: "Electric and Gas",
+      Description: ""
+    },
+    {
+      Code: "862",
+      Title: "Water",
+      Description: ""
+    },
+    {
+      Code: "866",
+      Title: "Telephone",
+      Description: ""
+    },
+    {
+      Code: "867",
+      Title: "Miscellaneous",
+      Description: ""
+    },
+    {
+      Code: "868",
+      Title: "Pipelines",
+      Description: ""
+    },
+    {
+      Code: "869",
+      Title: "Television",
+      Description: ""
+    },
+    {
+      Code: "870",
+      Title: "Electric and Gas",
+      Description: ""
+    },
+    {
+      Code: "871",
+      Title: "Electric and Gas Facilities",
+      Description: "General electric and gas facilities, buildings, and land including offices, garages, service centers, etc"
+    },
+    {
+      Code: "872",
+      Title: "Electric SubStation",
+      Description: "Electric Power Generation Facilities Includes all land and facilities associated with electric generating stations, i.e. power plant equipment, reservoirs, dams, power house, penstock pipe, waterway structures, etc."
+    },
+    {
+      Code: "873",
+      Title: "Gas Measuring and Regulation Station",
+      Description: ""
+    },
+    {
+      Code: "874",
+      Title: "Electric Power Generation Facility - Hydro",
+      Description: ""
+    },
+    {
+      Code: "875",
+      Title: "Electric Power Generation Facility - Fossil Fuel",
+      Description: ""
+    },
+    {
+      Code: "876",
+      Title: "Electric Power Generation Facility - Nuclear",
+      Description: ""
+    },
+    {
+      Code: "877",
+      Title: "Electric Power Generation Facility - Other Fuel",
+      Description: ""
+    },
+    {
+      Code: "880",
+      Title: "Electric and Gas Transmission and Distribution",
+      Description: ""
+    },
+    {
+      Code: "882",
+      Title: "Electric Transmission Improvement",
+      Description: ""
+    },
+    {
+      Code: "883",
+      Title: "Gas Transmission Improvement",
+      Description: ""
+    },
+    {
+      Code: "884",
+      Title: "Electric Distribution - Outside Plant Property",
+      Description: ""
+    },
+    {
+      Code: "885",
+      Title: "Gas Distribution - Outside Plant Property",
+      Description: ""
+    },
+    {
+      Code: "900",
+      Title: "WILD, FORESTED, CONSERVATION LANDS AND PUBLIC PARKS",
+      Description: ""
+    },
+    {
+      Code: "910",
+      Title: "Private Wild and Forest Lands except for Private Hunting and Fishing Clubs",
+      Description: "This division includes all private lands which are associated with forest land areas that do not conform to any other property type classification, plus plantations and timber tracts having merchantable timber."
+    },
+    {
+      Code: "911",
+      Title: "Forest Land Under Section 480 of the Real Property Tax Law",
+      Description: ""
+    },
+    {
+      Code: "912",
+      Title: "Forest Land Under Section 480-a of the Real Property Tax Law",
+      Description: ""
+    },
+    {
+      Code: "920",
+      Title: "Private Hunting and Fishing Clubs",
+      Description: ""
+    },
+    {
+      Code: "930",
+      Title: "State Owned Forest Lands",
+      Description: ""
+    },
+    {
+      Code: "931",
+      Title: "State Owned Land (Forest Preserve) in the Adirondack or Catskill Parks Taxable Under Section 532-a of the Real Property Tax Law",
+      Description: ""
+    },
+    {
+      Code: "932",
+      Title: "State Owned Land Other Than Forest Preserve Covered Under Section 534 of the Real Property Tax Law",
+      Description: ""
+    },
+    {
+      Code: "940",
+      Title: "Reforested Land and Other Related Conservation Purposes",
+      Description: ""
+    },
+    {
+      Code: "941",
+      Title: "State Owned Reforested Land Taxable Under Sections 534 and 536 of the Real Property Tax Law",
+      Description: ""
+    },
+    {
+      Code: "942",
+      Title: "County Owned Reforested Land",
+      Description: ""
+    },
+    {
+      Code: "950",
+      Title: "Hudson River and Black River Regulating District Land",
+      Description: ""
+    },
+    {
+      Code: "960",
+      Title: "Public Parks",
+      Description: ""
+    },
+    {
+      Code: "961",
+      Title: "State Owned Public Parks, Recreation Areas, and Other Multiple Uses",
+      Description: ""
+    },
+    {
+      Code: "962",
+      Title: "County Owned Public Parks and Recreation Areas",
+      Description: ""
+    },
+    {
+      Code: "963",
+      Title: "City/Town/Village Public Parks and Recreation Areas",
+      Description: ""
+    },
+    {
+      Code: "970",
+      Title: "Other Wild or Conservation Lands",
+      Description: ""
+    },
+    {
+      Code: "971",
+      Title: "Wetlands, Either Privately or Governmentally Owned, Subject to Specific Restrictions as to Use",
+      Description: ""
+    },
+    {
+      Code: "972",
+      Title: "Land Under Water, Either Privately or Governmentally Owned (other than residential - more properly classified as code 315)",
+      Description: ""
+    },
+    {
+      Code: "980",
+      Title: "Taxable State Owned Conservation Easements",
+      Description: ""
+    },
+    {
+      Code: "990",
+      Title: "Other Taxable State Land Assessments",
+      Description: ""
+    },
+    {
+      Code: "991",
+      Title: "Adirondack Park Aggregate Additional Assessments (Real Property Tax Law, Section 542(3))",
+      Description: ""
+    },
+    {
+      Code: "992",
+      Title: "Hudson River-Black River Regulating District Aggregate Additional Assessments (Environmental Conservation Law, Section 15- 2115)",
+      Description: ""
+    },
+    {
+      Code: "993",
+      Title: "Transition Assessments for Taxable State Owned Land (Real Property Tax Law, Section 545)",
+      Description: ""
+    },
+    {
+      Code: "994",
+      Title: "Transition Assessments for Exempt State Owned Land (Real Property Tax Law, Section 545)",
+      Description: ""
+    }
+  ];
 
   // albany-full-dashboard.jsx
   var GS = () => /* @__PURE__ */ import_react45.default.createElement("style", null, `
@@ -49628,13 +51098,55 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     .quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .mode-nav{display:flex;gap:8px;flex-wrap:wrap}
     .resident-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .app-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .app-brand{display:flex;align-items:center;gap:14px;min-width:0}
+    .app-title{font-family:var(--fd);font-weight:800;font-size:24px;letter-spacing:-.6px;line-height:1.1}
+    .hero-title{font-family:var(--fd);font-size:36px;line-height:1.05;font-weight:800;margin-top:10px;max-width:720px}
+    .app-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    .tab-rail{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+    .desktop-tab-rail{display:block}
+    .mobile-tab-shell{display:none}
+    .mobile-tab-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;color:var(--gray);cursor:pointer}
+    .mobile-tab-list{display:grid;gap:8px;margin-top:10px}
+    .mobile-tab-item{width:100%;text-align:left;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;font-weight:700;color:var(--gray);cursor:pointer}
+    .tab-chip{display:flex;align-items:center;justify-content:center;white-space:nowrap;text-align:center}
+    .leaflet-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,400px);gap:14px;align-items:start}
+    .panel-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px;align-items:start}
+    .leaflet-layout>*,.panel-split>*{min-width:0}
+    .metric-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+    .cols-2{grid-template-columns:1fr 1fr}
+    .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    @media (max-width: 1100px){
+      .leaflet-layout,.panel-split{grid-template-columns:1fr}
+    }
     @media (max-width: 980px){
       .hero-grid,.resident-grid,.quick-grid{grid-template-columns:1fr}
       .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .app-header-row{align-items:flex-start}
+      .app-brand{width:100%}
+      .app-toolbar{width:100%}
+      .tab-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .tab-chip{width:100%;white-space:normal;min-height:44px}
+      .hero-title{font-size:30px}
+    }
+    @media (max-width: 760px){
+      .cols-2,.cols-3{grid-template-columns:1fr}
+      .app-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .app-toolbar > *{min-width:0;width:100%}
+      .hero-title{font-size:26px}
+      .app-title{font-size:20px}
     }
     @media (max-width: 640px){
-      .app-shell{padding:0 16px}
-      .summary-grid{grid-template-columns:1fr}
+      .app-shell{padding:0 14px}
+      .summary-grid,.metric-grid-2,.cols-2,.cols-3{grid-template-columns:1fr}
+      .tab-rail{grid-template-columns:1fr}
+      .desktop-tab-rail{display:none}
+      .mobile-tab-shell{display:block}
+      .app-toolbar{grid-template-columns:1fr}
+      .hero-actions{flex-direction:column;align-items:stretch}
+      .hero-actions > button{width:100%}
+      .hero-title{font-size:22px}
     }
   `);
   var InfoBox = ({ icon = "Info", title, children, color: color2 = "#3b82f6" }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: `${color2}0d`, border: `1px solid ${color2}28`, borderRadius: 10, padding: "14px 18px", marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 18, flexShrink: 0, marginTop: 1 } }, icon), /* @__PURE__ */ import_react45.default.createElement("div", null, title && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 13, fontWeight: 700, color: color2, marginBottom: 5 } }, title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.85 } }, children))));
@@ -49858,6 +51370,63 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       taxableStatusDate: next.taxableStatusDate || null,
       uniformPercentOfValue: Number.isFinite(uniformPercentOfValue) ? uniformPercentOfValue : null
     };
+  }
+  var APP_TAB_IDS = /* @__PURE__ */ new Set(["home", "browse", "mapview", "equity", "taxtools", "compare", "ownership", "analytics", "opportunity", "dataquality", "guide"]);
+  function slugifyShareLabel(raw) {
+    return (raw || "").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function buildComparableDatasetKey(meta = {}, parcels = []) {
+    const normalized = normalizeDatasetMeta(meta, parcels);
+    const year = normalized.assessmentYear ? String(normalized.assessmentYear) : "";
+    const rollType = normalizeRollType(normalized.rollType || "");
+    const swisCode = normalizeSwisCode(normalized.swisCode || "");
+    if (year && rollType) return [year, rollType, swisCode || "albany"].filter(Boolean).join("-");
+    return swisCode ? `albany-roll-${swisCode}` : "albany-roll";
+  }
+  function parseComparableSnapshotSearch(searchString = "") {
+    const params = new URLSearchParams((searchString || "").toString().replace(/^\?/, ""));
+    const rawSubjectId = normalizeParcelId(params.get("subject") || "");
+    const rawCompIds = (params.get("comps") || "").split(",").map(normalizeParcelId).filter(Boolean);
+    const compIds = [...new Set(rawCompIds)];
+    const tool = (params.get("tool") || "").trim().toLowerCase();
+    const tab = (params.get("tab") || "").trim().toLowerCase();
+    return {
+      tab: APP_TAB_IDS.has(tab) ? tab : tool === "neighbor" && (rawSubjectId || compIds.length) ? "taxtools" : "",
+      tool,
+      subjectId: rawSubjectId,
+      compIds,
+      datasetKey: (params.get("dataset") || "").trim(),
+      label: (params.get("label") || "").trim(),
+      hasSnapshot: !!(rawSubjectId || compIds.length)
+    };
+  }
+  function buildComparableSnapshotUrl({ subjectId = "", compIds = [], datasetKey = "", label = "" } = {}) {
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+    params.set("tab", "taxtools");
+    params.set("tool", "neighbor");
+    const normalizedSubjectId = normalizeParcelId(subjectId);
+    const normalizedCompIds = [...new Set((compIds || []).map(normalizeParcelId).filter(Boolean))];
+    if (normalizedSubjectId) params.set("subject", normalizedSubjectId);
+    else params.delete("subject");
+    if (normalizedCompIds.length) params.set("comps", normalizedCompIds.join(","));
+    else params.delete("comps");
+    if (datasetKey) params.set("dataset", datasetKey);
+    else params.delete("dataset");
+    const labelSlug = slugifyShareLabel(label);
+    if (labelSlug) params.set("label", labelSlug);
+    else params.delete("label");
+    return url.toString();
+  }
+  function replaceComparableSnapshotUrl(snapshot) {
+    const href = buildComparableSnapshotUrl(snapshot);
+    if (!href || typeof window === "undefined") return "";
+    try {
+      window.history.replaceState({}, "", href);
+    } catch {
+    }
+    return href;
   }
   function extractPayloadMeta(payload) {
     if (!payload || Array.isArray(payload) || typeof payload !== "object") return {};
@@ -50350,6 +51919,14 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       const ownerPortfolioKey = normalizeOwnerPortfolioKey(owner1);
       const ownerPortfolio = ownerPortfolioKey ? ownerPortfolioStats.get(ownerPortfolioKey) || { count: 1, offsiteMailCount: 0 } : { count: 1, offsiteMailCount: 0 };
       const ownerPortfolioCount = ownerPortfolio.count || 1;
+      const inv = p && p.inventory && typeof p.inventory === "object" ? p.inventory : null;
+      const invStyle = (inv?.buildingStyle || "").toString().trim().toLowerCase();
+      const invYear = Number.isFinite(Number(inv?.yearBuilt)) ? Number(inv.yearBuilt) : Number.isFinite(Number(p.yearBuilt)) ? Number(p.yearBuilt) : null;
+      const invSqft = Number.isFinite(Number(inv?.sqftLivingArea)) ? Number(inv.sqftLivingArea) : null;
+      const invBeds = Number.isFinite(Number(inv?.bedrooms)) ? Number(inv.bedrooms) : null;
+      const invFullBaths = Number.isFinite(Number(inv?.fullBaths)) ? Number(inv.fullBaths) : null;
+      const invHalfBaths = Number.isFinite(Number(inv?.halfBaths)) ? Number(inv.halfBaths) : null;
+      const invBaths = Number.isFinite(invFullBaths) || Number.isFinite(invHalfBaths) ? Number(invFullBaths || 0) + Number(invHalfBaths || 0) * 0.5 : null;
       const next = {
         ...p,
         parcelId: parcelIdRaw || p.printKey || p.pinSbl || "",
@@ -50381,7 +51958,19 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         _addrLower: addrLower,
         _owner1Lower: owner1Lower,
         _owner2Lower: owner2Lower,
-        _searchBlob: [addrLower, parcelIdNorm.toLowerCase(), clsDesc.toLowerCase(), nbr.toLowerCase(), (next.zip || "").toLowerCase(), cleanMail.toLowerCase()].join("|"),
+        _searchBlob: [
+          addrLower,
+          parcelIdNorm.toLowerCase(),
+          clsDesc.toLowerCase(),
+          nbr.toLowerCase(),
+          (next.zip || "").toLowerCase(),
+          cleanMail.toLowerCase(),
+          invStyle,
+          invYear != null ? String(invYear) : "",
+          invSqft != null ? String(Math.round(invSqft)) : "",
+          invBeds != null ? String(Math.round(invBeds)) : "",
+          invBaths != null ? String(invBaths) : ""
+        ].join("|"),
         _ownerBlob: [owner1Lower, owner2Lower].join("|"),
         _absentee: absentee,
         _absenteeModel: absenteeModel,
@@ -50391,12 +51980,85 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         _ownerPortfolioCount: ownerPortfolioCount,
         _ownerPortfolioOffsiteCount: absenteeModel.ownerPortfolioOffsiteCount,
         _ownerEntity: absenteeModel.ownerEntity,
+        _invStyle: invStyle,
+        _invYearBuilt: invYear,
+        _invSqft: invSqft,
+        _invBedrooms: invBeds,
+        _invBaths: invBaths,
         _eqRatioNum: eqRatioNum,
         _eqBand: eqBand,
         _qualityWarnings: warnings,
         _hasQualityWarning: warnings.length > 0
       };
     });
+  }
+  function buildOwnerPortfolioGroups(parcels = []) {
+    const groups = /* @__PURE__ */ new Map();
+    parcels.forEach((p, idx) => {
+      const ownerKey = normalizeOwnerPortfolioKey(p?.owner1 || "");
+      if (!ownerKey) return;
+      let group = groups.get(ownerKey);
+      if (!group) {
+        const slug = ownerKey.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || `owner-${idx + 1}`;
+        group = {
+          id: `owner-${slug}`,
+          ownerKey,
+          parcels: [],
+          totalFMV: 0,
+          totalAssessed: 0,
+          totalLand: 0,
+          zips: /* @__PURE__ */ new Set(),
+          labels: /* @__PURE__ */ new Map()
+        };
+        groups.set(ownerKey, group);
+      }
+      const label = (p?.owner1 || "Unknown owner").toString().trim() || "Unknown owner";
+      const labelKey = label.toLowerCase();
+      const existingLabel = group.labels.get(labelKey);
+      if (existingLabel) {
+        existingLabel.count += 1;
+        if (label.length > existingLabel.label.length) existingLabel.label = label;
+      } else {
+        group.labels.set(labelKey, { label, count: 1 });
+      }
+      group.parcels.push(p);
+      group.totalFMV += Number(p?.fullMarketValue) || 0;
+      group.totalAssessed += Number(p?.assessedValue) || 0;
+      group.totalLand += Number(p?.landValue) || 0;
+      if (p?.zip) group.zips.add(String(p.zip));
+    });
+    return [...groups.values()].map((group) => {
+      const displayOwner = [...group.labels.values()].sort((a2, b) => b.count - a2.count || b.label.length - a2.label.length || a2.label.localeCompare(b.label))[0]?.label || "Unknown owner";
+      const parcels2 = [...group.parcels].sort((a2, b) => {
+        const byAddress = (a2?.address || "").localeCompare(b?.address || "", void 0, { numeric: true, sensitivity: "base" });
+        if (byAddress) return byAddress;
+        return (b?.fullMarketValue || 0) - (a2?.fullMarketValue || 0);
+      });
+      return {
+        id: group.id,
+        ownerKey: group.ownerKey,
+        name: displayOwner,
+        displayOwner,
+        parcels: parcels2,
+        propertyCount: parcels2.length,
+        totalFMV: group.totalFMV,
+        totalAssessed: group.totalAssessed,
+        totalLand: group.totalLand,
+        zips: [...group.zips].sort((a2, b) => a2.localeCompare(b))
+      };
+    }).sort((a2, b) => b.propertyCount - a2.propertyCount || b.totalFMV - a2.totalFMV || a2.displayOwner.localeCompare(b.displayOwner));
+  }
+  function getOwnerPortfolioGroupFromIndex(parcel, ownerPortfolioIndex) {
+    if (!parcel || !ownerPortfolioIndex) return null;
+    const ownerKey = normalizeOwnerPortfolioKey(parcel?.owner1 || "");
+    return ownerKey ? ownerPortfolioIndex.get(ownerKey) || null : null;
+  }
+  function getOwnerPortfolioCountFast(parcel) {
+    return Math.max(1, parseInt(parcel?._ownerPortfolioCount, 10) || 1);
+  }
+  function ownerPortfolioBadgeLabel(parcel) {
+    const count = getOwnerPortfolioCountFast(parcel);
+    return count > 1 ? `Portfolio ${count}` : "";
   }
   var eqRFast = (p) => typeof p?._eqRatioNum === "number" && isFinite(p._eqRatioNum) ? p._eqRatioNum.toFixed(1) : eqR(p);
   var eqFlagFast = (p) => p && typeof p._eqBand === "string" ? p._eqBand : eqFlag(p);
@@ -50480,64 +52142,6 @@ self.onmessage = function(ev){
     worker.__blobUrl = blobUrl;
     return worker;
   }
-  function createDuplicateScanWorker() {
-    if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") return null;
-    const workerSrc = `
-var __levenSim = (${levenSim.toString()});
-self.onmessage = function(ev){
-  try{
-    var data = ev.data || {};
-    var parcels = Array.isArray(data.parcels) ? data.parcels : [];
-    var threshold = typeof data.threshold === "number" ? data.threshold : 0.75;
-    var names = new Array(parcels.length);
-    for(var i=0;i<parcels.length;i++){
-      var owner = (((parcels[i]||{}).owner1)||"").toString().trim().toLowerCase();
-      names[i] = owner.replace(/\\s+/g," ");
-    }
-    var buckets = {};
-    for(var j=0;j<names.length;j++){
-      var n = names[j];
-      if(!n) continue;
-      var key = n.slice(0,1)+"|"+n.length;
-      (buckets[key]||(buckets[key]=[])).push(j);
-    }
-    var groups = [];
-    var used = {};
-    var bucketKeys = Object.keys(buckets);
-    for(var b=0;b<bucketKeys.length;b++){
-      var idxs = buckets[bucketKeys[b]];
-      for(var x=0;x<idxs.length;x++){
-        var i0 = idxs[x];
-        if(used[i0]) continue;
-        var baseName = names[i0];
-        if(!baseName || baseName.length < 4) continue;
-        var matches = [];
-        for(var y=x+1;y<idxs.length;y++){
-          var i1 = idxs[y];
-          if(used[i1]) continue;
-          var other = names[i1];
-          if(!other) continue;
-          if(Math.abs(baseName.length-other.length)>4) continue;
-          if(__levenSim(baseName, other) > threshold) matches.push(i1);
-        }
-        if(matches.length){
-          groups.push({baseIndex:i0, similarIndices:matches});
-          used[i0]=1;
-          for(var k=0;k<matches.length;k++) used[matches[k]]=1;
-        }
-      }
-    }
-    self.postMessage({ok:true, groups:groups});
-  }catch(err){
-    self.postMessage({ok:false, error: err && err.message ? err.message : String(err)});
-  }
-};`;
-    const blob = new Blob([workerSrc], { type: "text/javascript" });
-    const blobUrl = URL.createObjectURL(blob);
-    const worker = new Worker(blobUrl);
-    worker.__blobUrl = blobUrl;
-    return worker;
-  }
   var VirtualRows = ({ items, rowHeight = 96, height = 480, overscan = 4, renderRow, empty }) => {
     const [scrollTop, setScrollTop] = (0, import_react45.useState)(0);
     const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
@@ -50550,10 +52154,44 @@ self.onmessage = function(ev){
     const q = [address, neighborhood, "Albany, NY", zip].filter(Boolean).join(", ");
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
   };
-  var AddrLink = ({ address, zip, neighborhood, children, stopPropagation = true, style = {} }) => {
+  async function copyTextToClipboard(text) {
+    if (!text || typeof document === "undefined") return false;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "readonly");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      ta.style.pointerEvents = "none";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch {
+      return false;
+    }
+  }
+  var dispatchApplicationMapJump = (detail) => {
+    if (typeof window === "undefined" || !detail?.address) return;
+    try {
+      window.dispatchEvent(new CustomEvent("albany:jump-to-app-map", { detail }));
+      window.dispatchEvent(new CustomEvent("albany:jump-to-research-map", { detail }));
+    } catch {
+    }
+  };
+  var AddrLink = ({ address, zip, neighborhood, parcelId = null, parcel = null, children, stopPropagation = true, style = {} }) => {
     const label = children ?? address ?? "(no address)";
     if (!address) return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, label);
-    return /* @__PURE__ */ import_react45.default.createElement(
+    return /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(
       "a",
       {
         href: googleMapsHref(address, zip, neighborhood),
@@ -50567,22 +52205,413 @@ self.onmessage = function(ev){
       },
       label,
       neighborhood && /* @__PURE__ */ import_react45.default.createElement("span", { style: { opacity: 0.75, fontSize: "0.9em" } }, ` | ${neighborhood}`)
-    );
+    ), /* @__PURE__ */ import_react45.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: (e) => {
+          if (stopPropagation) e.stopPropagation();
+          dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel });
+        },
+        title: `Open ${address} in Application Map`,
+        style: { background: "transparent", border: "none", padding: 0, color: "var(--teal2)", fontSize: "0.85em", fontWeight: 700, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }
+      },
+      "Application Map"
+    ));
   };
+  var PROP_CLASSIFICATION_MAP = (property_type_classification_codes_default || []).reduce((acc, row) => {
+    const code = String(row?.Code || "").trim();
+    if (!code) return acc;
+    acc[code] = {
+      title: String(row?.Title || "").trim(),
+      description: String(row?.Description || "").trim()
+    };
+    return acc;
+  }, {});
+  var propClassMeta = (code) => PROP_CLASSIFICATION_MAP[(code || "").toString().trim()] || null;
+  var propClassOfficialTitle = (code) => (propClassMeta(code)?.title || "").toString().trim();
+  var propClassOfficialDescription = (code) => (propClassMeta(code)?.description || "").toString().trim();
   var formatPropClassLabel = (code, desc) => {
     const c2 = (code || "").toString().trim();
     const d = (desc || "").toString().trim();
     if (d && c2 && d !== c2) return `${d} (${c2})`;
     return d || c2 || "Unknown";
   };
+  var formatPropClassOfficialLabel = (code, desc) => {
+    const c2 = (code || "").toString().trim();
+    const official = propClassOfficialTitle(c2);
+    if (official && c2) return `${official} (${c2})`;
+    return formatPropClassLabel(code, desc);
+  };
   var propClassLabel = (p) => formatPropClassLabel(p?.propClass, p?.propClassDesc);
-  var propClassDescLabel = (p) => p?.propClassDesc || p?.propClass || "Unknown";
+  var propClassDescLabel = (p) => p?.propClassDesc || propClassOfficialTitle(p?.propClass) || p?.propClass || "Unknown";
+  var propClassOfficialLabel = (p) => formatPropClassOfficialLabel(p?.propClass, p?.propClassDesc);
+  var propClassMeaning = (p) => propClassOfficialDescription(p?.propClass);
+  var propClassTooltip = (p) => [propClassOfficialLabel(p), propClassMeaning(p)].filter(Boolean).join(" | ") || propClassLabel(p);
   var parcelNeighborhoodName = (p) => (p?.neighborhood || p?.neighborhoodLabel || "").toString().trim();
   var parcelNeighborhoodAssociation = (p) => (p?.neighborhoodAssociation || "").toString().trim();
   var parcelAreaSummary = (p) => {
     const neighborhood = parcelNeighborhoodName(p);
     const association = parcelNeighborhoodAssociation(p);
     return association && association !== neighborhood ? `${neighborhood || "Neighborhood unknown"} | ${association}` : neighborhood || association || "";
+  };
+  var inventoryOf = (p) => p && p.inventory && typeof p.inventory === "object" ? p.inventory : null;
+  var inventoryStyle = (p) => {
+    const raw = (inventoryOf(p)?.buildingStyle || "").toString().trim();
+    if (!raw) return "";
+    if (/^style code\s+/i.test(raw)) return raw;
+    return /^\d+$/.test(raw) ? `Style code ${raw}` : raw;
+  };
+  var inventoryYearBuilt = (p) => {
+    const invYear = Number(inventoryOf(p)?.yearBuilt);
+    if (Number.isFinite(invYear) && invYear > 0) return invYear;
+    const baseYear = Number(p?.yearBuilt);
+    return Number.isFinite(baseYear) && baseYear > 0 ? baseYear : null;
+  };
+  var inventorySqft = (p) => {
+    const v = Number(inventoryOf(p)?.sqftLivingArea);
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+  };
+  var inventoryBedrooms = (p) => {
+    const v = Number(inventoryOf(p)?.bedrooms);
+    return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+  };
+  var inventoryFullBaths = (p) => {
+    const v = Number(inventoryOf(p)?.fullBaths);
+    return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+  };
+  var inventoryHalfBaths = (p) => {
+    const v = Number(inventoryOf(p)?.halfBaths);
+    return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+  };
+  var inventoryBathText = (p) => {
+    const full = inventoryFullBaths(p);
+    const half = inventoryHalfBaths(p);
+    if (full == null && half == null) return "-";
+    if (half == null || half === 0) return String(full ?? 0);
+    return `${full ?? 0} + ${half} half`;
+  };
+  var hasInventoryProfile = (p) => !!(inventoryStyle(p) || inventoryYearBuilt(p) || inventorySqft(p) || inventoryBedrooms(p) != null || inventoryFullBaths(p) != null || inventoryHalfBaths(p) != null);
+  var isResidentialPropClass = (code) => /^2\d\d$/.test((code || "").toString().trim());
+  var inventoryBathCount = (p) => {
+    const full = inventoryFullBaths(p);
+    const half = inventoryHalfBaths(p);
+    if (full == null && half == null) return null;
+    return Number(full || 0) + Number(half || 0) * 0.5;
+  };
+  var streetNameKeyForComp = (addr) => {
+    const k2 = normalizeStreetKeyForCompare(addr || "");
+    if (!k2) return "";
+    const t = k2.split(" ").filter(Boolean);
+    return t.length > 1 && /^\d+[a-z]?$/i.test(t[0]) ? t.slice(1).join(" ") : t.join(" ");
+  };
+  var comparePctDelta = (a2, b) => {
+    if (!(Number.isFinite(a2) && a2 > 0 && Number.isFinite(b) && b > 0)) return null;
+    return Math.abs(a2 - b) / Math.max(a2, 1);
+  };
+  var buildComparableProfile = (p) => {
+    const livingArea = inventorySqft(p);
+    const yearBuilt = inventoryYearBuilt(p);
+    const bedrooms = inventoryBedrooms(p);
+    const bathCount = inventoryBathCount(p);
+    const bathText = inventoryBathText(p);
+    const style = inventoryStyle(p) || null;
+    const availablePhysicalFields = [];
+    if (livingArea != null) availablePhysicalFields.push("Living area");
+    if (yearBuilt != null) availablePhysicalFields.push("Year built");
+    if (bedrooms != null) availablePhysicalFields.push("Bedrooms");
+    if (bathCount != null) availablePhysicalFields.push("Baths");
+    if (style) availablePhysicalFields.push("Style");
+    return {
+      livingArea,
+      yearBuilt,
+      bedrooms,
+      bathCount,
+      bathText: bathText === "-" ? null : bathText,
+      style,
+      availablePhysicalFields,
+      neighborhood: parcelNeighborhoodName(p) || null,
+      classLabel: propClassLabel(p),
+      equity: Number.isFinite(parseFloat(eqRFast(p))) ? parseFloat(eqRFast(p)) : null
+    };
+  };
+  var buildComparableDelta = (subject, comp, subjectProfile, compProfile) => ({
+    fmv: Number.isFinite(subject?.fullMarketValue) && Number.isFinite(comp?.fullMarketValue) ? comp.fullMarketValue - subject.fullMarketValue : null,
+    assessed: Number.isFinite(subject?.assessedValue) && Number.isFinite(comp?.assessedValue) ? comp.assessedValue - subject.assessedValue : null,
+    equity: subjectProfile?.equity != null && compProfile?.equity != null ? +(compProfile.equity - subjectProfile.equity).toFixed(1) : null,
+    livingArea: subjectProfile?.livingArea != null && compProfile?.livingArea != null ? compProfile.livingArea - subjectProfile.livingArea : null,
+    yearBuilt: subjectProfile?.yearBuilt != null && compProfile?.yearBuilt != null ? compProfile.yearBuilt - subjectProfile.yearBuilt : null,
+    bedrooms: subjectProfile?.bedrooms != null && compProfile?.bedrooms != null ? compProfile.bedrooms - subjectProfile.bedrooms : null,
+    baths: subjectProfile?.bathCount != null && compProfile?.bathCount != null ? +(compProfile.bathCount - subjectProfile.bathCount).toFixed(1) : null
+  });
+  var comparableProfileBadgeItems = (p) => {
+    const profile = buildComparableProfile(p);
+    const items = [];
+    if (profile.livingArea != null) items.push(nf(profile.livingArea) + " sq ft");
+    if (profile.yearBuilt != null) items.push("Built " + profile.yearBuilt);
+    if (profile.bedrooms != null) items.push(profile.bedrooms + " beds");
+    if (profile.bathText) items.push(profile.bathText + " baths");
+    if (profile.style) items.push(profile.style);
+    return items;
+  };
+  var comparableProfileTableRows = (p) => {
+    const profile = buildComparableProfile(p);
+    return [
+      ["FMV", $f(p.fullMarketValue)],
+      ["Assessed", $f(p.assessedValue)],
+      ["Equity %", profile.equity != null ? profile.equity + "%" : "-"],
+      ["Neighborhood", profile.neighborhood || "-"],
+      ["Class", profile.classLabel || "-"],
+      ["Living area", profile.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-"],
+      ["Year built", profile.yearBuilt != null ? String(profile.yearBuilt) : "-"],
+      ["Bedrooms", profile.bedrooms != null ? String(profile.bedrooms) : "-"],
+      ["Baths", profile.bathText || "-"],
+      ["Style", profile.style || "-"]
+    ];
+  };
+  var formatSignedComparableMoney = (value) => {
+    if (value == null || !Number.isFinite(value)) return "-";
+    if (value === 0) return "$0";
+    return (value > 0 ? "+" : "-") + $f(Math.abs(value));
+  };
+  var formatSignedComparableCount = (value, suffix = "") => {
+    if (value == null || !Number.isFinite(value)) return "-";
+    if (value === 0) return "0" + suffix;
+    const abs = Math.abs(value);
+    const rounded = Math.abs(abs - Math.round(abs)) < 1e-3 ? nf(Math.round(abs)) : abs.toFixed(1);
+    return (value > 0 ? "+" : "-") + rounded + suffix;
+  };
+  var comparableDeltaTone = (value, betterWhenLower = false) => {
+    if (value == null || !Number.isFinite(value)) return "var(--gray3)";
+    if (value === 0) return "var(--gray2)";
+    if (betterWhenLower) return value < 0 ? "var(--green2)" : "var(--red2)";
+    return value > 0 ? "var(--green2)" : "var(--amber2)";
+  };
+  var buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
+    const candidate = buildComparableCandidate(subject, comp);
+    if (candidate) return candidate;
+    const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
+    const compProfile = buildComparableProfile(comp);
+    const subjectNeighborhood = baseSubjectProfile.neighborhood;
+    const compNeighborhood = compProfile.neighborhood;
+    const subjectStreet = streetNameKeyForComp(subject.address);
+    const compStreet = streetNameKeyForComp(comp.address);
+    return {
+      ...comp,
+      _compScore: 0,
+      _compReasons: [
+        "Included from shared comparable snapshot",
+        subjectNeighborhood && compNeighborhood && subjectNeighborhood === compNeighborhood ? "Same neighborhood: " + subjectNeighborhood : null,
+        subjectStreet && compStreet && subjectStreet === compStreet ? "Same street: " + subjectStreet : null,
+        comp.propClass === subject.propClass ? "Same residential class: " + propClassLabel(subject) : null
+      ].filter(Boolean),
+      _compSignals: ["Snapshot"],
+      _compEvidenceCount: 0,
+      _compPhysicalFieldsUsed: [],
+      _compUnusedPhysicalFields: baseSubjectProfile.availablePhysicalFields,
+      _compPhysicalFieldCountPossible: baseSubjectProfile.availablePhysicalFields.length,
+      _compProfile: compProfile,
+      _compDelta: buildComparableDelta(subject, comp, baseSubjectProfile, compProfile),
+      _compSnapshotIncluded: true
+    };
+  };
+  var buildComparableCandidate = (subject, comp) => {
+    if (!subject || !comp || comp.parcelId === subject.parcelId) return null;
+    if (!isResidentialPropClass(subject.propClass) || comp.propClass !== subject.propClass) return null;
+    const subjectProfile = buildComparableProfile(subject);
+    const compProfile = buildComparableProfile(comp);
+    let score = 18;
+    const reasons = [];
+    const allSignals = [];
+    const physicalFieldsUsed = [];
+    let evidenceCount = 0;
+    const subjectNeighborhood = subjectProfile.neighborhood;
+    const compNeighborhood = compProfile.neighborhood;
+    if (subjectNeighborhood && compNeighborhood && subjectNeighborhood === compNeighborhood) {
+      score += 28;
+      reasons.push("Same neighborhood: " + subjectNeighborhood);
+      allSignals.push("Neighborhood");
+    } else if (subject.zip && comp.zip === subject.zip) {
+      score += 10;
+      reasons.push("Same ZIP: " + subject.zip);
+      allSignals.push("ZIP");
+    }
+    const subjectStreet = streetNameKeyForComp(subject.address);
+    const compStreet = streetNameKeyForComp(comp.address);
+    if (subjectStreet && compStreet && subjectStreet === compStreet) {
+      score += 8;
+      reasons.push("Same street: " + subjectStreet);
+      allSignals.push("Street");
+    }
+    const subjectSqft = subjectProfile.livingArea;
+    const compSqft = compProfile.livingArea;
+    if (subjectSqft && compSqft) {
+      const pct = comparePctDelta(subjectSqft, compSqft);
+      if (pct != null && pct > 0.6) return null;
+      score += Math.max(0, 28 - (pct || 0) * 40);
+      reasons.push("Living area within " + Math.round((pct || 0) * 100) + "% (" + compSqft.toLocaleString() + " sq ft)");
+      physicalFieldsUsed.push("Living area");
+      evidenceCount += 1;
+    }
+    const subjectYear = subjectProfile.yearBuilt;
+    const compYear = compProfile.yearBuilt;
+    if (subjectYear && compYear) {
+      const diff = Math.abs(compYear - subjectYear);
+      if (diff > 80) return null;
+      score += diff <= 10 ? 16 : diff <= 25 ? 10 : diff <= 40 ? 5 : 1;
+      reasons.push(diff === 0 ? "Year built matches (" + compYear + ")" : "Year built within " + diff + " years (" + compYear + ")");
+      physicalFieldsUsed.push("Year built");
+      evidenceCount += 1;
+    }
+    const subjectBeds = subjectProfile.bedrooms;
+    const compBeds = compProfile.bedrooms;
+    if (subjectBeds != null && compBeds != null) {
+      const diff = Math.abs(compBeds - subjectBeds);
+      if (diff > 2) return null;
+      score += diff === 0 ? 12 : diff === 1 ? 6 : 2;
+      reasons.push(diff === 0 ? compBeds + " bedrooms, same count" : compBeds + " bedrooms, within " + diff);
+      physicalFieldsUsed.push("Bedrooms");
+      evidenceCount += 1;
+    }
+    const subjectBaths = subjectProfile.bathCount;
+    const compBaths = compProfile.bathCount;
+    if (subjectBaths != null && compBaths != null) {
+      const diff = Math.abs(compBaths - subjectBaths);
+      if (diff > 2) return null;
+      score += diff === 0 ? 10 : diff <= 0.5 ? 8 : diff <= 1 ? 4 : 1;
+      reasons.push(diff === 0 ? compBaths + " baths, same count" : compBaths + " baths, within " + diff);
+      physicalFieldsUsed.push("Baths");
+      evidenceCount += 1;
+    }
+    const subjectStyle = (subjectProfile.style || "").toLowerCase();
+    const compStyle = (compProfile.style || "").toLowerCase();
+    if (subjectStyle && compStyle && subjectStyle === compStyle) {
+      score += 8;
+      reasons.push("Same building style: " + subjectProfile.style);
+      physicalFieldsUsed.push("Style");
+      evidenceCount += 1;
+    }
+    const valuePct = comparePctDelta(subject.fullMarketValue, comp.fullMarketValue);
+    if (valuePct != null && valuePct <= 0.35) {
+      score += 6;
+      reasons.push("Market value within " + Math.round(valuePct * 100) + "%");
+      allSignals.push("Market value");
+    }
+    if (hasInventoryProfile(subject) && evidenceCount === 0) score -= 12;
+    const delta = buildComparableDelta(subject, comp, subjectProfile, compProfile);
+    const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter((label) => !physicalFieldsUsed.includes(label));
+    return {
+      ...comp,
+      _compScore: score,
+      _compReasons: reasons,
+      _compSignals: allSignals.concat(physicalFieldsUsed),
+      _compEvidenceCount: evidenceCount,
+      _compPhysicalFieldsUsed: physicalFieldsUsed,
+      _compUnusedPhysicalFields: unusedPhysicalFields,
+      _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
+      _compProfile: compProfile,
+      _compDelta: delta
+    };
+  };
+  var buildComparableResult = (subject, parcels, options = {}) => {
+    if (!subject) return null;
+    const subjectProfile = buildComparableProfile(subject);
+    const residential = isResidentialPropClass(subject.propClass);
+    const exactCompIds = [...new Set((options?.exactCompIds || []).map(normalizeParcelId).filter(Boolean))];
+    const requestedDatasetKey = (options?.snapshotDatasetKey || "").trim();
+    const currentDatasetKey = (options?.currentDatasetKey || "").trim();
+    let neighbors = [];
+    let comparableMode = "physical";
+    let snapshot = {
+      active: false,
+      requestedCompIds: [],
+      resolvedCompIds: [],
+      missingCompIds: [],
+      requestedDatasetKey,
+      currentDatasetKey,
+      datasetMismatch: false
+    };
+    if (exactCompIds.length) {
+      comparableMode = "snapshot";
+      snapshot = {
+        active: true,
+        requestedCompIds: exactCompIds,
+        resolvedCompIds: [],
+        missingCompIds: [],
+        requestedDatasetKey,
+        currentDatasetKey,
+        datasetMismatch: !!(requestedDatasetKey && currentDatasetKey && requestedDatasetKey !== currentDatasetKey)
+      };
+      const parcelById = /* @__PURE__ */ new Map();
+      for (const parcel of parcels || []) {
+        const key = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+        if (key && !parcelById.has(key)) parcelById.set(key, parcel);
+      }
+      neighbors = exactCompIds.map((compId) => {
+        const comp = parcelById.get(compId);
+        if (!comp || normalizeParcelId(comp.parcelIdNorm || comp.parcelId) === normalizeParcelId(subject.parcelIdNorm || subject.parcelId)) return null;
+        return buildComparableSnapshotCandidate(subject, comp, subjectProfile);
+      }).filter(Boolean);
+      snapshot.resolvedCompIds = neighbors.map((comp) => normalizeParcelId(comp.parcelIdNorm || comp.parcelId || comp.printKey || comp.pinSbl)).filter(Boolean);
+      snapshot.missingCompIds = exactCompIds.filter((compId) => !snapshot.resolvedCompIds.includes(compId));
+    } else if (residential) {
+      neighbors = parcels.map((comp) => buildComparableCandidate(subject, comp)).filter(Boolean).sort((a2, b) => b._compScore - a2._compScore || Math.abs((a2.fullMarketValue || 0) - (subject.fullMarketValue || 0)) - Math.abs((b.fullMarketValue || 0) - (subject.fullMarketValue || 0))).slice(0, 8);
+    }
+    if (!exactCompIds.length && !neighbors.length) {
+      comparableMode = "fallback";
+      const streetKey = streetNameKeyForComp(subject.address);
+      const subjectNeighborhood = subjectProfile.neighborhood;
+      neighbors = parcels.filter((comp) => comp.parcelId !== subject.parcelId).filter((comp) => comp.propClass === subject.propClass).filter((comp) => {
+        if (subjectNeighborhood && parcelNeighborhoodName(comp) === subjectNeighborhood) return true;
+        return streetKey && streetNameKeyForComp(comp.address) === streetKey;
+      }).slice(0, 8).map((comp) => {
+        const compProfile = buildComparableProfile(comp);
+        return {
+          ...comp,
+          _compScore: 0,
+          _compEvidenceCount: 0,
+          _compSignals: ["Neighborhood", "Street", "Class"],
+          _compPhysicalFieldsUsed: [],
+          _compUnusedPhysicalFields: subjectProfile.availablePhysicalFields,
+          _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
+          _compProfile: compProfile,
+          _compDelta: buildComparableDelta(subject, comp, subjectProfile, compProfile),
+          _compReasons: [
+            subjectNeighborhood && parcelNeighborhoodName(comp) === subjectNeighborhood ? "Same neighborhood: " + subjectNeighborhood : null,
+            streetKey && streetNameKeyForComp(comp.address) === streetKey ? "Same street: " + streetKey : null,
+            "Same residential class: " + propClassLabel(subject)
+          ].filter(Boolean)
+        };
+      });
+    }
+    const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp) => sum + (comp.fullMarketValue || 0), 0) / neighbors.length) : null;
+    const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp) => sum + (comp.assessedValue || 0), 0) / neighbors.length) : null;
+    const avgEquity = neighbors.length ? +(neighbors.reduce((sum, comp) => sum + (parseFloat(eqRFast(comp)) || 0), 0) / neighbors.length).toFixed(1) : null;
+    const subjectEquity = subjectProfile.equity;
+    const deltaFMV = avgFMV != null ? subject.fullMarketValue - avgFMV : null;
+    const deltaFMVPct = avgFMV && deltaFMV != null ? deltaFMV / avgFMV * 100 : null;
+    const deltaAssessed = avgAssessed != null ? subject.assessedValue - avgAssessed : null;
+    const deltaEquity = avgEquity != null && subjectEquity != null ? +(subjectEquity - avgEquity).toFixed(1) : null;
+    const fairnessSignal = deltaEquity == null ? null : deltaEquity > 8 ? "Assessed above physically similar homes" : deltaEquity < -8 ? "Assessed below physically similar homes" : "Assessment is broadly in line with similar homes";
+    return {
+      p: subject,
+      neighbors,
+      avgFMV,
+      avgAssessed,
+      avgEquity,
+      deltaFMV,
+      deltaFMVPct,
+      deltaAssessed,
+      deltaEquity,
+      fairnessSignal,
+      comparableMode,
+      usedInventory: residential && hasInventoryProfile(subject),
+      scopeNeighborhood: subjectProfile.neighborhood || null,
+      streetKey: streetNameKeyForComp(subject.address),
+      subjectProfile,
+      grievanceCandidates: neighbors.slice(0, 4),
+      snapshot
+    };
   };
   function compactGeoJsonMultiPolygonCoords(geom) {
     if (!geom || !geom.type || !geom.coordinates) return null;
@@ -50813,6 +52842,43 @@ self.onmessage = function(ev){
     };
   }
   var Badge = ({ children, color: color2 = "#3b82f6", small }) => /* @__PURE__ */ import_react45.default.createElement("span", { style: { background: color2 + "22", color: color2, border: `1px solid ${color2}33`, borderRadius: 5, padding: small ? "1px 6px" : "2px 8px", fontSize: small ? 10 : 11, fontWeight: 600, fontFamily: "var(--fm)", whiteSpace: "nowrap" } }, children);
+  var AbsenteeExplain = ({ parcel, compact = false }) => {
+    if (!parcel) return null;
+    const model = getAbsenteeModelFast(parcel);
+    const details = model?.signals?.length ? model.signals : ["No strong off-site ownership signal."];
+    return /* @__PURE__ */ import_react45.default.createElement("details", { style: {
+      background: "rgba(249,115,22,.06)",
+      border: "1px solid rgba(249,115,22,.18)",
+      borderRadius: 8,
+      padding: compact ? "5px 8px" : "8px 10px",
+      marginTop: compact ? 4 : 6,
+      width: "100%"
+    } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: {
+      cursor: "pointer",
+      listStyle: "none",
+      fontSize: compact ? 10 : 11,
+      fontWeight: 700,
+      color: "#c2410c",
+      fontFamily: "var(--fm)"
+    } }, model.flag ? "Why flagged as absentee?" : "Why not flagged as absentee?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4, marginTop: compact ? 6 : 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: compact ? 10 : 11, color: "var(--gray2)", lineHeight: 1.5 } }, model.label, " (", model.confidence, ", score ", model.score, ")"), details.map((signal, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId || parcel.address || "parcel"}-absentee-${idx}`, style: { fontSize: compact ? 10 : 11, color: "var(--gray2)", lineHeight: 1.45 } }, signal))));
+  };
+  var OwnerPortfolioSection = ({ parcel, ownerPortfolioIndex, onSelectParcel }) => {
+    const group = (0, import_react45.useMemo)(() => getOwnerPortfolioGroupFromIndex(parcel, ownerPortfolioIndex), [parcel, ownerPortfolioIndex]);
+    if (!group || group.propertyCount <= 1) return null;
+    return /* @__PURE__ */ import_react45.default.createElement("details", { key: parcel?.parcelId || group.id, style: { background: "rgba(13,148,136,.06)", border: "1px solid rgba(13,148,136,.18)", borderRadius: 8, padding: "8px 10px", marginTop: 8, width: "100%" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "var(--teal2)", fontFamily: "var(--fm)" } }, group.propertyCount, " parcels potentially owned by same owner"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Grouped by normalized owner name across the loaded Albany roll. Verify manually before treating this as confirmed common ownership."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 7, maxHeight: 280, overflowY: "auto", paddingRight: 2 } }, group.parcels.map((other) => {
+      const current = other.parcelId === parcel.parcelId;
+      return /* @__PURE__ */ import_react45.default.createElement(
+        "button",
+        {
+          key: other.parcelId,
+          type: "button",
+          onClick: () => onSelectParcel && onSelectParcel(other),
+          style: { textAlign: "left", background: current ? "rgba(37,99,235,.10)" : "var(--card)", border: `1px solid ${current ? "rgba(37,99,235,.26)" : "var(--border)"}`, borderRadius: 8, padding: "9px 11px", cursor: onSelectParcel ? "pointer" : "default", minWidth: 0 }
+        },
+        /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0, flex: "1 1 160px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, other.address || other.parcelId), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, other.parcelId, " | ", other.neighborhood || "Neighborhood unknown", current ? " | Current parcel" : "")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right", minWidth: 0, flex: "0 1 auto" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 11, color: "var(--amber)" } }, $f(other.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 3 } }, propClassLabel(other))))
+      );
+    }))));
+  };
   var Card = ({ children, style = {} }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 20px", ...style } }, children);
   var SectionTitle = ({ children }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 700, color: "var(--white)", marginBottom: 4 } }, children);
   var Sub = ({ children }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginBottom: 16 } }, children);
@@ -50823,6 +52889,7 @@ self.onmessage = function(ev){
   var ParcelMini = ({ p, onClick, selected, onCompare, inCompare }) => {
     const flag = eqFlagFast(p);
     const fc = FC[flag];
+    const ownerPortfolioCount = getOwnerPortfolioCountFast(p);
     return /* @__PURE__ */ import_react45.default.createElement(
       "div",
       {
@@ -50843,24 +52910,26 @@ self.onmessage = function(ev){
           if (!selected && onClick) e.currentTarget.style.background = "var(--card)";
         }
       },
-      /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", margin: "3px 0 7px" } }, p.parcelId, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(p)), p.parcelType === "HOMESTEAD" && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "Homestead"), p.exemptions.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, p.exemptions.length, " Exemption", p.exemptions.length > 1 ? "s" : ""), isAbsenteeFast(p) && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small: true }, "Absentee"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", margin: "2px 0 5px" } }, "FMV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: fc, fontWeight: 600 } }, "o ", eqRFast(p), "%"))),
+      /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", margin: "3px 0 7px" } }, p.parcelId, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(p)), ownerPortfolioCount > 1 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0f766e", small: true }, ownerPortfolioBadgeLabel(p)), p.parcelType === "HOMESTEAD" && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "Homestead"), p.exemptions.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, p.exemptions.length, " Exemption", p.exemptions.length > 1 ? "s" : ""), isAbsenteeFast(p) && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small: true }, "Absentee"), /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: p, compact: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", margin: "2px 0 5px" } }, "FMV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: fc, fontWeight: 600 } }, "o ", eqRFast(p), "%"))),
       /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" } }, p.owner1, p.owner2 ? ` & ${p.owner2}` : ""), onCompare && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: (e) => {
         e.stopPropagation();
         onCompare(p);
       }, style: { background: inCompare ? "rgba(37,99,235,.25)" : "rgba(255,255,255,.05)", border: `1px solid ${inCompare ? "var(--blue)" : "var(--border)"}`, color: inCompare ? "var(--blue2)" : "var(--gray)", borderRadius: 5, padding: "2px 8px", fontSize: 10, cursor: "pointer", fontFamily: "var(--fm)" } }, inCompare ? "Added to Compare" : "+ Compare"))
     );
   };
-  var DetailPanel = ({ p, onClose, myHome, onSaveHome }) => {
+  var DetailPanel = ({ p, onClose, myHome, onSaveHome, ownerPortfolioIndex, onSelectParcel }) => {
     const flag = eqFlagFast(p);
     const fc = FC[flag];
     const r2 = parseFloat(eqRFast(p));
     const absenteeModel = getAbsenteeModelFast(p);
-    const Row = ({ label, value, color: color2, mono }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", flex: 1 } }, label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, fontFamily: mono ? "var(--fm)" : "inherit", fontWeight: 500, color: color2 || "var(--white)", textAlign: "right" } }, value));
-    const Sec = ({ title, children }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--gray2)", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8, paddingBottom: 5, borderBottom: "1px solid var(--border)" } }, title), children);
+    const ownerPortfolioGroup = getOwnerPortfolioGroupFromIndex(p, ownerPortfolioIndex);
+    const ownerPortfolioCount = ownerPortfolioGroup?.propertyCount || 0;
+    const Row = ({ label, value, color: color2, mono }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", marginBottom: 6, gap: 12, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", flex: "1 1 120px", minWidth: 0 } }, label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, fontFamily: mono ? "var(--fm)" : "inherit", fontWeight: 500, color: color2 || "var(--white)", textAlign: "right", flex: "1 1 160px", minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere", wordBreak: "break-word", whiteSpace: "normal" } }, value));
+    const Sec = ({ title, children }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginBottom: 18, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--gray2)", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8, paddingBottom: 5, borderBottom: "1px solid var(--border)" } }, title), children);
     const totExC = p.exemptions.reduce((s2, e) => s2 + e.countyAmt, 0);
     const totExCI = p.exemptions.reduce((s2, e) => s2 + e.cityAmt, 0);
     const totExS = p.exemptions.reduce((s2, e) => s2 + e.schoolAmt, 0);
-    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi", style: { background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 14, padding: 20, height: "100%", overflowY: "auto", position: "relative" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: onClose, style: { position: "absolute", top: 14, right: 14, background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--gray)", width: 26, height: 26, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" } }, "X"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 800, marginBottom: 2, paddingRight: 32 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 11, color: "var(--gray)", marginBottom: 10 } }, "Parcel ", p.parcelId, " | Albany, NY ", p.zip, parcelAreaSummary(p) ? ` | ${parcelAreaSummary(p)}` : ""), onSaveHome && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onSaveHome(p), style: {
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi", style: { background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 14, padding: 20, height: "100%", maxWidth: "100%", minWidth: 0, overflowY: "auto", position: "relative" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: onClose, style: { position: "absolute", top: 14, right: 14, background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--gray)", width: 26, height: 26, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, "x"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 800, marginBottom: 2, paddingRight: 32, lineHeight: 1.1, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 11, color: "var(--gray)", marginBottom: 10, overflowWrap: "anywhere", wordBreak: "break-word" } }, "Parcel ", p.parcelId, " | Albany, NY ", p.zip, parcelAreaSummary(p) ? ` | ${parcelAreaSummary(p)}` : ""), onSaveHome && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onSaveHome(p), style: {
       display: "flex",
       alignItems: "center",
       gap: 6,
@@ -50873,7 +52942,7 @@ self.onmessage = function(ev){
       fontWeight: 600,
       cursor: "pointer",
       marginBottom: 14
-    } }, myHome?.parcelId === p.parcelId ? "Home: This is My Home (saved)" : "Save as My Home"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: `${fc}11`, border: `1px solid ${fc}33`, borderRadius: 9, padding: 12, marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 6 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, fontWeight: 600, color: fc } }, FL[flag]), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700, color: fc } }, eqRFast(p), "%")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 5, background: "var(--bg)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${Math.min(isNaN(r2) ? 0 : r2, 150) / 1.5}%`, background: fc, borderRadius: 3, transition: "width .5s ease" } })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 5 } }, "Assessed / FMV | Fair range: 80-120%")), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Ownership" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Primary Owner", value: p.owner1 }), p.owner2 && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Co-Owner", value: p.owner2 }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Neighborhood", value: parcelNeighborhoodName(p) || "Not available" }), parcelNeighborhoodAssociation(p) && parcelNeighborhoodAssociation(p) !== parcelNeighborhoodName(p) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Neighborhood Association", value: parcelNeighborhoodAssociation(p) }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Mailing Address", value: p.mailAddress || "Not available" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Absentee Signal", value: absenteeModel.label + " (" + absenteeModel.confidence + ", score " + absenteeModel.score + ")", color: isAbsenteeFast(p) ? "#f97316" : "#22c55e" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5, marginTop: -2 } }, absenteeModel.signals.join(" | ") || "No strong off-site ownership signal.")), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Valuation" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Full Market Value", value: $f(p.fullMarketValue), mono: true, color: "#f59e0b" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Total Assessed Value", value: $f(p.assessedValue), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Land Value", value: $f(p.landValue), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Building Value", value: $f(p.assessedValue - p.landValue), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Land Share", value: gentriIdx(p) + "% land-to-total", mono: true, color: parseFloat(gentriIdx(p)) > 50 ? "#f97316" : "var(--white)" })), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Taxable Values" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "County Taxable", value: $f(p.countyTaxable), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "City Taxable", value: $f(p.cityTaxable), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "School Taxable", value: $f(p.schoolTaxable), mono: true })), p.exemptions.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Exemptions" }, p.exemptions.map((ex, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: i, style: { background: "rgba(245,158,11,.07)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 7, padding: "8px 10px", marginBottom: 7 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 12, fontWeight: 600, color: "var(--amber2)" } }, ex.name), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, "Sec. ", ex.code)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, fontSize: 11, color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement("span", null, "County: ", $f(ex.countyAmt)), /* @__PURE__ */ import_react45.default.createElement("span", null, "City: ", $f(ex.cityAmt)), /* @__PURE__ */ import_react45.default.createElement("span", null, "School: ", $f(ex.schoolAmt))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 4 } }, "Totals - County: ", $f(totExC), " | City: ", $f(totExCI), " | School: ", $f(totExS))), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Property Details" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Class", value: propClassLabel(p) }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Type", value: p.parcelType }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Lot Size", value: p.frontage && p.depth ? `${p.frontage}x${p.depth} ft (${nf(p.frontage * p.depth)} sq ft)` : "-" }), p.acres && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Lot Acres", value: p.acres.toFixed(4) + " ac", mono: true }), p.yearBuilt && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Year Built", value: p.yearBuilt, mono: true, color: "var(--teal2)" }), p.municipality && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Municipality", value: p.municipality }), p.schoolDistrict && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "School District", value: p.schoolDistrict }), p.waterType && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Water Supply", value: p.waterType, color: "var(--blue3)" }), p.sewerType && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Sewer Type", value: p.sewerType, color: "var(--blue3)" }), p.saleDate && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Last Sale Date", value: p.saleDate, mono: true, color: "var(--green2)" }), !p.saleDate && p.deedYear && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Last Sale Year", value: p.deedYear, mono: true }), p.eastCoord > 0 && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Survey Coords", value: `E-${p.eastCoord} N-${p.nrthCoord}`, mono: true })), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Tax Reduction vs. Assessed" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "County Savings", value: $f(p.assessedValue - p.countyTaxable), mono: true, color: "#22c55e" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "City Savings", value: $f(p.assessedValue - p.cityTaxable), mono: true, color: "#22c55e" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "School Savings", value: $f(p.assessedValue - p.schoolTaxable), mono: true, color: "#22c55e" })));
+    } }, myHome?.parcelId === p.parcelId ? "Home: This is My Home (saved)" : "Save as My Home"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, minWidth: 0 } }, ownerPortfolioCount > 1 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0f766e" }, ownerPortfolioBadgeLabel(p)), isAbsenteeFast(p) && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316" }, "Absentee"), p.exemptions.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b" }, p.exemptions.length, " exemption", p.exemptions.length === 1 ? "" : "s")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: `${fc}11`, border: `1px solid ${fc}33`, borderRadius: 9, padding: 12, marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 6 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, fontWeight: 600, color: fc } }, FL[flag]), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700, color: fc } }, eqRFast(p), "%")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 5, background: "var(--bg)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${Math.min(isNaN(r2) ? 0 : r2, 150) / 1.5}%`, background: fc, borderRadius: 3, transition: "width .5s ease" } })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 5 } }, "Assessed / FMV | Fair range: 80-120%")), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Ownership" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Primary Owner", value: p.owner1 }), p.owner2 && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Co-Owner", value: p.owner2 }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Neighborhood", value: parcelNeighborhoodName(p) || "Not available" }), parcelNeighborhoodAssociation(p) && parcelNeighborhoodAssociation(p) !== parcelNeighborhoodName(p) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Neighborhood Association", value: parcelNeighborhoodAssociation(p) }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Mailing Address", value: p.mailAddress || "Not available" }), ownerPortfolioCount > 1 && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Owner Portfolio", value: `${ownerPortfolioCount} parcels potentially owned by same owner`, color: "var(--teal2)" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Absentee Signal", value: absenteeModel.label + " (" + absenteeModel.confidence + ", score " + absenteeModel.score + ")", color: isAbsenteeFast(p) ? "#f97316" : "#22c55e" }), /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: p }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel: p, ownerPortfolioIndex, onSelectParcel })), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Valuation" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Full Market Value", value: $f(p.fullMarketValue), mono: true, color: "#f59e0b" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Total Assessed Value", value: $f(p.assessedValue), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Land Value", value: $f(p.landValue), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Building Value", value: $f(p.assessedValue - p.landValue), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Land Share", value: gentriIdx(p) + "% land-to-total", mono: true, color: parseFloat(gentriIdx(p)) > 50 ? "#f97316" : "var(--white)" })), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Taxable Values" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "County Taxable", value: $f(p.countyTaxable), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "City Taxable", value: $f(p.cityTaxable), mono: true }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "School Taxable", value: $f(p.schoolTaxable), mono: true })), p.exemptions.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Exemptions" }, p.exemptions.map((ex, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: i, style: { background: "rgba(245,158,11,.07)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 7, padding: "8px 10px", marginBottom: 7 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 12, fontWeight: 600, color: "var(--amber2)" } }, ex.name), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, "Sec. ", ex.code)), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-3", style: { display: "grid", gap: 4, fontSize: 11, color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement("span", null, "County: ", $f(ex.countyAmt)), /* @__PURE__ */ import_react45.default.createElement("span", null, "City: ", $f(ex.cityAmt)), /* @__PURE__ */ import_react45.default.createElement("span", null, "School: ", $f(ex.schoolAmt))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 4 } }, "Totals - County: ", $f(totExC), " | City: ", $f(totExCI), " | School: ", $f(totExS))), hasInventoryProfile(p) && /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Residential Profile" }, inventoryStyle(p) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Building Style", value: inventoryStyle(p) }), inventoryYearBuilt(p) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Year Built (inventory)", value: inventoryYearBuilt(p), mono: true, color: "var(--teal2)" }), inventorySqft(p) != null && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Living Area", value: `${inventorySqft(p).toLocaleString()} sq ft`, mono: true }), inventoryBedrooms(p) != null && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Bedrooms", value: inventoryBedrooms(p), mono: true }), (inventoryFullBaths(p) != null || inventoryHalfBaths(p) != null) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Baths", value: inventoryBathText(p), mono: true }), Number.isFinite(Number(inventoryOf(p)?.inventoryTotalAssessedValue)) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Inventory Total AV", value: $f(Number(inventoryOf(p)?.inventoryTotalAssessedValue)), mono: true }), inventoryOf(p)?.joinSource && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Inventory Source", value: inventoryOf(p)?.joinSource })), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Property Details" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Class", value: propClassLabel(p) }), propClassOfficialTitle(p?.propClass) && propClassOfficialLabel(p) !== propClassLabel(p) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Official Class", value: propClassOfficialLabel(p) }), propClassMeaning(p) && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Class Meaning", value: propClassMeaning(p) }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Type", value: p.parcelType }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Lot Size", value: p.frontage && p.depth ? `${p.frontage}x${p.depth} ft (${nf(p.frontage * p.depth)} sq ft)` : "-" }), p.acres && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Lot Acres", value: p.acres.toFixed(4) + " ac", mono: true }), p.yearBuilt && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Year Built", value: p.yearBuilt, mono: true, color: "var(--teal2)" }), p.municipality && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Municipality", value: p.municipality }), p.schoolDistrict && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "School District", value: p.schoolDistrict }), p.waterType && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Water Supply", value: p.waterType, color: "var(--blue3)" }), p.sewerType && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Sewer Type", value: p.sewerType, color: "var(--blue3)" }), p.saleDate && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Last Sale Date", value: p.saleDate, mono: true, color: "var(--green2)" }), !p.saleDate && p.deedYear && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Last Sale Year", value: p.deedYear, mono: true }), p.eastCoord > 0 && /* @__PURE__ */ import_react45.default.createElement(Row, { label: "Survey Coords", value: `E-${p.eastCoord} N-${p.nrthCoord}`, mono: true })), /* @__PURE__ */ import_react45.default.createElement(Sec, { title: "Tax Reduction vs. Assessed" }, /* @__PURE__ */ import_react45.default.createElement(Row, { label: "County Savings", value: $f(p.assessedValue - p.countyTaxable), mono: true, color: "#22c55e" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "City Savings", value: $f(p.assessedValue - p.cityTaxable), mono: true, color: "#22c55e" }), /* @__PURE__ */ import_react45.default.createElement(Row, { label: "School Savings", value: $f(p.assessedValue - p.schoolTaxable), mono: true, color: "#22c55e" })));
   };
   var PropListModal = ({ data, onClose }) => {
     if (!data) return null;
@@ -50881,7 +52950,7 @@ self.onmessage = function(ev){
     const q = search.trim().toLowerCase();
     const shown = q ? data.parcels.filter((p) => (p._searchBlob || "").includes(q) || (p._ownerBlob || "").includes(q)) : data.parcels;
     const listHeight = Math.max(260, Math.min(620, (typeof window !== "undefined" ? window.innerHeight : 760) - 220));
-    const renderRow = (p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 14px", marginBottom: 7 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address || "(no address)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 1 } }, p.parcelId, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 3, marginTop: 5 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(p)), p.parcelType === "HOMESTEAD" && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "Homestead"), p.exemptions?.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, p.exemptions.length, " Exempt"), isAbsenteeFast(p) && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small: true }, "Absentee"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 1 } }, "FMV"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: FC[eqFlagFast(p)], marginTop: 2, fontFamily: "var(--fm)", fontWeight: 600 } }, eqRFast(p), "%"))));
+    const renderRow = (p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 14px", marginBottom: 7 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address || "(no address)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 1 } }, p.parcelId, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 3, marginTop: 5 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(p)), p.parcelType === "HOMESTEAD" && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "Homestead"), p.exemptions?.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, p.exemptions.length, " Exempt"), isAbsenteeFast(p) && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small: true }, "Absentee"), /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: p, compact: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 1 } }, "FMV"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: FC[eqFlagFast(p)], marginTop: 2, fontFamily: "var(--fm)", fontWeight: 600 } }, eqRFast(p), "%"))));
     return /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)", zIndex: 800, display: "flex", justifyContent: "flex-end" }, onClick: onClose }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi", onClick: (e) => e.stopPropagation(), style: {
       background: "var(--bg2)",
       borderLeft: "1px solid var(--border2)",
@@ -50918,7 +52987,7 @@ self.onmessage = function(ev){
     }, [value, delay]);
     return dv;
   }
-  var Browse = ({ parcels, meta = {}, compareList, onCompare, myHome, onSaveHome, onOpenHomeSetup }) => {
+  var Browse = ({ parcels, meta = {}, compareList, onCompare, myHome, onSaveHome, onOpenHomeSetup, ownerPortfolioIndex }) => {
     const [search, setSearch] = (0, import_react45.useState)("");
     const [fZip, setFZip] = (0, import_react45.useState)("");
     const [fCls, setFCls] = (0, import_react45.useState)("");
@@ -50926,6 +52995,10 @@ self.onmessage = function(ev){
     const [fEx, setFEx] = (0, import_react45.useState)("");
     const [fEq, setFEq] = (0, import_react45.useState)("");
     const [fNbr, setFNbr] = (0, import_react45.useState)("");
+    const [fBeds, setFBeds] = (0, import_react45.useState)("");
+    const [fSqft, setFSqft] = (0, import_react45.useState)("");
+    const [fYear, setFYear] = (0, import_react45.useState)("");
+    const [fStyle, setFStyle] = (0, import_react45.useState)("");
     const [sort, setSort] = (0, import_react45.useState)("fmv-desc");
     const [sel, setSel] = (0, import_react45.useState)(null);
     const [view, setView] = (0, import_react45.useState)("grid");
@@ -50944,6 +53017,7 @@ self.onmessage = function(ev){
       return [...s2].sort();
     }, [meta, parcels]);
     const nbrs = (0, import_react45.useMemo)(() => [...new Set(parcels.map((p) => p.neighborhood).filter(Boolean))].sort(), [parcels]);
+    const inventoryStyles = (0, import_react45.useMemo)(() => [...new Set(parcels.map((p) => (p._invStyle || "").trim()).filter(Boolean))].sort(), [parcels]);
     const SI = { background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontFamily: "var(--fb)", cursor: "pointer" };
     const useMyHome = () => {
       if (myHome) setSearch(myHome.address.split(" ").slice(0, 2).join(" "));
@@ -50963,6 +53037,22 @@ self.onmessage = function(ev){
       if (fEq === "fair") r2 = r2.filter((p) => p._eqBand === "fair");
       if (fEq === "over") r2 = r2.filter((p) => p._eqBand === "over");
       if (fEq === "absentee") r2 = r2.filter((p) => p._absentee === true);
+      if (fBeds === "0-1") r2 = r2.filter((p) => (p._invBedrooms ?? -1) >= 0 && (p._invBedrooms ?? -1) <= 1);
+      if (fBeds === "2") r2 = r2.filter((p) => (p._invBedrooms ?? -1) === 2);
+      if (fBeds === "3") r2 = r2.filter((p) => (p._invBedrooms ?? -1) === 3);
+      if (fBeds === "4") r2 = r2.filter((p) => (p._invBedrooms ?? -1) === 4);
+      if (fBeds === "5+") r2 = r2.filter((p) => (p._invBedrooms ?? -1) >= 5);
+      if (fSqft === "<1000") r2 = r2.filter((p) => (p._invSqft ?? -1) > 0 && (p._invSqft ?? -1) < 1e3);
+      if (fSqft === "1000-1499") r2 = r2.filter((p) => (p._invSqft ?? -1) >= 1e3 && (p._invSqft ?? -1) <= 1499);
+      if (fSqft === "1500-1999") r2 = r2.filter((p) => (p._invSqft ?? -1) >= 1500 && (p._invSqft ?? -1) <= 1999);
+      if (fSqft === "2000-2499") r2 = r2.filter((p) => (p._invSqft ?? -1) >= 2e3 && (p._invSqft ?? -1) <= 2499);
+      if (fSqft === "2500+") r2 = r2.filter((p) => (p._invSqft ?? -1) >= 2500);
+      if (fYear === "<1900") r2 = r2.filter((p) => (p._invYearBuilt ?? 0) > 0 && (p._invYearBuilt ?? 0) < 1900);
+      if (fYear === "1900-1939") r2 = r2.filter((p) => (p._invYearBuilt ?? 0) >= 1900 && (p._invYearBuilt ?? 0) <= 1939);
+      if (fYear === "1940-1969") r2 = r2.filter((p) => (p._invYearBuilt ?? 0) >= 1940 && (p._invYearBuilt ?? 0) <= 1969);
+      if (fYear === "1970-1999") r2 = r2.filter((p) => (p._invYearBuilt ?? 0) >= 1970 && (p._invYearBuilt ?? 0) <= 1999);
+      if (fYear === "2000+") r2 = r2.filter((p) => (p._invYearBuilt ?? 0) >= 2e3);
+      if (fStyle) r2 = r2.filter((p) => (p._invStyle || "").trim() === fStyle);
       r2.sort((a2, b) => {
         if (sort === "fmv-desc") return b.fullMarketValue - a2.fullMarketValue;
         if (sort === "fmv-asc") return a2.fullMarketValue - b.fullMarketValue;
@@ -50973,10 +53063,10 @@ self.onmessage = function(ev){
         return 0;
       });
       return r2;
-    }, [parcels, dSearch, dOwner, fZip, fCls, fTyp, fEx, fEq, fNbr, sort]);
+    }, [parcels, dSearch, dOwner, fZip, fCls, fTyp, fEx, fEq, fNbr, fBeds, fSqft, fYear, fStyle, sort]);
     (0, import_react45.useEffect)(() => {
       setPage(0);
-    }, [dSearch, dOwner, fZip, fCls, fTyp, fEx, fEq, fNbr, sort]);
+    }, [dSearch, dOwner, fZip, fCls, fTyp, fEx, fEq, fNbr, fBeds, fSqft, fYear, fStyle, sort]);
     const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const pageSlice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
     const clearAll = () => {
@@ -50988,12 +53078,16 @@ self.onmessage = function(ev){
       setFEx("");
       setFEq("");
       setFNbr("");
+      setFBeds("");
+      setFSqft("");
+      setFYear("");
+      setFStyle("");
     };
-    const hasFilters = search || ownerSearch || fZip || fCls || fTyp || fEx || fEq || fNbr;
-    return /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: sel ? "1fr 360px" : "1fr", gap: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, !myHome && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "linear-gradient(135deg,rgba(37,99,235,.12) 0%,rgba(13,148,136,.08) 100%)", border: "1px solid rgba(37,99,235,.3)", borderRadius: 12, padding: "18px 20px", marginBottom: 16, display: "flex", gap: 16, alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 28, flexShrink: 0 } }, "Start"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15, marginBottom: 6 } }, "Check Any Albany Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.8, marginBottom: 10 } }, "This dashboard lets you explore every property in Albany's 2025 Final Assessment Roll - search by address, compare neighborhoods, check if you're overpaying taxes, and understand what every number on your tax bill actually means. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "No property tax experience required."), " Each tab has plain-English explanations built in."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: onOpenHomeSetup, style: { background: "var(--green)", color: "white", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Save My Home Address"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)", alignSelf: "center" } }, "Saves your address so you never have to type it again across any tab")))), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Guide", title: "How to Use the Property Browser", color: "#3b82f6" }, "Search and filter all parcels in the Albany 2025 Assessment Roll. Use the search box to find a property by street address, owner name, or parcel ID. Apply additional filters to narrow by ZIP code, neighborhood, property class (single-family, commercial, etc.), homestead status, active exemptions, and assessment equity. Click any card to open a full detail panel on the right. Use the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "+ Compare"), " button to queue up to 4 parcels for side-by-side analysis in the Compare tab."), myHome && /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: useMyHome, label: "Jump to My Home" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: search, onChange: setSearch, onSelectParcel: (p) => {
+    const hasFilters = search || ownerSearch || fZip || fCls || fTyp || fEx || fEq || fNbr || fBeds || fSqft || fYear || fStyle;
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: sel ? "panel-split" : void 0, style: !sel ? { display: "grid", gridTemplateColumns: "1fr", gap: 18 } : void 0 }, /* @__PURE__ */ import_react45.default.createElement("div", null, !myHome && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "linear-gradient(135deg,rgba(37,99,235,.12) 0%,rgba(13,148,136,.08) 100%)", border: "1px solid rgba(37,99,235,.3)", borderRadius: 12, padding: "18px 20px", marginBottom: 16, display: "flex", gap: 16, alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 28, flexShrink: 0 } }, "Start"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15, marginBottom: 6 } }, "Check Any Albany Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.8, marginBottom: 10 } }, "This dashboard lets you explore every property in Albany's 2025 Final Assessment Roll - search by address, compare neighborhoods, check if you're overpaying taxes, and understand what every number on your tax bill actually means. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "No property tax experience required."), " Each tab has plain-English explanations built in."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: onOpenHomeSetup, style: { background: "var(--green)", color: "white", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Save My Home Address"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)", alignSelf: "center" } }, "Saves your address so you never have to type it again across any tab")))), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Guide", title: "How to Use the Property Browser", color: "#3b82f6" }, "Search and filter all parcels in the Albany 2025 Assessment Roll. Use the search box to find a property by street address, owner name, or parcel ID. Apply additional filters to narrow by ZIP code, neighborhood, property class (single-family, commercial, etc.), homestead status, active exemptions, and assessment equity. Click any card to open a full detail panel on the right. Use the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "+ Compare"), " button to queue up to 4 parcels for side-by-side analysis in the Compare tab."), myHome && /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: useMyHome, label: "Jump to My Home" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: search, onChange: setSearch, onSelectParcel: (p) => {
       setSearch(p.address);
       setSel(p);
-    }, placeholder: "Address, parcel ID, neighborhood...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: "1 1 200px", minWidth: 180 } }), /* @__PURE__ */ import_react45.default.createElement("input", { placeholder: "Owner name (last, first or company)...", value: ownerSearch, onChange: (e) => setOwnerSearch(e.target.value), style: { ...SI, flex: "1 1 200px", minWidth: 200, borderColor: ownerSearch ? "rgba(59,130,246,.6)" : "var(--border)", background: ownerSearch ? "rgba(37,99,235,.12)" : "var(--bg3)" } }), /* @__PURE__ */ import_react45.default.createElement("select", { value: fNbr, onChange: (e) => setFNbr(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Neighborhoods"), nbrs.map((n) => /* @__PURE__ */ import_react45.default.createElement("option", { key: n }, n))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fZip, onChange: (e) => setFZip(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All ZIPs"), zips.map((z) => /* @__PURE__ */ import_react45.default.createElement("option", { key: z }, z))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fCls, onChange: (e) => setFCls(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Classes"), clss.map((c2) => /* @__PURE__ */ import_react45.default.createElement("option", { key: c2, value: c2 }, formatPropClassLabel(c2, clssDescs?.[c2])))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fTyp, onChange: (e) => setFTyp(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Types"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "HOMESTEAD" }, "Homestead"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "NON-HOMESTEAD" }, "Non-Homestead")), exs.length > 0 && /* @__PURE__ */ import_react45.default.createElement("select", { value: fEx, onChange: (e) => setFEx(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Exemptions"), exs.map((e) => /* @__PURE__ */ import_react45.default.createElement("option", { key: e }, e))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fEq, onChange: (e) => setFEq(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Equity"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "under" }, "Under-Assessed"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "fair" }, "Fair Value"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "over" }, "Over-Assessed"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "absentee" }, "Absentee Owner")), /* @__PURE__ */ import_react45.default.createElement("select", { value: sort, onChange: (e) => setSort(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "fmv-desc" }, "FMV high to low"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "fmv-asc" }, "FMV low to high"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "assessed" }, "Assessed high to low"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "address" }, "Address A to Z"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "equity" }, "Equity %"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "land" }, "Land value high to low")), hasFilters && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: clearAll, style: { ...SI, color: "#f87171", borderColor: "rgba(220,38,38,.3)", cursor: "pointer" } }, "Clear"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 3, marginLeft: "auto" } }, ["grid", "table"].map((m) => /* @__PURE__ */ import_react45.default.createElement("button", { key: m, onClick: () => setView(m), style: { background: view === m ? "var(--blue)" : "var(--card2)", border: "1px solid var(--border)", color: view === m ? "white" : "var(--gray)", borderRadius: 7, width: 50, height: 32, cursor: "pointer", fontSize: 11 } }, m === "grid" ? "Grid" : "List")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("span", null, "Showing ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, filtered.length.toLocaleString()), " of ", parcels.length.toLocaleString(), " parcels"), pageCount > 1 && /* @__PURE__ */ import_react45.default.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setPage((p) => Math.max(0, p - 1)), disabled: page === 0, style: { background: "var(--card2)", border: "1px solid var(--border)", color: page === 0 ? "var(--gray3)" : "var(--white)", borderRadius: 6, width: 28, height: 28, cursor: page === 0 ? "default" : "pointer", fontSize: 15, lineHeight: 1 } }, "<"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 11 } }, "Page ", page + 1, " / ", pageCount), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setPage((p) => Math.min(pageCount - 1, p + 1)), disabled: page === pageCount - 1, style: { background: "var(--card2)", border: "1px solid var(--border)", color: page === pageCount - 1 ? "var(--gray3)" : "var(--white)", borderRadius: 6, width: 28, height: 28, cursor: page === pageCount - 1 ? "default" : "pointer", fontSize: 15, lineHeight: 1 } }, ">"))), view === "grid" ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 10 } }, pageSlice.map((p) => /* @__PURE__ */ import_react45.default.createElement(ParcelMini, { key: p.parcelId, p, onClick: setSel, selected: sel?.parcelId === p.parcelId, onCompare, inCompare: compareList.some((x2) => x2.parcelId === p.parcelId) })), filtered.length === 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { gridColumn: "1/-1", textAlign: "center", padding: 60, color: "var(--gray2)" } }, "No parcels match your filters.")) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ import_react45.default.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ import_react45.default.createElement("thead", null, /* @__PURE__ */ import_react45.default.createElement("tr", { style: { background: "var(--bg2)", borderBottom: "2px solid var(--border)" } }, ["Parcel ID", "Address", "Neighborhood", "ZIP", "Owner", "Class", "FMV", "Assessed", "Equity %", "Type", "Exempt"].map((h) => /* @__PURE__ */ import_react45.default.createElement("th", { key: h, style: { padding: "9px 11px", textAlign: "left", color: "var(--gray2)", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ import_react45.default.createElement("tbody", null, pageSlice.map((p, i) => /* @__PURE__ */ import_react45.default.createElement("tr", { key: p.parcelId, onClick: () => setSel(p), style: { background: i % 2 ? "transparent" : "var(--card)", cursor: "pointer" }, onMouseEnter: (e) => e.currentTarget.style.background = "var(--card2)", onMouseLeave: (e) => e.currentTarget.style.background = i % 2 ? "transparent" : "var(--card)" }, /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)", color: "var(--gray)", fontSize: 10 } }, p.parcelId), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontWeight: 500 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", color: "var(--gray2)" } }, p.neighborhood), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)", fontSize: 11 } }, p.zip), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", color: "var(--gray2)" } }, p.owner1), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, /* @__PURE__ */ import_react45.default.createElement("span", { title: propClassLabel(p) }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassDescLabel(p)))), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)", color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)" } }, $f(p.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: FC[eqFlagFast(p)], fontFamily: "var(--fm)", fontWeight: 600 } }, eqRFast(p), "%")), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, p.parcelType === "HOMESTEAD" ? /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "H") : /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#64748b", small: true }, "NH")), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, p.exemptions.map((e) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: e.code, color: "#f59e0b", small: true }, e.name))))))))), sel && /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "sticky", top: 20, maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ import_react45.default.createElement(DetailPanel, { p: sel, onClose: () => setSel(null), myHome, onSaveHome })));
+    }, placeholder: "Address, parcel ID, neighborhood...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: "1 1 200px", minWidth: 180 } }), /* @__PURE__ */ import_react45.default.createElement("input", { placeholder: "Owner name (last, first or company)...", value: ownerSearch, onChange: (e) => setOwnerSearch(e.target.value), style: { ...SI, flex: "1 1 200px", minWidth: 200, borderColor: ownerSearch ? "rgba(59,130,246,.6)" : "var(--border)", background: ownerSearch ? "rgba(37,99,235,.12)" : "var(--bg3)" } }), /* @__PURE__ */ import_react45.default.createElement("select", { value: fNbr, onChange: (e) => setFNbr(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Neighborhoods"), nbrs.map((n) => /* @__PURE__ */ import_react45.default.createElement("option", { key: n }, n))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fZip, onChange: (e) => setFZip(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All ZIPs"), zips.map((z) => /* @__PURE__ */ import_react45.default.createElement("option", { key: z }, z))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fCls, onChange: (e) => setFCls(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Classes"), clss.map((c2) => /* @__PURE__ */ import_react45.default.createElement("option", { key: c2, value: c2 }, formatPropClassOfficialLabel(c2, clssDescs?.[c2])))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fTyp, onChange: (e) => setFTyp(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Types"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "HOMESTEAD" }, "Homestead"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "NON-HOMESTEAD" }, "Non-Homestead")), exs.length > 0 && /* @__PURE__ */ import_react45.default.createElement("select", { value: fEx, onChange: (e) => setFEx(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Exemptions"), exs.map((e) => /* @__PURE__ */ import_react45.default.createElement("option", { key: e }, e))), /* @__PURE__ */ import_react45.default.createElement("select", { value: fEq, onChange: (e) => setFEq(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "All Equity"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "under" }, "Under-Assessed"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "fair" }, "Fair Value"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "over" }, "Over-Assessed"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "absentee" }, "Absentee Owner")), /* @__PURE__ */ import_react45.default.createElement("select", { value: fBeds, onChange: (e) => setFBeds(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "Any Beds"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "0-1" }, "0-1"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "2" }, "2"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "3" }, "3"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "4" }, "4"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "5+" }, "5+")), /* @__PURE__ */ import_react45.default.createElement("select", { value: fSqft, onChange: (e) => setFSqft(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "Any Sq Ft"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "<1000" }, "< 1000"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "1000-1499" }, "1000-1499"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "1500-1999" }, "1500-1999"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "2000-2499" }, "2000-2499"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "2500+" }, "2500+")), /* @__PURE__ */ import_react45.default.createElement("select", { value: fYear, onChange: (e) => setFYear(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "Any Year Built"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "<1900" }, "< 1900"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "1900-1939" }, "1900-1939"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "1940-1969" }, "1940-1969"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "1970-1999" }, "1970-1999"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "2000+" }, "2000+")), inventoryStyles.length > 0 && /* @__PURE__ */ import_react45.default.createElement("select", { value: fStyle, onChange: (e) => setFStyle(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "" }, "Any Building Style"), inventoryStyles.map((style) => /* @__PURE__ */ import_react45.default.createElement("option", { key: style, value: style }, style))), /* @__PURE__ */ import_react45.default.createElement("select", { value: sort, onChange: (e) => setSort(e.target.value), style: SI }, /* @__PURE__ */ import_react45.default.createElement("option", { value: "fmv-desc" }, "FMV high to low"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "fmv-asc" }, "FMV low to high"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "assessed" }, "Assessed high to low"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "address" }, "Address A to Z"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "equity" }, "Equity %"), /* @__PURE__ */ import_react45.default.createElement("option", { value: "land" }, "Land value high to low")), hasFilters && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: clearAll, style: { ...SI, color: "#f87171", borderColor: "rgba(220,38,38,.3)", cursor: "pointer" } }, "Clear"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 3, marginLeft: "auto" } }, ["grid", "table"].map((m) => /* @__PURE__ */ import_react45.default.createElement("button", { key: m, onClick: () => setView(m), style: { background: view === m ? "var(--blue)" : "var(--card2)", border: "1px solid var(--border)", color: view === m ? "white" : "var(--gray)", borderRadius: 7, width: 50, height: 32, cursor: "pointer", fontSize: 11 } }, m === "grid" ? "Grid" : "List")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("span", null, "Showing ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, filtered.length.toLocaleString()), " of ", parcels.length.toLocaleString(), " parcels"), pageCount > 1 && /* @__PURE__ */ import_react45.default.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setPage((p) => Math.max(0, p - 1)), disabled: page === 0, style: { background: "var(--card2)", border: "1px solid var(--border)", color: page === 0 ? "var(--gray3)" : "var(--white)", borderRadius: 6, width: 28, height: 28, cursor: page === 0 ? "default" : "pointer", fontSize: 15, lineHeight: 1 } }, "<"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 11 } }, "Page ", page + 1, " / ", pageCount), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setPage((p) => Math.min(pageCount - 1, p + 1)), disabled: page === pageCount - 1, style: { background: "var(--card2)", border: "1px solid var(--border)", color: page === pageCount - 1 ? "var(--gray3)" : "var(--white)", borderRadius: 6, width: 28, height: 28, cursor: page === pageCount - 1 ? "default" : "pointer", fontSize: 15, lineHeight: 1 } }, ">"))), view === "grid" ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 10 } }, pageSlice.map((p) => /* @__PURE__ */ import_react45.default.createElement(ParcelMini, { key: p.parcelId, p, onClick: setSel, selected: sel?.parcelId === p.parcelId, onCompare, inCompare: compareList.some((x2) => x2.parcelId === p.parcelId) })), filtered.length === 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { gridColumn: "1/-1", textAlign: "center", padding: 60, color: "var(--gray2)" } }, "No parcels match your filters.")) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ import_react45.default.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ import_react45.default.createElement("thead", null, /* @__PURE__ */ import_react45.default.createElement("tr", { style: { background: "var(--bg2)", borderBottom: "2px solid var(--border)" } }, ["Parcel ID", "Address", "Neighborhood", "ZIP", "Owner", "Class", "FMV", "Assessed", "Equity %", "Type", "Exempt"].map((h) => /* @__PURE__ */ import_react45.default.createElement("th", { key: h, style: { padding: "9px 11px", textAlign: "left", color: "var(--gray2)", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ import_react45.default.createElement("tbody", null, pageSlice.map((p, i) => /* @__PURE__ */ import_react45.default.createElement("tr", { key: p.parcelId, onClick: () => setSel(p), style: { background: i % 2 ? "transparent" : "var(--card)", cursor: "pointer" }, onMouseEnter: (e) => e.currentTarget.style.background = "var(--card2)", onMouseLeave: (e) => e.currentTarget.style.background = i % 2 ? "transparent" : "var(--card)" }, /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)", color: "var(--gray)", fontSize: 10 } }, p.parcelId), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontWeight: 500 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", color: "var(--gray2)" } }, p.neighborhood), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)", fontSize: 11 } }, p.zip), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { overflowWrap: "anywhere", wordBreak: "break-word" } }, p.owner1), getOwnerPortfolioCountFast(p) > 1 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0f766e", small: true }, ownerPortfolioBadgeLabel(p)))), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, /* @__PURE__ */ import_react45.default.createElement("span", { title: propClassTooltip(p) }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassDescLabel(p)))), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)", color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px", fontFamily: "var(--fm)" } }, $f(p.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: FC[eqFlagFast(p)], fontFamily: "var(--fm)", fontWeight: 600 } }, eqRFast(p), "%")), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, p.parcelType === "HOMESTEAD" ? /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "H") : /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#64748b", small: true }, "NH")), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "7px 11px" } }, p.exemptions.map((e) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: e.code, color: "#f59e0b", small: true }, e.name))))))))), sel && /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "sticky", top: 20, maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ import_react45.default.createElement(DetailPanel, { p: sel, onClose: () => setSel(null), myHome, onSaveHome, ownerPortfolioIndex, onSelectParcel: setSel })));
   };
   var Analytics = ({ parcels }) => {
     const fmvBkts = (0, import_react45.useMemo)(() => {
@@ -51070,7 +53164,7 @@ self.onmessage = function(ev){
       return [...m.values()].filter((x2) => x2.count > 0).map((x2) => ({ cls: x2.cls, avgLand: Math.round(x2.land / x2.count), avgBldg: Math.round(x2.bldg / x2.count), count: x2.count })).sort((a2, b) => b.count - a2.count).slice(0, 6);
     }, [parcels]);
     const C = ({ title, desc, children }) => /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: desc ? 6 : 14 } }, title), desc && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12, lineHeight: 1.7 } }, desc), children);
-    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Charts", title: "Understanding These Charts", color: "#3b82f6" }, "This tab gives you a bird's-eye view of Albany's entire property landscape. Each chart is built directly from the assessment roll data - no estimates or projections. Together they reveal how property values are distributed across the city, whether the assessment roll is fair, what types of properties dominate each area, and how active the real estate market has been over time. Hover over any bar or dot for exact numbers."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 } }, /* @__PURE__ */ import_react45.default.createElement(
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Charts", title: "Understanding These Charts", color: "#3b82f6" }, "This tab gives you a bird's-eye view of Albany's entire property landscape. Each chart is built directly from the assessment roll data - no estimates or projections. Together they reveal how property values are distributed across the city, whether the assessment roll is fair, what types of properties dominate each area, and how active the real estate market has been over time. Hover over any bar or dot for exact numbers."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 14 } }, /* @__PURE__ */ import_react45.default.createElement(
       C,
       {
         title: "Full Market Value Distribution",
@@ -51147,28 +53241,15 @@ self.onmessage = function(ev){
       return ybData.length > 1 ? /* @__PURE__ */ import_react45.default.createElement(C, { title: "Building Age by Decade", desc: "How old is Albany's housing stock? Available when the Albany County CSV (which includes YEARBLT) is uploaded. Pre-1900 row houses dominate Center Square and Arbor Hill. Newer stock appears in the suburbs and redevelopment sites." }, /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 200 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: ybData }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "decade", tick: { fontSize: 10, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, allowDecimals: false }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "count", fill: "#0d9488", radius: [4, 4, 0, 0], name: "Properties" })))) : null;
     })()));
   };
-  var Ownership = ({ parcels, onDrill }) => {
+  var Ownership = ({ parcels, onDrill, ownerPortfolioGroups = [] }) => {
     const [view, setView] = (0, import_react45.useState)("portfolio");
     const [selOwner, setSelOwner] = (0, import_react45.useState)(null);
     const [showAllAbs, setShowAllAbs] = (0, import_react45.useState)(false);
     const [showAllDupes, setShowAllDupes] = (0, import_react45.useState)(false);
-    const [dupes, setDupes] = (0, import_react45.useState)([]);
-    const [dupesStatus, setDupesStatus] = (0, import_react45.useState)("idle");
-    const [dupesError, setDupesError] = (0, import_react45.useState)("");
+    const [openDupes, setOpenDupes] = (0, import_react45.useState)({});
     const LIST_LIMIT = 50;
-    const portfolio = (0, import_react45.useMemo)(() => {
-      const m = {};
-      parcels.forEach((p) => {
-        const key = p.owner1.trim().toLowerCase();
-        if (!m[key]) m[key] = { name: p.owner1, parcels: [], totalFMV: 0, totalAssessed: 0, totalLand: 0, zips: /* @__PURE__ */ new Set() };
-        m[key].parcels.push(p);
-        m[key].totalFMV += p.fullMarketValue;
-        m[key].totalAssessed += p.assessedValue;
-        m[key].totalLand += p.landValue;
-        m[key].zips.add(p.zip);
-      });
-      return Object.values(m).sort((a2, b) => b.totalFMV - a2.totalFMV);
-    }, [parcels]);
+    const ownerGroups = (0, import_react45.useMemo)(() => ownerPortfolioGroups.length ? ownerPortfolioGroups : buildOwnerPortfolioGroups(parcels), [ownerPortfolioGroups, parcels]);
+    const portfolio = (0, import_react45.useMemo)(() => [...ownerGroups].sort((a2, b) => b.totalFMV - a2.totalFMV || b.propertyCount - a2.propertyCount || a2.displayOwner.localeCompare(b.displayOwner)), [ownerGroups]);
     const absentees = (0, import_react45.useMemo)(() => parcels.filter((p) => isAbsenteeFast(p)).sort((a2, b) => (b._absenteeScore || 0) - (a2._absenteeScore || 0) || b.fullMarketValue - a2.fullMarketValue), [parcels]);
     const deedData = (0, import_react45.useMemo)(() => {
       const m = {};
@@ -51182,101 +53263,31 @@ self.onmessage = function(ev){
       });
       return Object.values(m).sort((a2, b) => a2.year - b.year);
     }, [parcels]);
+    const duplicateOwnerGroups = (0, import_react45.useMemo)(() => ownerGroups.filter((g) => g.propertyCount > 1), [ownerGroups]);
     (0, import_react45.useEffect)(() => {
-      setDupes([]);
-      setDupesStatus("idle");
-      setDupesError("");
       setShowAllDupes(false);
-    }, [parcels]);
-    const runDuplicateScan = (0, import_react45.useCallback)(() => {
-      if (dupesStatus === "running") return;
-      setDupesStatus("running");
-      setDupesError("");
-      const worker = createDuplicateScanWorker();
-      if (worker) {
-        const cleanup = () => {
-          try {
-            worker.terminate();
-          } catch {
-          }
-          try {
-            if (worker.__blobUrl) URL.revokeObjectURL(worker.__blobUrl);
-          } catch {
-          }
-        };
-        worker.onmessage = (ev) => {
-          const msg = ev.data || {};
-          if (!msg.ok) {
-            setDupesStatus("error");
-            setDupesError(msg.error || "Duplicate scan failed.");
-            cleanup();
-            return;
-          }
-          const groups = (msg.groups || []).map((g) => ({
-            base: parcels[g.baseIndex],
-            similar: (g.similarIndices || []).map((i) => parcels[i]).filter(Boolean)
-          })).filter((g) => g.base && g.similar.length);
-          setDupes(groups);
-          setDupesStatus("done");
-          cleanup();
-        };
-        worker.onerror = () => {
-          setDupesStatus("error");
-          setDupesError("Duplicate scan worker crashed.");
-          cleanup();
-        };
-        worker.postMessage({ parcels: parcels.map((p) => ({ owner1: p.owner1 || "" })), threshold: 0.75 });
-        return;
-      }
-      try {
-        const groups = [];
-        const used = /* @__PURE__ */ new Set();
-        const names = parcels.map((p) => (p.owner1 || "").trim().toLowerCase());
-        for (let i = 0; i < parcels.length; i++) {
-          if (used.has(i)) continue;
-          const baseName = names[i];
-          if (!baseName || baseName.length < 4) continue;
-          const matches = [];
-          for (let j = i + 1; j < parcels.length; j++) {
-            if (used.has(j)) continue;
-            const other = names[j];
-            if (!other || Math.abs(baseName.length - other.length) > 4) continue;
-            if (baseName[0] !== other[0]) continue;
-            if (levenSim(baseName, other) > 0.75) matches.push(j);
-          }
-          if (matches.length) {
-            groups.push({ base: parcels[i], similar: matches.map((j) => parcels[j]) });
-            used.add(i);
-            matches.forEach((j) => used.add(j));
-          }
-        }
-        setDupes(groups);
-        setDupesStatus("done");
-      } catch (err) {
-        setDupesStatus("error");
-        setDupesError(err?.message || String(err));
-      }
-    }, [dupesStatus, parcels]);
+      setOpenDupes(duplicateOwnerGroups.length ? { [duplicateOwnerGroups[0].id]: true } : {});
+    }, [duplicateOwnerGroups]);
     const BtnTab = ({ id, label }) => /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setView(id), style: { background: view === id ? "var(--blue)" : "transparent", color: view === id ? "white" : "var(--gray)", border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" } }, label);
-    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Ownership Intelligence"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Portfolio mapper, absentee owner detection, deed book timeline, duplicate owner analysis"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Owners", title: "What Is This Tab For?", color: "#3b82f6" }, "This tab looks at who owns Albany properties - not just what the properties are worth. You can discover which individuals or companies own multiple parcels across the city, identify properties where the owner doesn't live on-site (absentee owners), trace the history of when properties changed hands, and flag cases where slightly different owner name spellings may represent the same person - a common data quality issue in public records."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 4, background: "var(--card)", borderRadius: 9, padding: 4, border: "1px solid var(--border)", width: "fit-content", marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "portfolio", label: "Portfolio Mapper" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "absentee", label: "Absentee Owners" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "deed", label: "Deed Timeline" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "dupes", label: "Duplicate Owners" })), view === "portfolio" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Portfolio", title: "Portfolio Mapper - Who Owns the Most?", color: "#3b82f6" }, "This list ranks every owner in the dataset by their total property portfolio value. A person or company appearing once is typical. Finding the same owner across many parcels - especially LLCs or holding companies - can reveal large-scale landlords, institutional investors, or development interests in the city. Click any owner to expand and see every parcel they own."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, portfolio.slice(0, 15).map((own, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: own.name, onClick: () => setSelOwner(selOwner === own.name ? null : own.name), style: { background: "var(--card2)", border: `1px solid ${selOwner === own.name ? "var(--blue)" : "var(--border)"}`, borderRadius: 11, padding: "14px 18px", cursor: "pointer" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: 36, height: 36, borderRadius: 8, background: `${COLORS[i % COLORS.length]}22`, border: `1px solid ${COLORS[i % COLORS.length]}44`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--fm)", fontSize: 14, fontWeight: 700, color: COLORS[i % COLORS.length], flexShrink: 0 } }, i + 1), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, own.name), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, own.parcels.length, " parcel", own.parcels.length > 1 ? "s" : "", " | ZIPs: ", [...own.zips].join(", ")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, fontWeight: 600, color: "var(--amber)" } }, $f(own.totalFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 2 } }, "total FMV"))), selOwner === own.name && /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 8 } }, own.parcels.map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", borderRadius: 8, padding: "10px 12px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 2 } }, p.parcelId, " | ", p.propClassDesc), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 6 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: FC[eqFlagFast(p)], small: true }, eqRFast(p), "%")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.08)", borderRadius: 8, padding: "10px 12px", border: "1px solid rgba(37,99,235,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)" } }, "Portfolio Summary"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginTop: 6 } }, "Land Total: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--amber)", fontFamily: "var(--fm)" } }, $f(own.totalLand))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginTop: 3 } }, "Assessed Total: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)" } }, $f(own.totalAssessed))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginTop: 3 } }, "Market Total: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--amber)", fontFamily: "var(--fm)" } }, $f(own.totalFMV))))))))), view === "absentee" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Mail", title: "What Is an Absentee Owner?", color: "#f97316" }, "This flag is now a scored signal, not a simple mailing-address mismatch. The model combines mailing-address differences with stronger parcel-level evidence such as LLC or trust ownership, repeated ownership across multiple Albany parcels, and owner-occupancy exemptions like STAR or senior exemptions. A parcel is only flagged when multiple signals point toward off-site ownership."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Absentee-Owned Parcels", value: absentees.length, icon: "Home", color: "#f97316", sub: `${Math.round(absentees.length / parcels.length * 100)}% of all parcels`, onClick: () => onDrill && onDrill({ title: `All Absentee-Owned Parcels (${absentees.length})`, parcels: absentees }) }), /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total Absentee FMV", value: "$" + (absentees.reduce((s2, p) => s2 + p.fullMarketValue, 0) / 1e6).toFixed(1) + "M", icon: "Tax", color: "#f59e0b" })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Ownership Intelligence"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Portfolio mapper, absentee owner detection, deed book timeline, and precomputed owner groups"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Owners", title: "What Is This Tab For?", color: "#3b82f6" }, "This tab looks at who owns Albany properties - not just what the properties are worth. You can discover which individuals or companies own multiple parcels across the city, identify properties where the owner does not live on-site (absentee owners), trace when parcels changed hands, and review owner groups that load automatically from normalized owner names instead of waiting on a manual scan."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 4, background: "var(--card)", borderRadius: 9, padding: 4, border: "1px solid var(--border)", width: "fit-content", marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "portfolio", label: "Portfolio Mapper" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "absentee", label: "Absentee Owners" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "deed", label: "Deed Timeline" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "dupes", label: "Owner Groups" })), view === "portfolio" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Portfolio", title: "Portfolio Mapper - Who Owns the Most?", color: "#3b82f6" }, "This list ranks every owner in the dataset by total property portfolio value using the same normalized owner grouping that powers the parcel inspector. Click any owner to expand and see every parcel in that portfolio."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, portfolio.slice(0, 15).map((own, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: own.id, onClick: () => setSelOwner(selOwner === own.ownerKey ? null : own.ownerKey), style: { background: "var(--card2)", border: `1px solid ${selOwner === own.ownerKey ? "var(--blue)" : "var(--border)"}`, borderRadius: 11, padding: "14px 18px", cursor: "pointer" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: 36, height: 36, borderRadius: 8, background: `${COLORS[i % COLORS.length]}22`, border: `1px solid ${COLORS[i % COLORS.length]}44`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--fm)", fontSize: 14, fontWeight: 700, color: COLORS[i % COLORS.length], flexShrink: 0 } }, i + 1), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, own.displayOwner), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, own.propertyCount, " parcel", own.propertyCount > 1 ? "s" : "", " | ZIPs: ", own.zips.join(", ")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, fontWeight: 600, color: "var(--amber)" } }, $f(own.totalFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 2 } }, "total FMV"))), selOwner === own.ownerKey && /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 8 } }, own.parcels.map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", borderRadius: 8, padding: "10px 12px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 2 } }, p.parcelId, " | ", p.propClassDesc), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 6 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: FC[eqFlagFast(p)], small: true }, eqRFast(p), "%")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.08)", borderRadius: 8, padding: "10px 12px", border: "1px solid rgba(37,99,235,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)" } }, "Portfolio Summary"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginTop: 6 } }, "Land Total: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--amber)", fontFamily: "var(--fm)" } }, $f(own.totalLand))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginTop: 3 } }, "Assessed Total: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)" } }, $f(own.totalAssessed))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginTop: 3 } }, "Market Total: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--amber)", fontFamily: "var(--fm)" } }, $f(own.totalFMV))))))))), view === "absentee" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Mail", title: "What Is an Absentee Owner?", color: "#f97316" }, "This flag is now a scored signal, not a simple mailing-address mismatch. The model combines mailing-address differences with stronger parcel-level evidence such as LLC or trust ownership, repeated ownership across multiple Albany parcels, and owner-occupancy exemptions like STAR or senior exemptions. A parcel is only flagged when multiple signals point toward off-site ownership."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 12, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Absentee-Owned Parcels", value: absentees.length, icon: "Home", color: "#f97316", sub: `${Math.round(absentees.length / parcels.length * 100)}% of all parcels`, onClick: () => onDrill && onDrill({ title: `All Absentee-Owned Parcels (${absentees.length})`, parcels: absentees }) }), /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total Absentee FMV", value: "$" + (absentees.reduce((s2, p) => s2 + p.fullMarketValue, 0) / 1e6).toFixed(1) + "M", icon: "Tax", color: "#f59e0b" })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(
       VirtualRows,
       {
         items: absentees.slice(0, showAllAbs ? absentees.length : LIST_LIMIT),
         rowHeight: 116,
         height: showAllAbs ? 620 : Math.min(620, Math.max(240, absentees.length * 116)),
-        renderRow: (p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid rgba(249,115,22,.2)", borderRadius: 11, padding: "14px 16px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | ", p.zip, " | ", getAbsenteeLabelFast(p), " | score ", getAbsenteeModelFast(p).score), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Property at: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--white)" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address), ", Albany NY ", p.zip)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "#f97316", marginTop: 3 } }, "Mail to: ", p.mailAddress), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4 } }, getAbsenteeModelFast(p).signals.join(" | ")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small: true }, getAbsenteeLabelFast(p))))),
+        renderRow: (p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid rgba(249,115,22,.2)", borderRadius: 11, padding: "14px 16px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | ", p.zip, " | ", getAbsenteeLabelFast(p), " | score ", getAbsenteeModelFast(p).score), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Property at: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--white)" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address), ", Albany NY ", p.zip)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "#f97316", marginTop: 3 } }, "Mail to: ", p.mailAddress), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4 } }, getAbsenteeModelFast(p).signals.join(" | ")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small: true }, getAbsenteeLabelFast(p))))),
         empty: null
       }
-    ), absentees.length === 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, "No absentee owners detected in current dataset. Upload full roll to see results."), absentees.length > LIST_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllAbs((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllAbs ? `Show top ${LIST_LIMIT}` : `Show all ${absentees.length.toLocaleString()} absentee owners`))), view === "deed" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Deed", title: "Deed Book Timeline - Reading Property History", color: "#22c55e" }, "Every time a property is sold in New York, the transaction is recorded at the county clerk's office and assigned a deed book and page number. The year embedded in that reference tells us approximately when the last sale occurred. This timeline shows how many properties in the dataset changed hands each year - a rough but useful measure of neighborhood market activity. Years with many sales often correspond to broader economic events: low interest rate periods, urban renewal pushes, or post-COVID migration patterns."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Sales Activity by Year (from Deed Book Data)"), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 220 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: deedData }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "year", tick: { fontSize: 11, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 11, fill: "#94a3b8" }, allowDecimals: false }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v, n) => [v, "Sales"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "count", fill: "#22c55e", radius: [4, 4, 0, 0], name: "Transactions" }))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, deedData.sort((a2, b) => b.year - a2.year).map((yr) => /* @__PURE__ */ import_react45.default.createElement("div", { key: yr.year, style: { background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 700, color: "var(--teal2)" } }, yr.year), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, yr.count, " sale", yr.count > 1 ? "s" : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "transactions")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14 } }, $f(yr.totalFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "total FMV")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 } }, yr.parcels.slice(0, 10).map((p) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: p.parcelId, color: "#0d9488", small: true }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address))), yr.parcels.length > 10 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#475569", small: true }, "+", yr.parcels.length - 10, " more")))))), view === "dupes" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Search", title: "Duplicate Owner Detection - Why This Matters", color: "#a78bfa" }, 'Public property records are entered by hand and are often inconsistent. The same person might appear as "Robert Smith", "Bob Smith", "R. Smith", and "Smith Robert" across different parcels - making it impossible to see their full portfolio at a glance. This tool uses fuzzy name matching (similarity scoring) to flag owner names that look like they might belong to the same person or entity. Always verify manually before drawing conclusions - similar names can also be coincidental.'), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: runDuplicateScan, disabled: dupesStatus === "running", style: { background: dupesStatus === "running" ? "var(--gray2)" : "var(--blue)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600, cursor: dupesStatus === "running" ? "default" : "pointer" } }, dupesStatus === "running" ? "Scanning owners..." : "Run Duplicate Scan"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)" } }, "Fuzzy matching runs on-demand in a background worker to avoid freezing the tab."), dupesStatus === "done" && /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)" } }, dupes.length.toLocaleString(), " group", dupes.length === 1 ? "" : "s", " found")), dupesStatus === "idle" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 34, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 28, marginBottom: 8 } }, "Search"), /* @__PURE__ */ import_react45.default.createElement("div", null, "Duplicate owner scanning is disabled by default for performance."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, marginTop: 8 } }, "Click ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Run Duplicate Scan"), " to analyze owner names in the current dataset.")), dupesStatus === "running" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 34, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "pulse", style: { fontSize: 26, marginBottom: 8 } }, "..."), /* @__PURE__ */ import_react45.default.createElement("div", null, "Scanning owner names in background...")), dupesStatus === "error" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 34, color: "#fca5a5" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 24, marginBottom: 8 } }, "!"), /* @__PURE__ */ import_react45.default.createElement("div", null, "Duplicate scan failed."), dupesError && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, marginTop: 8, color: "var(--gray2)" } }, dupesError)), dupesStatus === "done" && dupes.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", null, dupes.slice(0, showAllDupes ? dupes.length : LIST_LIMIT).map((g, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: i, style: { background: "var(--card2)", border: "1px solid rgba(220,38,38,.2)", borderRadius: 11, padding: "14px 16px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 8, alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#dc2626" }, "Possible Duplicate"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)" } }, "Similar owner names detected")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8 } }, [g.base, ...g.similar].map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", borderRadius: 8, padding: "10px 12px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 600, fontSize: 13 } }, p.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", marginTop: 3 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)", marginTop: 4 } }, $f(p.fullMarketValue))))))), dupes.length > LIST_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllDupes((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllDupes ? `Show top ${LIST_LIMIT} ^` : `Show all ${dupes.length.toLocaleString()} duplicate groups v`)), dupesStatus === "done" && dupes.length === 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 32, marginBottom: 10 } }, "OK"), /* @__PURE__ */ import_react45.default.createElement("div", null, "No near-duplicate owner names detected in current dataset."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, marginTop: 8 } }, "Upload the full roll to run a complete fuzzy-match analysis across all owners.")))));
+    ), absentees.length === 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, "No absentee owners detected in current dataset. Upload full roll to see results."), absentees.length > LIST_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllAbs((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllAbs ? `Show top ${LIST_LIMIT}` : `Show all ${absentees.length.toLocaleString()} absentee owners`))), view === "deed" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Deed", title: "Deed Book Timeline - Reading Property History", color: "#22c55e" }, "Every time a property is sold in New York, the transaction is recorded at the county clerk's office and assigned a deed book and page number. The year embedded in that reference tells us approximately when the last sale occurred. This timeline shows how many properties in the dataset changed hands each year - a rough but useful measure of neighborhood market activity. Years with many sales often correspond to broader economic events: low interest rate periods, urban renewal pushes, or post-COVID migration patterns."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Sales Activity by Year (from Deed Book Data)"), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 220 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: deedData }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "year", tick: { fontSize: 11, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 11, fill: "#94a3b8" }, allowDecimals: false }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v, n) => [v, "Sales"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "count", fill: "#22c55e", radius: [4, 4, 0, 0], name: "Transactions" }))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, deedData.sort((a2, b) => b.year - a2.year).map((yr) => /* @__PURE__ */ import_react45.default.createElement("div", { key: yr.year, style: { background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 700, color: "var(--teal2)" } }, yr.year), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, yr.count, " sale", yr.count > 1 ? "s" : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "transactions")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14 } }, $f(yr.totalFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "total FMV")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 } }, yr.parcels.slice(0, 10).map((p) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: p.parcelId, color: "#0d9488", small: true }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address))), yr.parcels.length > 10 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#475569", small: true }, "+", yr.parcels.length - 10, " more")))))), view === "dupes" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Search", title: "Owner Groups - Loaded Automatically", color: "#a78bfa" }, "These groups are precomputed as soon as the Albany roll loads, so you do not need to run a separate scan. Parcels are grouped by normalized owner name to surface likely common ownership quickly. Treat these as potential matches until you manually verify trusts, family members, and related LLC structures."), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)" } }, duplicateOwnerGroups.length.toLocaleString(), " owner group", duplicateOwnerGroups.length === 1 ? "" : "s", " with more than one parcel"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)" } }, "Sorted by parcel count, then total portfolio market value.")), duplicateOwnerGroups.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", null, duplicateOwnerGroups.slice(0, showAllDupes ? duplicateOwnerGroups.length : LIST_LIMIT).map((g) => /* @__PURE__ */ import_react45.default.createElement("div", { key: g.id, style: { background: "var(--card2)", border: "1px solid rgba(220,38,38,.2)", borderRadius: 11, marginBottom: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setOpenDupes((prev) => ({ ...prev, [g.id]: !prev[g.id] })),
+        style: { width: "100%", background: "transparent", border: "none", padding: "14px 16px", cursor: "pointer", textAlign: "left", color: "inherit" }
+      },
+      /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, `Owner with multiple properties: ${g.displayOwner}: ${g.propertyCount}`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#dc2626" }, "Potential common owner"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)" } }, "Normalized owner name appears across ", g.propertyCount, " Albany parcels"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" } }, $f(g.totalFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, color: "var(--gray2)", fontFamily: "monospace", marginTop: 6 } }, openDupes[g.id] ? "v" : ">")))
+    ), openDupes[g.id] && /* @__PURE__ */ import_react45.default.createElement("div", { style: { padding: "0 16px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, "Use the parcel list below to jump into each record. The Application Map link on each address opens that parcel in the map workspace."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8 } }, g.parcels.map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", borderRadius: 8, padding: "10px 12px", border: "1px solid var(--border)", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 600, fontSize: 13, overflowWrap: "anywhere", wordBreak: "break-word" } }, p.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4 } }, p.parcelId, " | ", p.propClassDesc), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: FC[eqFlagFast(p)], small: true }, eqRFast(p), "%")))))))), duplicateOwnerGroups.length > LIST_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllDupes((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllDupes ? `Show top ${LIST_LIMIT} groups` : `Show all ${duplicateOwnerGroups.length.toLocaleString()} owner groups`)), duplicateOwnerGroups.length === 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 32, marginBottom: 10 } }, "OK"), /* @__PURE__ */ import_react45.default.createElement("div", null, "No multi-parcel owner groups were found in the current dataset."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, marginTop: 8 } }, "Load the full Albany roll to surface larger owner portfolios.")))));
   };
-  function levenSim(a2, b) {
-    if (!a2 || !b) return 0;
-    if (a2 === b) return 1;
-    const la = a2.length, lb = b.length;
-    const dp = Array.from({ length: la + 1 }, (_, i) => Array.from({ length: lb + 1 }, (_2, j) => i === 0 ? j : j === 0 ? i : 0));
-    for (let i = 1; i <= la; i++) for (let j = 1; j <= lb; j++) dp[i][j] = a2[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    return 1 - dp[la][lb] / Math.max(la, lb);
-  }
   var Equity = ({ parcels, onDrill }) => {
     const [view, setView] = (0, import_react45.useState)("desert");
     const desertByZip = (0, import_react45.useMemo)(() => {
@@ -51313,14 +53324,14 @@ self.onmessage = function(ev){
       return Object.values(m).sort((a2, b) => b.totalCounty + b.totalCity + b.totalSchool - (a2.totalCounty + a2.totalCity + a2.totalSchool));
     }, [parcels]);
     const BtnTab = ({ id, label }) => /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setView(id), style: { background: view === id ? "var(--blue)" : "transparent", color: view === id ? "white" : "var(--gray)", border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" } }, label);
-    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Tax Fairness & Equity"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Exemption deserts, assessment burden by ZIP, exemption revenue impact on tax base"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Equity", title: "Why Does Property Tax Equity Matter?", color: "#22c55e" }, "Property taxes are the primary way Albany funds its schools, city services, and county government. When assessments are unequal - charging some neighborhoods more relative to their actual property values - it creates a hidden tax on those communities. This tab examines three equity dimensions: where homeowners are missing out on exemptions they likely qualify for, which ZIP codes carry a disproportionate share of the tax burden, and how much revenue the city foregoes through exemptions each year. None of this requires any prior knowledge of tax law - the explanations are built in."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 4, background: "var(--card)", borderRadius: 9, padding: 4, border: "1px solid var(--border)", width: "fit-content", marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "desert", label: "Missing Exemptions" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "burden", label: "Assessment Burden" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "revenue", label: "Revenue Impact" })), view === "desert" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16, background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "var(--amber2)", marginBottom: 6 } }, "What does missing exemptions mean?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, "A zone where homestead property owners are not claiming exemptions they likely qualify for - such as STAR, senior, or veteran exemptions. Owners in lower-income neighborhoods often leave money on the table because they do not know to apply. The table below flags ZIPs with the highest share of homesteads with zero exemptions.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, desertByZip.map((z) => /* @__PURE__ */ import_react45.default.createElement("div", { key: z.zip, style: { background: "var(--card2)", border: `1px solid ${z.pct > 60 ? "rgba(245,158,11,.3)" : "var(--border)"}`, borderRadius: 11, padding: "14px 18px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 700, color: "var(--white)" } }, z.zip), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", marginLeft: 12 } }, z.total, " homestead parcel", z.total > 1 ? "s" : "", " | ", z.noExempt, " with no exemptions")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 20, fontWeight: 700, color: z.pct > 60 ? "var(--amber)" : z.pct > 30 ? "#f97316" : "var(--green2)" } }, z.pct, "%"), z.pct > 60 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b" }, "Warning: high missed-savings risk"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 6, background: "var(--bg)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${z.pct}%`, background: z.pct > 60 ? "var(--amber)" : z.pct > 30 ? "#f97316" : "var(--green2)", borderRadius: 3 } })), z.pct > 50 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 10, display: "flex", flexWrap: "wrap", gap: 5 } }, z.parcels.slice(0, 3).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "rgba(245,158,11,.08)", borderRadius: 6, padding: "4px 8px", fontSize: 11, color: "var(--amber2)" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address), " - ", p.owner1)), z.parcels.length > 3 && onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: (e) => {
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Tax Fairness & Equity"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Exemption deserts, assessment burden by ZIP, exemption revenue impact on tax base"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Equity", title: "Why Does Property Tax Equity Matter?", color: "#22c55e" }, "Property taxes are the primary way Albany funds its schools, city services, and county government. When assessments are unequal - charging some neighborhoods more relative to their actual property values - it creates a hidden tax on those communities. This tab examines three equity dimensions: where homeowners are missing out on exemptions they likely qualify for, which ZIP codes carry a disproportionate share of the tax burden, and how much revenue the city foregoes through exemptions each year. None of this requires any prior knowledge of tax law - the explanations are built in."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 4, background: "var(--card)", borderRadius: 9, padding: 4, border: "1px solid var(--border)", width: "fit-content", marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "desert", label: "Missing Exemptions" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "burden", label: "Assessment Burden" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "revenue", label: "Revenue Impact" })), view === "desert" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16, background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "var(--amber2)", marginBottom: 6 } }, "What does missing exemptions mean?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, "A zone where homestead property owners are not claiming exemptions they likely qualify for - such as STAR, senior, or veteran exemptions. Owners in lower-income neighborhoods often leave money on the table because they do not know to apply. The table below flags ZIPs with the highest share of homesteads with zero exemptions.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, desertByZip.map((z) => /* @__PURE__ */ import_react45.default.createElement("div", { key: z.zip, style: { background: "var(--card2)", border: `1px solid ${z.pct > 60 ? "rgba(245,158,11,.3)" : "var(--border)"}`, borderRadius: 11, padding: "14px 18px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 700, color: "var(--white)" } }, z.zip), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", marginLeft: 12 } }, z.total, " homestead parcel", z.total > 1 ? "s" : "", " | ", z.noExempt, " with no exemptions")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 20, fontWeight: 700, color: z.pct > 60 ? "var(--amber)" : z.pct > 30 ? "#f97316" : "var(--green2)" } }, z.pct, "%"), z.pct > 60 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b" }, "Warning: high missed-savings risk"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 6, background: "var(--bg)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${z.pct}%`, background: z.pct > 60 ? "var(--amber)" : z.pct > 30 ? "#f97316" : "var(--green2)", borderRadius: 3 } })), z.pct > 50 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 10, display: "flex", flexWrap: "wrap", gap: 5 } }, z.parcels.slice(0, 3).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "rgba(245,158,11,.08)", borderRadius: 6, padding: "4px 8px", fontSize: 11, color: "var(--amber2)" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address), " - ", p.owner1)), z.parcels.length > 3 && onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: (e) => {
       e.stopPropagation();
       onDrill({ title: `ZIP ${z.zip} - Homesteads Without Exemptions (${z.noExempt})`, parcels: z.parcels });
     }, style: { background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.3)", color: "var(--amber2)", borderRadius: 7, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600 } }, "View all ", z.parcels.length, " properties ->")))))), view === "burden" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Average Assessment Equity Ratio by ZIP"), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 220 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: burdenByZip }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "zip", tick: { fontSize: 11, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, domain: [0, 150], tickFormatter: (v) => v + "%" }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v) => [v + "%", "Avg Equity Ratio"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "avgRatio", radius: [4, 4, 0, 0] }, burdenByZip.map((entry, i) => /* @__PURE__ */ import_react45.default.createElement(Cell, { key: i, fill: parseFloat(entry.avgRatio) > 110 ? "#dc2626" : parseFloat(entry.avgRatio) < 90 ? "#f59e0b" : "#22c55e" }))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 6 } }, "Red = over-assessed (paying too much tax relative to market). Amber = under-assessed. Green = fair range (90-110%).")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 } }, burdenByZip.map((z) => {
       const r2 = parseFloat(z.avgRatio);
       const color2 = r2 > 110 ? "var(--red2)" : r2 < 90 ? "var(--amber)" : "var(--green2)";
       return /* @__PURE__ */ import_react45.default.createElement(Card, { key: z.zip }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 22, fontWeight: 700, color: color2 } }, z.avgRatio, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginTop: 2 } }, "ZIP ", z.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4 } }, r2 > 110 ? "Over-assessed" : r2 < 90 ? "Under-assessed" : "Fair value"), onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `ZIP ${z.zip} - All ${z.count} Parcels (Avg Ratio: ${z.avgRatio}%)`, parcels: parcels.filter((p) => p.zip === z.zip && p.fullMarketValue > 0) }), style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", color: "var(--blue3)", borderRadius: 5, padding: "3px 9px", fontSize: 11, cursor: "pointer", marginTop: 6, fontWeight: 600 } }, "View ", z.count, " parcels ->"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: color2, marginTop: 8, fontWeight: 500 } }, r2 > 110 ? "Warning: owners here may have grounds for assessment grievance" : r2 < 90 ? "Info: land here carries lighter relative tax burden" : "Assessment aligned with market values"));
-    }))), view === "revenue" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Revenue", title: "What Is Revenue Impact - And Why Does It Matter to the City?", color: "#22c55e" }, "Every property tax exemption reduces the amount of assessed value that can be taxed - meaning the city, county, and school district collect less revenue. The numbers here show exactly how much taxable value has been removed from the base by each exemption type. This is not waste - exemptions like STAR and Senior Citizen exemptions are deliberate policy choices to reduce the burden on homeowners and veterans. But understanding the scale of these reductions helps explain why tax rates must remain high enough to fund services: fewer dollars in the taxable base means each remaining dollar is taxed more heavily."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total County Exemptions", value: "$" + (revenueImpact.reduce((s2, e) => s2 + e.totalCounty, 0) / 1e3).toFixed(0) + "K", icon: "County", color: "#3b82f6", sub: "Removed from county tax base" }), /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total City Exemptions", value: "$" + (revenueImpact.reduce((s2, e) => s2 + e.totalCity, 0) / 1e3).toFixed(0) + "K", icon: "City", color: "#0d9488", sub: "Removed from city tax base" }), /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total School Exemptions", value: "$" + (revenueImpact.reduce((s2, e) => s2 + e.totalSchool, 0) / 1e3).toFixed(0) + "K", icon: "School", color: "#a78bfa", sub: "Removed from school tax base" })), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 14 } }, "Exemption Impact on Tax Base by Type"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, revenueImpact.map((ex, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: ex.name, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "12px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15, color: COLORS[i % COLORS.length] } }, ex.name), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)", marginLeft: 10 } }, onDrill ? /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `${ex.name} Exemption Holders`, parcels: parcels.filter((p) => p.exemptions.some((e) => e.name === ex.name)) }), style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.3)", color: "var(--blue3)", borderRadius: 5, padding: "2px 8px", fontSize: 11, cursor: "pointer", fontFamily: "var(--fm)", fontWeight: 600 } }, ex.count, " parcel", ex.count > 1 ? "s" : "") : /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)", marginLeft: 10 } }, ex.count, " parcel", ex.count > 1 ? "s" : ""))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--amber)" } }, $f(ex.totalCounty + ex.totalCity + ex.totalSchool), " total")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 } }, [["County", ex.totalCounty, "#3b82f6"], ["City", ex.totalCity, "#0d9488"], ["School", ex.totalSchool, "#a78bfa"]].map(([jx, amt, color2]) => /* @__PURE__ */ import_react45.default.createElement("div", { key: jx, style: { background: `${color2}11`, border: `1px solid ${color2}22`, borderRadius: 7, padding: "8px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: color2 } }, $f(amt)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 2 } }, jx, " base reduction"))))))))));
+    }))), view === "revenue" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Revenue", title: "What Is Revenue Impact - And Why Does It Matter to the City?", color: "#22c55e" }, "Every property tax exemption reduces the amount of assessed value that can be taxed - meaning the city, county, and school district collect less revenue. The numbers here show exactly how much taxable value has been removed from the base by each exemption type. This is not waste - exemptions like STAR and Senior Citizen exemptions are deliberate policy choices to reduce the burden on homeowners and veterans. But understanding the scale of these reductions helps explain why tax rates must remain high enough to fund services: fewer dollars in the taxable base means each remaining dollar is taxed more heavily."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-3", style: { display: "grid", gap: 12, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total County Exemptions", value: "$" + (revenueImpact.reduce((s2, e) => s2 + e.totalCounty, 0) / 1e3).toFixed(0) + "K", icon: "County", color: "#3b82f6", sub: "Removed from county tax base" }), /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total City Exemptions", value: "$" + (revenueImpact.reduce((s2, e) => s2 + e.totalCity, 0) / 1e3).toFixed(0) + "K", icon: "City", color: "#0d9488", sub: "Removed from city tax base" }), /* @__PURE__ */ import_react45.default.createElement(StatCard, { label: "Total School Exemptions", value: "$" + (revenueImpact.reduce((s2, e) => s2 + e.totalSchool, 0) / 1e3).toFixed(0) + "K", icon: "School", color: "#a78bfa", sub: "Removed from school tax base" })), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 14 } }, "Exemption Impact on Tax Base by Type"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, revenueImpact.map((ex, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: ex.name, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "12px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15, color: COLORS[i % COLORS.length] } }, ex.name), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)", marginLeft: 10 } }, onDrill ? /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `${ex.name} Exemption Holders`, parcels: parcels.filter((p) => p.exemptions.some((e) => e.name === ex.name)) }), style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.3)", color: "var(--blue3)", borderRadius: 5, padding: "2px 8px", fontSize: 11, cursor: "pointer", fontFamily: "var(--fm)", fontWeight: 600 } }, ex.count, " parcel", ex.count > 1 ? "s" : "") : /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)", marginLeft: 10 } }, ex.count, " parcel", ex.count > 1 ? "s" : ""))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--amber)" } }, $f(ex.totalCounty + ex.totalCity + ex.totalSchool), " total")), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-3", style: { display: "grid", gap: 8 } }, [["County", ex.totalCounty, "#3b82f6"], ["City", ex.totalCity, "#0d9488"], ["School", ex.totalSchool, "#a78bfa"]].map(([jx, amt, color2]) => /* @__PURE__ */ import_react45.default.createElement("div", { key: jx, style: { background: `${color2}11`, border: `1px solid ${color2}22`, borderRadius: 7, padding: "8px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: color2 } }, $f(amt)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 2 } }, jx, " base reduction"))))))))));
   };
   var Opportunity = ({ parcels, onDrill }) => {
     const [view, setView] = (0, import_react45.useState)("lots");
@@ -51350,17 +53361,23 @@ self.onmessage = function(ev){
       return results;
     }, [parcels]);
     const BtnTab = ({ id, label }) => /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setView(id), style: { background: view === id ? "var(--teal)" : "transparent", color: view === id ? "white" : "var(--gray)", border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" } }, label);
-    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Neighborhood Change & Opportunity"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Underused land, neighborhood pressure, under-assessed parcels, and class anomalies"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Land", title: "What Are We Looking For Here?", color: "#0d9488" }, "This tab helps residents, advocates, and researchers spot neighborhood change, underused land, and parcels whose assessments look out of step with the market. It surfaces four different types of insights: underutilized lots where the land is worth more than what is built on it; signs of rising land prices that can precede displacement; properties whose assessments have not kept up with their market value (a potential buyer advantage); and parcels whose use type does not match the surrounding street - which may reflect an error, a holdover use, or a coming change. No real estate experience needed - each section explains what the numbers mean in plain English."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 4, background: "var(--card)", borderRadius: 9, padding: 4, border: "1px solid var(--border)", width: "fit-content", marginBottom: 18, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "lots", label: "Lot Opportunities" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "gentrifi", label: "Neighborhood Pressure" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "arb", label: "Under-Assessed Parcels" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "anomaly", label: "Class Anomalies" })), view === "lots" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14, background: "rgba(13,148,136,.07)", border: "1px solid rgba(13,148,136,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--teal2)", fontWeight: 600, marginBottom: 4 } }, "How to Read This"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, "Parcels are ranked by building-to-total ratio. A low ratio means most of the assessed value is in the land - the building may be small, aging, or underutilized relative to the lot size. These are potential infill development, demolition, or renovation opportunities.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, lotOpps.slice(0, 15).map((p, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 11, padding: "14px 18px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | ", p.zip, " | Lot: ", p.frontage, "x", p.depth, " ft"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(13,148,136,.12)", borderRadius: 7, padding: "6px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--teal2)" } }, nf(p.sqft), " sq ft"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Lot Size")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.12)", borderRadius: 7, padding: "6px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--amber)" } }, "$", p.landPerSqFt.toFixed(2), "/sq ft"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Land $/sqft")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.12)", borderRadius: 7, padding: "6px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--blue2)" } }, (p.buildingRatio * 100).toFixed(0), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Bldg of Total")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 2 } }, "FMV"), p.buildingRatio < 0.3 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "High Opportunity"))))))), view === "gentrifi" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Gentrification Pressure Index by Parcel"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12 } }, "Land-to-total assessed value ratio. Rising land values outpacing building values = displacement pressure signal. Index above 50% = elevated risk."), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 220 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: gentriParcels.slice(0, 12).map((p) => ({ address: p.address.split(" ").slice(0, 2).join(" "), idx: p.gIdx })) }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "address", tick: { fontSize: 9, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, tickFormatter: (v) => v + "%", domain: [0, 100] }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v) => [v + "%", "Gentrifi. Index"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "idx", radius: [4, 4, 0, 0] }, gentriParcels.slice(0, 12).map((p, i) => /* @__PURE__ */ import_react45.default.createElement(Cell, { key: i, fill: p.gIdx > 60 ? "#dc2626" : p.gIdx > 40 ? "#f59e0b" : "#22c55e" })))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10 } }, gentriParcels.slice(0, 10).map((p) => {
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Neighborhood Change & Opportunity"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Underused land, neighborhood pressure, under-assessed parcels, and class anomalies"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Land", title: "What Are We Looking For Here?", color: "#0d9488" }, "This tab helps residents, advocates, and researchers spot neighborhood change, underused land, and parcels whose assessments look out of step with the market. It surfaces four different types of insights: underutilized lots where the land is worth more than what is built on it; signs of rising land prices that can precede displacement; properties whose assessments have not kept up with their market value (a potential buyer advantage); and parcels whose use type does not match the surrounding street - which may reflect an error, a holdover use, or a coming change. No real estate experience needed - each section explains what the numbers mean in plain English."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 4, background: "var(--card)", borderRadius: 9, padding: 4, border: "1px solid var(--border)", width: "fit-content", marginBottom: 18, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "lots", label: "Lot Opportunities" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "gentrifi", label: "Neighborhood Pressure" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "arb", label: "Under-Assessed Parcels" }), /* @__PURE__ */ import_react45.default.createElement(BtnTab, { id: "anomaly", label: "Class Anomalies" })), view === "lots" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14, background: "rgba(13,148,136,.07)", border: "1px solid rgba(13,148,136,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--teal2)", fontWeight: 600, marginBottom: 4 } }, "How to Read This"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, "Parcels are ranked by building-to-total ratio. A low ratio means most of the assessed value is in the land - the building may be small, aging, or underutilized relative to the lot size. These are potential infill development, demolition, or renovation opportunities.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, lotOpps.slice(0, 15).map((p, i) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 11, padding: "14px 18px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | ", p.zip, " | Lot: ", p.frontage, "x", p.depth, " ft"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(13,148,136,.12)", borderRadius: 7, padding: "6px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--teal2)" } }, nf(p.sqft), " sq ft"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Lot Size")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.12)", borderRadius: 7, padding: "6px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--amber)" } }, "$", p.landPerSqFt.toFixed(2), "/sq ft"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Land $/sqft")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.12)", borderRadius: 7, padding: "6px 10px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--blue2)" } }, (p.buildingRatio * 100).toFixed(0), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Bldg of Total")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 600, color: "var(--amber)" } }, $f(p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", marginTop: 2 } }, "FMV"), p.buildingRatio < 0.3 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, "High Opportunity"))))))), view === "gentrifi" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Gentrification Pressure Index by Parcel"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12 } }, "Land-to-total assessed value ratio. Rising land values outpacing building values = displacement pressure signal. Index above 50% = elevated risk."), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 220 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: gentriParcels.slice(0, 12).map((p) => ({ address: p.address.split(" ").slice(0, 2).join(" "), idx: p.gIdx })) }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "address", tick: { fontSize: 9, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, tickFormatter: (v) => v + "%", domain: [0, 100] }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v) => [v + "%", "Gentrifi. Index"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "idx", radius: [4, 4, 0, 0] }, gentriParcels.slice(0, 12).map((p, i) => /* @__PURE__ */ import_react45.default.createElement(Cell, { key: i, fill: p.gIdx > 60 ? "#dc2626" : p.gIdx > 40 ? "#f59e0b" : "#22c55e" })))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10 } }, gentriParcels.slice(0, 10).map((p) => {
       const color2 = p.gIdx > 60 ? "var(--red2)" : p.gIdx > 40 ? "var(--amber)" : "var(--green2)";
-      return /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: `1px solid ${color2}33`, borderRadius: 11, padding: "14px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.neighborhood, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Land: ", $f(p.landValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Total: ", $f(p.assessedValue))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 22, fontWeight: 700, color: color2 } }, p.gIdx, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "land-to-total"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 4, background: "var(--bg)", borderRadius: 2, marginTop: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${p.gIdx}%`, background: color2, borderRadius: 2 } })));
-    }))), view === "arb" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14, background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--green2)", fontWeight: 600, marginBottom: 4 } }, "Assessment Arbitrage - What This Means"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, "Parcels where assessed value is significantly below full market value. The owner effectively pays taxes on a smaller base than the property's true worth. These represent hidden value - for buyers, lower carrying costs; for policy makers, potential tax base leakage.")), arbitrage.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, arbitrage.slice(0, showAllArb ? arbitrage.length : OPP_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 11, padding: "14px 18px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | ", p.zip, " | Owner: ", p.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.1)", borderRadius: 7, padding: "6px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--green2)" } }, $f(p.taxGap)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Value gap (FMV - Assessed)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.1)", borderRadius: 7, padding: "6px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--amber)" } }, p.ratio.toFixed(1), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Equity ratio (under 85%)")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Assessed"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14 } }, $f(p.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", marginTop: 6 } }, "FMV"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, $f(p.fullMarketValue)))))), arbitrage.length > OPP_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllArb((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllArb ? `Show top ${OPP_LIMIT}` : `Show all ${arbitrage.length.toLocaleString()} arbitrage candidates`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, "No strong arbitrage candidates in current sample. Upload full roll to discover hidden opportunities.")), view === "anomaly" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Analysis", title: "Property Class Anomaly Detector - What's Out of Place?", color: "#a78bfa" }, "Every parcel in Albany is assigned a property class code that describes how it is used - 210 for single-family homes, 220 for two-family, 400 for commercial, 300 for vacant land, etc. This tool looks at each street and identifies parcels whose class code is different from the majority of their neighbors. A commercial property surrounded by single-family homes, or a vacant lot on a block of apartments, may represent a holdover use, a recent conversion, or a data entry error. Either way, it is a flag worth investigating."), anomalies.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, anomalies.slice(0, showAllAnom ? anomalies.length : OPP_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid rgba(167,139,250,.25)", borderRadius: 11, padding: "14px 18px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, "on ", p.street, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)" } }, "This parcel: "), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#a78bfa" }, propClassLabel(p))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)" } }, "Street mode: "), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#22c55e" }, formatPropClassLabel(p.expectedClass, p.expectedClassDesc))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, $f(p.fullMarketValue)))))), anomalies.length > OPP_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllAnom((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllAnom ? `Show top ${OPP_LIMIT}` : `Show all ${anomalies.length.toLocaleString()} anomalies`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 32, marginBottom: 10 } }, "Info"), "No class anomalies detected. Streets need 3+ parcels to run anomaly detection. Upload full roll for complete analysis.")));
+      return /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: `1px solid ${color2}33`, borderRadius: 11, padding: "14px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.neighborhood, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Land: ", $f(p.landValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Total: ", $f(p.assessedValue))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 22, fontWeight: 700, color: color2 } }, p.gIdx, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "land-to-total"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 4, background: "var(--bg)", borderRadius: 2, marginTop: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${p.gIdx}%`, background: color2, borderRadius: 2 } })));
+    }))), view === "arb" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14, background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--green2)", fontWeight: 600, marginBottom: 4 } }, "Assessment Arbitrage - What This Means"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, "Parcels where assessed value is significantly below full market value. The owner effectively pays taxes on a smaller base than the property's true worth. These represent hidden value - for buyers, lower carrying costs; for policy makers, potential tax base leakage.")), arbitrage.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, arbitrage.slice(0, showAllArb ? arbitrage.length : OPP_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 11, padding: "14px 18px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | ", p.zip, " | Owner: ", p.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.1)", borderRadius: 7, padding: "6px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--green2)" } }, $f(p.taxGap)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Value gap (FMV - Assessed)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.1)", borderRadius: 7, padding: "6px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: "var(--amber)" } }, p.ratio.toFixed(1), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Equity ratio (under 85%)")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)" } }, "Assessed"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14 } }, $f(p.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", marginTop: 6 } }, "FMV"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, $f(p.fullMarketValue)))))), arbitrage.length > OPP_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllArb((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllArb ? `Show top ${OPP_LIMIT}` : `Show all ${arbitrage.length.toLocaleString()} arbitrage candidates`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, "No strong arbitrage candidates in current sample. Upload full roll to discover hidden opportunities.")), view === "anomaly" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Analysis", title: "Property Class Anomaly Detector - What's Out of Place?", color: "#a78bfa" }, "Every parcel in Albany is assigned a property class code that describes how it is used - 210 for single-family homes, 220 for two-family, 400 for commercial, 300 for vacant land, etc. This tool looks at each street and identifies parcels whose class code is different from the majority of their neighbors. A commercial property surrounded by single-family homes, or a vacant lot on a block of apartments, may represent a holdover use, a recent conversion, or a data entry error. Either way, it is a flag worth investigating."), anomalies.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, anomalies.slice(0, showAllAnom ? anomalies.length : OPP_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card2)", border: "1px solid rgba(167,139,250,.25)", borderRadius: 11, padding: "14px 18px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 15 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, "on ", p.street, " | ", p.zip), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)" } }, "This parcel: "), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#a78bfa" }, propClassLabel(p))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)" } }, "Street mode: "), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#22c55e" }, formatPropClassLabel(p.expectedClass, p.expectedClassDesc))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, $f(p.fullMarketValue)))))), anomalies.length > OPP_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllAnom((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer", width: "100%" } }, showAllAnom ? `Show top ${OPP_LIMIT}` : `Show all ${anomalies.length.toLocaleString()} anomalies`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 40, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 32, marginBottom: 10 } }, "Info"), "No class anomalies detected. Streets need 3+ parcels to run anomaly detection. Upload full roll for complete analysis.")));
   };
-  var TaxTools = ({ parcels, myHome }) => {
+  var TaxTools = ({ parcels, myHome, meta = {}, ownerPortfolioIndex = null }) => {
     const [view, setView] = (0, import_react45.useState)("estimator");
     const [query, setQuery] = (0, import_react45.useState)("");
     const [found, setFound] = (0, import_react45.useState)(null);
     const [neighborAddr, setNeighborAddr] = (0, import_react45.useState)("");
     const [neighborResult, setNeighborResult] = (0, import_react45.useState)(null);
+    const [compareSnapshotMessage, setCompareSnapshotMessage] = (0, import_react45.useState)("");
+    const [copiedShareLink, setCopiedShareLink] = (0, import_react45.useState)(false);
+    const [compareScrollTick, setCompareScrollTick] = (0, import_react45.useState)(0);
+    const requestedSnapshotRef = (0, import_react45.useRef)(parseComparableSnapshotSearch(typeof window !== "undefined" ? window.location.search : ""));
+    const hydratedSnapshotRef = (0, import_react45.useRef)(false);
+    const compareResultRef = (0, import_react45.useRef)(null);
     const streetNameKey = (0, import_react45.useCallback)((addr) => {
       const k2 = normalizeStreetKeyForCompare(addr || "");
       if (!k2) return "";
@@ -51368,47 +53385,123 @@ self.onmessage = function(ev){
       return t.length > 1 && /^\d+[a-z]?$/i.test(t[0]) ? t.slice(1).join(" ") : t.join(" ");
     }, []);
     const isGenericNbr = (0, import_react45.useCallback)((n) => /^(albany|city of albany)$/i.test((n || "").toString().trim()), []);
+    const datasetKey = (0, import_react45.useMemo)(() => buildComparableDatasetKey(meta, parcels), [meta, parcels]);
+    const matchedHomeDetailsLabel = (0, import_react45.useCallback)((parcel) => {
+      const possible = Number(parcel?._compPhysicalFieldCountPossible || 0);
+      const used = Array.isArray(parcel?._compPhysicalFieldsUsed) ? parcel._compPhysicalFieldsUsed.length : 0;
+      if (!possible) return "Matched by class and location";
+      return `Matched ${used} of ${possible} home details`;
+    }, []);
     const fillMyHome = (0, import_react45.useCallback)((setter) => {
       if (myHome) setter(myHome.address.split(" ").slice(0, 3).join(" "));
     }, [myHome]);
     const lookupParcel = (0, import_react45.useCallback)((value) => findBestAddressMatch(parcels, value), [parcels]);
-    const buildNeighborResult = (0, import_react45.useCallback)((p) => {
-      if (!p) return null;
-      const streetKey = streetNameKey(p.address);
-      const nbr = (p.neighborhood || "").toString().trim();
-      const allSameStreet = parcels.filter((x2) => streetNameKey(x2.address) === streetKey && x2.parcelId !== p.parcelId);
-      let neighbors = allSameStreet.filter((x2) => (x2.neighborhood || "").toString().trim() === nbr);
-      const genericScopeTightenedByZip = isGenericNbr(nbr);
-      if (genericScopeTightenedByZip) neighbors = neighbors.filter((x2) => (x2.zip || "") === p.zip);
-      const avgFMV = neighbors.length > 0 ? Math.round(neighbors.reduce((s2, x2) => s2 + x2.fullMarketValue, 0) / neighbors.length) : null;
-      const avgAssessed = neighbors.length > 0 ? Math.round(neighbors.reduce((s2, x2) => s2 + x2.assessedValue, 0) / neighbors.length) : null;
-      const sameClassCount = neighbors.filter((x2) => x2.propClass === p.propClass).length;
-      const deltaFMV = avgFMV != null ? p.fullMarketValue - avgFMV : null;
-      const deltaFMVPct = avgFMV && avgFMV > 0 && deltaFMV != null ? deltaFMV / avgFMV * 100 : null;
-      const deltaAssessed = avgAssessed != null ? p.assessedValue - avgAssessed : null;
-      return {
-        p,
-        neighbors,
-        avgFMV,
-        avgAssessed,
-        streetKey,
-        scopeNeighborhood: nbr || null,
-        genericScopeTightenedByZip,
-        allSameStreetCount: allSameStreet.length,
-        excludedCrossNeighborhoodCount: Math.max(0, allSameStreet.length - neighbors.length),
-        sameClassCount,
-        deltaFMV,
-        deltaFMVPct,
-        deltaAssessed
-      };
-    }, [isGenericNbr, parcels, streetNameKey]);
+    const buildNeighborResult = (0, import_react45.useCallback)((parcel, options = {}) => buildComparableResult(parcel, parcels, {
+      ...options,
+      currentDatasetKey: datasetKey
+    }), [datasetKey, parcels]);
+    const focusNeighborParcel = (0, import_react45.useCallback)((parcel, options = {}) => {
+      if (!parcel) return null;
+      const nextResult = buildNeighborResult(parcel, options);
+      setNeighborAddr(parcel.address || "");
+      setNeighborResult(nextResult);
+      setCopiedShareLink(false);
+      setView("neighbor");
+      const warnings = [];
+      if (nextResult?.snapshot?.datasetMismatch) {
+        warnings.push(`This share link was created for ${nextResult.snapshot.requestedDatasetKey || "another dataset"} but this app is using ${nextResult.snapshot.currentDatasetKey || "the current dataset"}.`);
+      }
+      if (nextResult?.snapshot?.missingCompIds?.length) {
+        const count = nextResult.snapshot.missingCompIds.length;
+        warnings.push(`${count} shared comparable ${count === 1 ? "parcel was" : "parcels were"} not found in the current dataset.`);
+      }
+      if (options?.message) warnings.unshift(options.message);
+      setCompareSnapshotMessage(warnings.join(" "));
+      setCompareScrollTick((t) => t + 1);
+      return nextResult;
+    }, [buildNeighborResult]);
     const lookup = (0, import_react45.useCallback)(() => {
       setFound(lookupParcel(query) || null);
     }, [lookupParcel, query]);
     const lookupNeighbor = (0, import_react45.useCallback)(() => {
-      const p = lookupParcel(neighborAddr);
-      setNeighborResult(p ? buildNeighborResult(p) : null);
-    }, [buildNeighborResult, lookupParcel, neighborAddr]);
+      const parcel = lookupParcel(neighborAddr);
+      if (!parcel) {
+        setNeighborResult(null);
+        setCompareSnapshotMessage("");
+        return;
+      }
+      focusNeighborParcel(parcel);
+    }, [focusNeighborParcel, lookupParcel, neighborAddr]);
+    const shareLink = (0, import_react45.useMemo)(() => {
+      if (!neighborResult?.p) return "";
+      return buildComparableSnapshotUrl({
+        subjectId: neighborResult.p.parcelId,
+        compIds: (neighborResult.neighbors || []).map((parcel) => parcel.parcelId),
+        datasetKey,
+        label: neighborResult.p.address
+      });
+    }, [datasetKey, neighborResult]);
+    const copyShareLink = (0, import_react45.useCallback)(async () => {
+      if (!shareLink) return;
+      const ok = await copyTextToClipboard(shareLink);
+      setCopiedShareLink(!!ok);
+    }, [shareLink]);
+    (0, import_react45.useEffect)(() => {
+      const requestedSnapshot = requestedSnapshotRef.current;
+      if (requestedSnapshot?.tool === "neighbor") setView("neighbor");
+      if (hydratedSnapshotRef.current) return;
+      if (!requestedSnapshot?.hasSnapshot) {
+        hydratedSnapshotRef.current = true;
+        return;
+      }
+      if (!parcels.length) return;
+      hydratedSnapshotRef.current = true;
+      if (!requestedSnapshot.subjectId) {
+        setCompareSnapshotMessage("This shared comparable snapshot could not be opened because the subject parcel is missing.");
+        return;
+      }
+      const subjectParcel = parcels.find((parcel) => normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl) === requestedSnapshot.subjectId) || null;
+      if (!subjectParcel) {
+        setCompareSnapshotMessage("This shared comparable snapshot could not be opened because the subject parcel was not found in the current dataset.");
+        return;
+      }
+      focusNeighborParcel(subjectParcel, {
+        exactCompIds: requestedSnapshot.compIds,
+        snapshotDatasetKey: requestedSnapshot.datasetKey
+      });
+    }, [focusNeighborParcel, parcels]);
+    (0, import_react45.useEffect)(() => {
+      if (view !== "neighbor" || !neighborResult?.p) return;
+      replaceComparableSnapshotUrl({
+        subjectId: neighborResult.p.parcelId,
+        compIds: (neighborResult.neighbors || []).map((parcel) => parcel.parcelId),
+        datasetKey,
+        label: neighborResult.p.address
+      });
+    }, [datasetKey, neighborResult, view]);
+    (0, import_react45.useEffect)(() => {
+      if (!copiedShareLink) return;
+      const id = setTimeout(() => setCopiedShareLink(false), 1800);
+      return () => clearTimeout(id);
+    }, [copiedShareLink]);
+    (0, import_react45.useEffect)(() => {
+      if (!compareScrollTick || !neighborResult) return;
+      const runner = () => compareResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const id = typeof window !== "undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner, 0);
+      return () => {
+        if (typeof id === "number" && typeof window !== "undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
+        else clearTimeout(id);
+      };
+    }, [compareScrollTick, neighborResult]);
+    const CompareMetricCard = ({ label, youValue, compValue, deltaValue, deltaTone = "var(--gray2)" }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 6, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.6 } }, label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "You"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, youValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Comp"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, compValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Delta"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", color: deltaTone, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, deltaValue))));
+    const CompareProfileRow = ({ label, youValue, compValue }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.03)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", display: "grid", gap: 4, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.6 } }, label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "You"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, youValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Comp"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, compValue)));
+    const ComparableOwnershipBadges = ({ parcel, small = false }) => {
+      if (!parcel) return null;
+      const absentee = isAbsenteeFast(parcel);
+      const portfolioCount = getOwnerPortfolioCountFast(parcel);
+      if (!absentee && portfolioCount <= 1) return null;
+      return /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, absentee && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316", small }, "Absentee"), portfolioCount > 1 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0f766e", small }, ownerPortfolioBadgeLabel(parcel)));
+    };
     const schoolBurden = (0, import_react45.useMemo)(() => [...parcels].map((p) => ({ ...p, schoolBurden: p.fullMarketValue > 0 ? (p.schoolTaxable / p.fullMarketValue * 100).toFixed(1) : "-", schoolGap: p.assessedValue - p.schoolTaxable })).sort((a2, b) => parseFloat(b.schoolBurden || 0) - parseFloat(a2.schoolBurden || 0)), [parcels]);
     const BtnTab = ({ id, label }) => /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setView(id), style: { background: view === id ? "var(--purple)" : "transparent", color: view === id ? "white" : "var(--gray)", border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" } }, label);
     const SI = { background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "var(--fb)" };
@@ -51420,37 +53513,70 @@ self.onmessage = function(ev){
     }, label: "Load My Home" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: query, onChange: setQuery, onSelectParcel: (p) => {
       setQuery(p.address);
       setFound(p);
-    }, onEnter: lookup, placeholder: "Enter address or parcel ID...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: lookup, style: { background: "var(--purple)", color: "white", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 } }, "Look Up")), found && /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 16, fontWeight: 700, marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: found.address, zip: found.zip, neighborhood: found.neighborhood }, found.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", borderRadius: 9, padding: "12px 14px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", marginBottom: 4 } }, "Current Exemptions on Record"), found.exemptions.length > 0 ? found.exemptions.map((e) => /* @__PURE__ */ import_react45.default.createElement("div", { key: e.code, style: { fontSize: 12, marginBottom: 3 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, e.name), " - saves up to ", $f(e.schoolAmt || e.countyAmt || e.cityAmt))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, "None on file")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.07)", borderRadius: 9, padding: "12px 14px", border: "1px solid rgba(34,197,94,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--green2)", marginBottom: 4 } }, "Potential Opportunities Worth Exploring"), found.parcelType === "HOMESTEAD" && !found.exemptions.some((e) => e.name.includes("STAR")) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginBottom: 5, color: "var(--white)" } }, "Recommended: ", /* @__PURE__ */ import_react45.default.createElement("b", null, "STAR Exemption"), " - up to $30,000 off school taxable value (~$600-900/yr savings). Apply at NYS Tax Dept."), found.parcelType === "HOMESTEAD" && !found.exemptions.some((e) => e.name.includes("SR")) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginBottom: 5, color: "var(--gray2)" } }, "Info: ", /* @__PURE__ */ import_react45.default.createElement("b", null, "Senior Citizen Exemption"), " - if owner 65+, may reduce assessed value 10-50%."), found.parcelType === "HOMESTEAD" && !found.exemptions.some((e) => e.name.includes("VET")) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginBottom: 5, color: "var(--gray2)" } }, "Info: ", /* @__PURE__ */ import_react45.default.createElement("b", null, "Veteran Exemption"), " - if owner served, up to $30,000 off. Apply at city assessor's office."), found.parcelType !== "HOMESTEAD" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, "Non-homestead parcels have limited exemption options. Commercial and rental properties generally do not qualify for residential exemptions."), found.exemptions.length > 1 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--green2)" } }, "This property already has multiple exemptions and appears well-optimized."))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", borderRadius: 9, padding: "14px 16px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600, marginBottom: 4 } }, "Your Current Tax Reduction vs. Full Assessed Value"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 10 } }, "These figures show how much your taxable value is already reduced below the assessed value - your existing tax relief. A value of $0 means you are paying taxes on the full assessed amount with no reduction for that jurisdiction."), [["County", found.assessedValue - found.countyTaxable, "#3b82f6"], ["City", found.assessedValue - found.cityTaxable, "#0d9488"], ["School District", found.assessedValue - found.schoolTaxable, "#a78bfa"]].map(([jx, sav, color2]) => /* @__PURE__ */ import_react45.default.createElement("div", { key: jx, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)" } }, jx, " tax reduction"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: sav > 0 ? color2 : "var(--gray3)" } }, sav > 0 ? $f(sav) : "No reduction"))))), query && !found && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 8 } }, 'No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".'))), view === "neighbor" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Compare", title: "What's My Neighbor Worth? - Street-Level Comparison", color: "#a78bfa" }, "New York State law requires that comparable properties be assessed at a similar ratio of market value. This tool compares your parcel to other parcels on the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "same normalized street name and in the same neighborhood"), ' (and, when the neighborhood label is a generic "Albany", also the same ZIP) within the currently loaded dataset. The averages shown are ', /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "simple arithmetic averages"), " of those included parcels - they are not adjusted for square footage, lot size, condition, or renovations, so treat large gaps as a starting point for investigation, not proof by themselves."), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Enter Your Address to Compare"), /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: () => {
+    }, onEnter: lookup, placeholder: "Enter address or parcel ID...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: lookup, style: { background: "var(--purple)", color: "white", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 } }, "Look Up")), found && /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 16, fontWeight: 700, marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: found.address, zip: found.zip, neighborhood: found.neighborhood, parcelId: found.parcelId }, found.address)), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", borderRadius: 9, padding: "12px 14px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", marginBottom: 4 } }, "Current Exemptions on Record"), found.exemptions.length > 0 ? found.exemptions.map((e) => /* @__PURE__ */ import_react45.default.createElement("div", { key: e.code, style: { fontSize: 12, marginBottom: 3 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, e.name), " - saves up to ", $f(e.schoolAmt || e.countyAmt || e.cityAmt))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, "None on file")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.07)", borderRadius: 9, padding: "12px 14px", border: "1px solid rgba(34,197,94,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--green2)", marginBottom: 4 } }, "Potential Opportunities Worth Exploring"), found.parcelType === "HOMESTEAD" && !found.exemptions.some((e) => e.name.includes("STAR")) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginBottom: 5, color: "var(--white)" } }, "Recommended: ", /* @__PURE__ */ import_react45.default.createElement("b", null, "STAR Exemption"), " - up to $30,000 off school taxable value (~$600-900/yr savings). Apply at NYS Tax Dept."), found.parcelType === "HOMESTEAD" && !found.exemptions.some((e) => e.name.includes("SR")) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginBottom: 5, color: "var(--gray2)" } }, "Info: ", /* @__PURE__ */ import_react45.default.createElement("b", null, "Senior Citizen Exemption"), " - if owner 65+, may reduce assessed value 10-50%."), found.parcelType === "HOMESTEAD" && !found.exemptions.some((e) => e.name.includes("VET")) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, marginBottom: 5, color: "var(--gray2)" } }, "Info: ", /* @__PURE__ */ import_react45.default.createElement("b", null, "Veteran Exemption"), " - if owner served, up to $30,000 off. Apply at city assessor's office."), found.parcelType !== "HOMESTEAD" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, "Non-homestead parcels have limited exemption options. Commercial and rental properties generally do not qualify for residential exemptions."), found.exemptions.length > 1 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--green2)" } }, "This property already has multiple exemptions and appears well-optimized."))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", borderRadius: 9, padding: "14px 16px", border: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600, marginBottom: 4 } }, "Your Current Tax Reduction vs. Full Assessed Value"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 10 } }, "These figures show how much your taxable value is already reduced below the assessed value - your existing tax relief. A value of $0 means you are paying taxes on the full assessed amount with no reduction for that jurisdiction."), [["County", found.assessedValue - found.countyTaxable, "#3b82f6"], ["City", found.assessedValue - found.cityTaxable, "#0d9488"], ["School District", found.assessedValue - found.schoolTaxable, "#a78bfa"]].map(([jx, sav, color2]) => /* @__PURE__ */ import_react45.default.createElement("div", { key: jx, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)" } }, jx, " tax reduction"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 600, color: sav > 0 ? color2 : "var(--gray3)" } }, sav > 0 ? $f(sav) : "No reduction"))))), query && !found && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 8 } }, 'No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".'))), view === "neighbor" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Compare", title: "Comparable Homes for an Assessment Grievance", color: "#a78bfa" }, "This tool ranks ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "physically similar homes"), " and now creates a ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "shareable snapshot link"), " that opens the same parcel and the same comparable set on GitHub Pages or locally. Each comparable card shows value, home details, absentee context, and owner-portfolio context so residents can evaluate the evidence without leaving this view."), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Enter Your Address to Compare"), /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: () => {
       if (myHome) {
         setNeighborAddr(myHome.address.split(" ").slice(0, 3).join(" "));
         setNeighborResult(null);
+        setCompareSnapshotMessage("");
       }
-    }, label: "Load My Home" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: neighborAddr, onChange: setNeighborAddr, onSelectParcel: (p) => {
-      setNeighborAddr(p.address);
-      setNeighborResult(buildNeighborResult(p));
-    }, onEnter: lookupNeighbor, placeholder: "Enter your address...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: lookupNeighbor, style: { background: "var(--purple)", color: "white", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 } }, "Compare")), neighborResult && /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 10, padding: "14px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", marginBottom: 4, fontWeight: 600 } }, "Your Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 16 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: neighborResult.p.address, zip: neighborResult.p.zip, neighborhood: neighborResult.p.neighborhood }, neighborResult.p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--amber)" } }, $f(neighborResult.p.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your FMV")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16 } }, $f(neighborResult.p.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: FC[eqFlagFast(neighborResult.p)] } }, eqRFast(neighborResult.p), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Equity %")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 4, fontWeight: 600 }, title: "Simple arithmetic averages for parcels on the same normalized street name and same neighborhood scope, excluding your parcel." }, "Street Average (", neighborResult.neighbors.length, " neighbors)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5, marginBottom: 8 } }, "Includes parcels on ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, neighborResult.streetKey || "this street"), neighborResult.scopeNeighborhood ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " in ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, neighborResult.scopeNeighborhood)) : "", neighborResult.genericScopeTightenedByZip ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (ZIP ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, neighborResult.p.zip), " filter applied)") : "", ", excluding your parcel.", neighborResult.excludedCrossNeighborhoodCount > 0 && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " Excluded ", neighborResult.excludedCrossNeighborhoodCount, " same-street parcel", neighborResult.excludedCrossNeighborhoodCount === 1 ? "" : "s", " outside this neighborhood scope.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average Full Market Value across included neighbor parcels." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(neighborResult.avgFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Avg FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average assessed value across included neighbor parcels." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(neighborResult.avgAssessed)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Avg Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Compares your FMV to the included-neighbor average FMV (not a significance test)." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: (neighborResult.deltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, (neighborResult.deltaFMV ?? 0) >= 0 ? "Above" : "Below", " avg FMV"))), neighborResult.avgFMV != null && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.5 } }, "Your FMV is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: (neighborResult.deltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, neighborResult.deltaFMV != null ? `${neighborResult.deltaFMV >= 0 ? "+" : "-"}${$f(Math.abs(neighborResult.deltaFMV))}` : "-"), neighborResult.deltaFMVPct != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (", neighborResult.deltaFMVPct >= 0 ? "+" : "", neighborResult.deltaFMVPct.toFixed(1), "%)"), " versus the included-neighbor average.", neighborResult.sameClassCount > 0 && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " Of these ", neighborResult.neighbors.length, " neighbors, ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, neighborResult.sameClassCount), " share your property class (", propClassDescLabel(neighborResult.p), ").")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.03)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--gray2)", marginBottom: 6 } }, "How To Read These Numbers"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", lineHeight: 1.65 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Neighbors"), " = parcels in the current dataset with the same normalized street name and neighborhood scope (excluding your parcel). ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "FMV"), " = assessor's estimate of market value. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Assessed"), " = value used to calculate taxes. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Equity %"), " = Assessed / FMV x 100. Lower/higher than average is a directional flag only - it does not adjust for home size, condition, or improvements.")), neighborResult.neighbors.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 2 }, title: "These are the parcels included in the comparison averages shown above." }, "Included Parcels In Comparison Scope (", neighborResult.neighbors.length, ")"), neighborResult.neighbors.map((n) => /* @__PURE__ */ import_react45.default.createElement("div", { key: n.parcelId, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: n.address, zip: n.zip, neighborhood: n.neighborhood }, n.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, n.owner1)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 16, textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Assessor's estimated Full Market Value (FMV)." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--amber)" } }, $f(n.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Equity % = Assessed / FMV x 100." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: FC[eqFlagFast(n)] } }, eqRFast(n), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Equity")))))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", textAlign: "center", padding: 20 } }, "No other parcels found on this street in the current dataset. Upload the full roll for a complete street comparison.")))), view === "school" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "School", title: "What Is School Tax Burden - And Why Does It Matter?", color: "#a78bfa" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "School taxes are typically the largest single component of your Albany property tax bill"), " - often 60-70% of the total. They fund the Albany City School District: teacher salaries, building maintenance, transportation, special education, and more. Your school tax is calculated by multiplying the school district's tax rate by your ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "school taxable value"), " - which is different from your assessed value if you have any school-specific exemptions.", /* @__PURE__ */ import_react45.default.createElement("br", null), /* @__PURE__ */ import_react45.default.createElement("br", null), "The ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "School Tax Burden %"), " shown here is: School Taxable Value / Full Market Value x 100. A result of 100% means you have zero school tax relief - you are paying on the full assessed value. A result of 75% means exemptions (like STAR) have reduced your school-taxable amount by 25% of market value. Lower is better for the homeowner. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Every homeowner who lives in their primary residence should have at minimum the Basic STAR exemption reducing this number."), " If yours shows 100%, you may be leaving money on the table."), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 8 } }, "School Tax Burden by Property (Ranked Highest to Lowest)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 14 } }, "Red = no school tax relief (100% burden). Amber = partial relief. Green = significant school exemptions applied. A homestead parcel showing red may be missing STAR."), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 200 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: schoolBurden.slice(0, 10).map((p) => ({ address: p.address.split(" ").slice(0, 2).join(" "), pct: parseFloat(p.schoolBurden) || 0 })) }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "address", tick: { fontSize: 9, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, tickFormatter: (v) => v + "%", domain: [0, 110] }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v) => [v + "%", "School Burden"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "pct", radius: [4, 4, 0, 0] }, schoolBurden.slice(0, 10).map((p, i) => /* @__PURE__ */ import_react45.default.createElement(Cell, { key: i, fill: parseFloat(p.schoolBurden) > 95 ? "#dc2626" : parseFloat(p.schoolBurden) < 80 ? "#22c55e" : "#f59e0b" })))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, schoolBurden.slice(0, 12).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: myHome?.parcelId === p.parcelId ? "rgba(34,197,94,.06)" : "var(--card2)", border: `1px solid ${myHome?.parcelId === p.parcelId ? "rgba(34,197,94,.3)" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), myHome?.parcelId === p.parcelId && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#22c55e", small: true }, "My Home")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.owner1, " | School taxable: ", $f(p.schoolTaxable)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 3 } }, parseFloat(p.schoolBurden) > 95 && p.parcelType === "HOMESTEAD" ? "Warning: homestead with no school tax relief - may qualify for STAR" : parseFloat(p.schoolBurden) < 80 ? "School exemptions are reducing taxable value below 80% of market" : "Partial school tax relief applied")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 14, textAlign: "right", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--green2)" } }, $f(p.schoolGap)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "School savings")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: parseFloat(p.schoolBurden) > 95 ? "rgba(220,38,38,.15)" : parseFloat(p.schoolBurden) < 80 ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${parseFloat(p.schoolBurden) > 95 ? "rgba(220,38,38,.3)" : parseFloat(p.schoolBurden) < 80 ? "rgba(34,197,94,.3)" : "rgba(245,158,11,.3)"}`, borderRadius: 8, padding: "6px 12px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: parseFloat(p.schoolBurden) > 95 ? "var(--red2)" : parseFloat(p.schoolBurden) < 80 ? "var(--green2)" : "var(--amber)" } }, p.schoolBurden, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 9, color: "var(--gray)" } }, "of FMV taxed"))))))));
+    }, label: "Load My Home" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: neighborAddr, onChange: setNeighborAddr, onSelectParcel: (parcel) => {
+      setNeighborAddr(parcel.address);
+      focusNeighborParcel(parcel);
+    }, onEnter: lookupNeighbor, placeholder: "Enter your address...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: "1 1 320px" } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: lookupNeighbor, style: { background: "var(--purple)", color: "white", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 } }, "Compare")), neighborResult && (() => {
+      const subject = neighborResult.p;
+      const subjectProfile = neighborResult.subjectProfile || buildComparableProfile(subject);
+      const grievanceComparisons = [{ kind: "subject", parcel: subject, label: "Your parcel" }].concat(
+        ((neighborResult.grievanceCandidates || []).length ? neighborResult.grievanceCandidates : neighborResult.neighbors.slice(0, 4)).map((parcel, idx) => ({ kind: "comp", parcel, label: "Comp " + (idx + 1) }))
+      );
+      return /* @__PURE__ */ import_react45.default.createElement("div", { ref: compareResultRef, className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Shareable comparable snapshot"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 4, maxWidth: 760 } }, "Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, copiedShareLink && /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700 } }, "Link copied"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: copyShareLink, disabled: !shareLink, style: { background: shareLink ? "var(--blue)" : "rgba(148,163,184,.18)", color: shareLink ? "white" : "var(--gray3)", border: "none", borderRadius: 8, padding: "8px 14px", cursor: shareLink ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Copy share link"))), compareSnapshotMessage && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.24)", borderRadius: 10, padding: "11px 13px", fontSize: 11, color: "var(--amber2)", lineHeight: 1.6, marginBottom: 12 } }, compareSnapshotMessage), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 10, padding: "14px 16px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", marginBottom: 4, fontWeight: 600 } }, "Your Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 16, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: subject.address, zip: subject.zip, neighborhood: subject.neighborhood, parcelId: subject.parcelId }, subject.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#2563eb", small: true }, propClassLabel(subject)), comparableProfileBadgeItems(subject).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: subject.parcelId + item, color: "#64748b", small: true }, item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel: subject, small: true })), isAbsenteeFast(subject) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: subject, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel: subject, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginTop: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, color: "var(--amber)", fontWeight: 700 } }, $f(subject.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700 } }, $f(subject.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: FC[eqFlagFast(subject)] } }, eqRFast(subject), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Equity %"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 10, lineHeight: 1.55 } }, subjectProfile.availablePhysicalFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Available home details for matching: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, subjectProfile.availablePhysicalFields.join(", ")), ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Residential inventory detail was not available on your parcel, so the comparison relied on class and nearby location signals."))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 4, fontWeight: 600 }, title: "Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available." }, "Best Comparable Homes (", neighborResult.neighbors.length, " matches)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5, marginBottom: 8 } }, neighborResult.comparableMode === "snapshot" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were loaded from a ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "shared comparable snapshot"), ". The order is frozen from the saved link.") : neighborResult.comparableMode === "physical" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were ranked for ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "physical similarity"), " to your parcel, with ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, neighborResult.scopeNeighborhood || "Albany"), " preferred first.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class."), neighborResult.usedInventory && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("br", null), "Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average Full Market Value across the best comparable homes." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(neighborResult.avgFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp FMV avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average assessed value across the best comparable homes." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(neighborResult.avgAssessed)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp assessed avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average equity ratio across the best comparable homes." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: (neighborResult.deltaEquity ?? 0) > 8 ? "var(--red2)" : (neighborResult.deltaEquity ?? 0) < -8 ? "var(--green2)" : "var(--gray)" } }, neighborResult.avgEquity != null ? neighborResult.avgEquity + "%" : "-"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp equity avg"))), (neighborResult.avgFMV != null || neighborResult.avgEquity != null) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.55 } }, neighborResult.deltaFMV != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Your FMV is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: (neighborResult.deltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, (neighborResult.deltaFMV >= 0 ? "+" : "-") + $f(Math.abs(neighborResult.deltaFMV))), neighborResult.deltaFMVPct != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (", neighborResult.deltaFMVPct >= 0 ? "+" : "", neighborResult.deltaFMVPct.toFixed(1), "%)"), " versus the comparable-home average. "), neighborResult.deltaAssessed != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Your assessed value is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: neighborResult.deltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" } }, (neighborResult.deltaAssessed >= 0 ? "+" : "-") + $f(Math.abs(neighborResult.deltaAssessed))), " relative to the comparable-home assessed average. "), neighborResult.deltaEquity != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Your equity ratio is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: neighborResult.deltaEquity > 8 ? "var(--red2)" : neighborResult.deltaEquity < -8 ? "var(--green2)" : "var(--gray2)" } }, neighborResult.deltaEquity >= 0 ? "+" : "", neighborResult.deltaEquity, "%"), " relative to the comparable-home average. ", neighborResult.fairnessSignal, ".")))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.03)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--gray2)", marginBottom: 6 } }, "How To Read These Numbers"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", lineHeight: 1.65 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Comparable homes"), " are the strongest matches in the current dataset for your parcel's residential class and home details. Each card now shows ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "You"), ", ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Comp"), ", and ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Delta"), " together so you can judge whether a lower-assessed home is truly similar to yours. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Equity %"), " = Assessed / FMV x 100.")), neighborResult.neighbors.length > 0 && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(168,85,247,.06)", border: "1px solid rgba(168,85,247,.18)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--purple)", marginBottom: 5 } }, "Side-by-Side Grievance Table"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.55 } }, "Subject parcel plus the top ", Math.min(4, neighborResult.neighbors.length), " strongest comparable homes. This is the fast screening view. The full cards below include absentee explanations and expandable owner portfolios.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginBottom: 14 } }, grievanceComparisons.map((entry) => {
+        const parcel = entry.parcel;
+        const isSubject = entry.kind === "subject";
+        const profileRows = comparableProfileTableRows(parcel);
+        const delta = parcel._compDelta || null;
+        return /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId, style: { background: isSubject ? "rgba(37,99,235,.08)" : "var(--card)", border: isSubject ? "1px solid rgba(37,99,235,.26)" : "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: isSubject ? "#2563eb" : "#8b5cf6", small: true }, entry.label), !isSubject && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginTop: 8, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId }, parcel.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, profileRows.map(([label, value]) => /* @__PURE__ */ import_react45.default.createElement("div", { key: label, style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 600, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, value))), !isSubject && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Assessed vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.assessed, true) } }, formatSignedComparableMoney(delta?.assessed))), !isSubject && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Equity vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.equity, true) } }, formatSignedComparableCount(delta?.equity, "%")))));
+      }))), neighborResult.neighbors.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 2 }, title: "These parcels drive the comparable-home summary above." }, "Best Comparable Parcels (", neighborResult.neighbors.length, ")"), neighborResult.neighbors.map((parcel, idx) => {
+        const compProfile = parcel._compProfile || buildComparableProfile(parcel);
+        const delta = parcel._compDelta || {};
+        return /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", display: "grid", gap: 12, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0, flex: "1 1 320px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 15, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId }, parcel.address)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#8b5cf6", small: true }, "Match " + (idx + 1)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel)), /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1, " | ", parcel.parcelId, " | ", parcelNeighborhoodName(parcel) || "Neighborhood unknown"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(parcel)), comparableProfileBadgeItems(parcel).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: parcel.parcelId + item, color: "#64748b", small: true }, item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, flex: "1 1 320px", minWidth: 260 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--amber)", fontWeight: 700 } }, $f(parcel.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700 } }, $f(parcel.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700, color: FC[eqFlagFast(parcel)] } }, eqRFast(parcel), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp equity")))), isAbsenteeFast(parcel) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Value comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "FMV", youValue: $f(subject.fullMarketValue), compValue: $f(parcel.fullMarketValue), deltaValue: formatSignedComparableMoney(delta.fmv), deltaTone: "var(--gray2)" }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Assessed", youValue: $f(subject.assessedValue), compValue: $f(parcel.assessedValue), deltaValue: formatSignedComparableMoney(delta.assessed), deltaTone: comparableDeltaTone(delta.assessed, true) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Equity %", youValue: subjectProfile.equity != null ? subjectProfile.equity + "%" : "-", compValue: compProfile.equity != null ? compProfile.equity + "%" : "-", deltaValue: formatSignedComparableCount(delta.equity, "%"), deltaTone: comparableDeltaTone(delta.equity, true) }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Physical comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Living area", youValue: subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-", compValue: compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-", deltaValue: delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Year built", youValue: subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-", compValue: compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-", deltaValue: delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Bedrooms", youValue: subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-", compValue: compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-", deltaValue: delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Baths", youValue: subjectProfile.bathText || "-", compValue: compProfile.bathText || "-", deltaValue: delta.baths != null ? formatSignedComparableCount(delta.baths) : "-" }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Profile match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Neighborhood", youValue: subjectProfile.neighborhood || "-", compValue: compProfile.neighborhood || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Class", youValue: subjectProfile.classLabel || "-", compValue: compProfile.classLabel || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Style", youValue: subjectProfile.style || "-", compValue: compProfile.style || "-" }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.14)", borderRadius: 8, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--blue3)", marginBottom: 6 } }, "Why this home was selected"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, (parcel._compReasons || []).map((reason, reasonIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId + "-reason-" + reasonIdx, style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5, overflowWrap: "anywhere" } }, "- ", reason))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.55 } }, (parcel._compPhysicalFieldsUsed || []).length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Matched using: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, parcel._compPhysicalFieldsUsed.join(", ")), (parcel._compUnusedPhysicalFields || []).length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | Not used: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, parcel._compUnusedPhysicalFields.join(", "))) : null, ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "This match relied on residential class and nearby location because detailed home characteristics were not available on both parcels."))));
+      })) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", textAlign: "center", padding: 20 } }, "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."));
+    })(), neighborAddr && !neighborResult && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 8 } }, 'No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".'))), view === "school" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "School", title: "What Is School Tax Burden - And Why Does It Matter?", color: "#a78bfa" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "School taxes are typically the largest single component of your Albany property tax bill"), " - often 60-70% of the total. They fund the Albany City School District: teacher salaries, building maintenance, transportation, special education, and more. Your school tax is calculated by multiplying the school district's tax rate by your ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "school taxable value"), " - which is different from your assessed value if you have any school-specific exemptions.", /* @__PURE__ */ import_react45.default.createElement("br", null), /* @__PURE__ */ import_react45.default.createElement("br", null), "The ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "School Tax Burden %"), " shown here is: School Taxable Value / Full Market Value x 100. A result of 100% means you have zero school tax relief - you are paying on the full assessed value. A result of 75% means exemptions (like STAR) have reduced your school-taxable amount by 25% of market value. Lower is better for the homeowner. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Every homeowner who lives in their primary residence should have at minimum the Basic STAR exemption reducing this number."), " If yours shows 100%, you may be leaving money on the table."), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 8 } }, "School Tax Burden by Property (Ranked Highest to Lowest)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 14 } }, "Red = no school tax relief (100% burden). Amber = partial relief. Green = significant school exemptions applied. A homestead parcel showing red may be missing STAR."), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 200 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: schoolBurden.slice(0, 10).map((p) => ({ address: p.address.split(" ").slice(0, 2).join(" "), pct: parseFloat(p.schoolBurden) || 0 })) }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "address", tick: { fontSize: 9, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, tickFormatter: (v) => v + "%", domain: [0, 110] }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v) => [v + "%", "School Burden"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "pct", radius: [4, 4, 0, 0] }, schoolBurden.slice(0, 10).map((p, i) => /* @__PURE__ */ import_react45.default.createElement(Cell, { key: i, fill: parseFloat(p.schoolBurden) > 95 ? "#dc2626" : parseFloat(p.schoolBurden) < 80 ? "#22c55e" : "#f59e0b" })))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, schoolBurden.slice(0, 12).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: myHome?.parcelId === p.parcelId ? "rgba(34,197,94,.06)" : "var(--card2)", border: `1px solid ${myHome?.parcelId === p.parcelId ? "rgba(34,197,94,.3)" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), myHome?.parcelId === p.parcelId && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#22c55e", small: true }, "My Home")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.owner1, " | School taxable: ", $f(p.schoolTaxable)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 3 } }, parseFloat(p.schoolBurden) > 95 && p.parcelType === "HOMESTEAD" ? "Warning: homestead with no school tax relief - may qualify for STAR" : parseFloat(p.schoolBurden) < 80 ? "School exemptions are reducing taxable value below 80% of market" : "Partial school tax relief applied")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 14, textAlign: "right", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--green2)" } }, $f(p.schoolGap)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "School savings")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: parseFloat(p.schoolBurden) > 95 ? "rgba(220,38,38,.15)" : parseFloat(p.schoolBurden) < 80 ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${parseFloat(p.schoolBurden) > 95 ? "rgba(220,38,38,.3)" : parseFloat(p.schoolBurden) < 80 ? "rgba(34,197,94,.3)" : "rgba(245,158,11,.3)"}`, borderRadius: 8, padding: "6px 12px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: parseFloat(p.schoolBurden) > 95 ? "var(--red2)" : parseFloat(p.schoolBurden) < 80 ? "var(--green2)" : "var(--amber)" } }, p.schoolBurden, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 9, color: "var(--gray)" } }, "of FMV taxed"))))))));
   };
-  var MapView = (props) => /* @__PURE__ */ import_react45.default.createElement(
-    LeafletMapView,
-    {
-      ...props,
-      utils: {
-        normalizeParcelId,
-        FC,
-        FL,
-        eqFlagFast,
-        eqRFast,
-        propClassLabel,
-        isAbsenteeFast,
-        getParcelWarnings,
-        $f,
-        SectionTitle,
-        Sub,
-        Card,
-        Badge
+  var MapView = ({ ownerPortfolioIndex = null, ...props }) => {
+    const getOwnerPortfolioGroup = (0, import_react45.useCallback)((parcel) => {
+      if (!parcel || !ownerPortfolioIndex) return null;
+      const ownerKey = normalizeOwnerPortfolioKey(parcel.owner1 || "");
+      return ownerKey ? ownerPortfolioIndex.get(ownerKey) || null : null;
+    }, [ownerPortfolioIndex]);
+    return /* @__PURE__ */ import_react45.default.createElement(
+      LeafletMapView,
+      {
+        ...props,
+        utils: {
+          normalizeParcelId,
+          FC,
+          FL,
+          eqFlagFast,
+          eqRFast,
+          propClassLabel,
+          isAbsenteeFast,
+          getAbsenteeModelFast,
+          getParcelWarnings,
+          inventoryStyle,
+          inventoryYearBuilt,
+          inventorySqft,
+          inventoryBedrooms,
+          inventoryBathText,
+          hasInventoryProfile,
+          getOwnerPortfolioGroup,
+          $f,
+          SectionTitle,
+          Sub,
+          Card,
+          Badge
+        }
       }
-    }
-  );
+    );
+  };
   var DataQuality = ({ parcels, meta, onDrill }) => {
     const [showAllInconsist, setShowAllInconsist] = (0, import_react45.useState)(false);
     const [showAllNoCoords, setShowAllNoCoords] = (0, import_react45.useState)(false);
@@ -51525,10 +53651,10 @@ self.onmessage = function(ev){
     }, [parcels]);
     const mappingGaps = (0, import_react45.useMemo)(() => parcels.filter((p) => hasParcelWarning(p, "missing_geometry_join") || !p.eastCoord || p.eastCoord === 0), [parcels]);
     const overall = Math.round(completeness.reduce((s2, f) => s2 + f.pct, 0) / completeness.length);
-    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Data Quality Scorecard"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Field completeness, county joins, geometry coverage, and parcel-level warnings"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "DQ", title: "What this scorecard now checks", color: "#3b82f6" }, "This panel no longer stops at blank-field percentages. It also tracks whether each parcel joins to the Albany County parcel reference, whether it matches the parcel geometry layer, and whether the record carries structural warning flags such as impossible value relationships or missing market value. That makes it much easier to tell the difference between a true policy signal and a thin-data artifact."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "summary-grid", style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Overall Completeness"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: overall > 90 ? "var(--green2)" : overall > 75 ? "var(--amber)" : "var(--red2)" } }, overall, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Average fill rate across the key parcel fields used by the app")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "County Join"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: countyJoin ? "var(--blue3)" : "var(--gray2)" } }, countyJoin ? `${countyJoin.joinRatePct}%` : "N/A"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, countyJoin ? `${nf(countyJoin.matched)} parcels linked to county reference rows` : "County parcel reference not loaded into this dataset")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Geometry Match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: geometryJoin ? "var(--teal2)" : "var(--gray2)" } }, geometryJoin ? `${geometryJoin.joinRatePct}%` : "N/A"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, geometryJoin ? `${nf(geometryJoin.matched)} parcels matched to map geometry` : "Geometry join summary not available in this dataset")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Warning Flags"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: parcelsWithWarnings.length ? "var(--red2)" : "var(--green2)" } }, nf(parcelsWithWarnings.length)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Parcels carrying at least one join, geometry, or value warning"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)" } }, "Field Completeness"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 20, fontWeight: 700, color: overall > 90 ? "var(--green2)" : overall > 70 ? "var(--amber)" : "var(--red2)" } }, overall, "% overall")), completeness.map((f) => /* @__PURE__ */ import_react45.default.createElement("div", { key: f.key, style: { marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)" } }, f.label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 12, color: f.pct === 100 ? "var(--green2)" : f.pct > 70 ? "var(--amber)" : "var(--red2)", fontWeight: 600 } }, f.pct, "%")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 4, background: "var(--bg)", borderRadius: 2, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${f.pct}%`, background: f.pct === 100 ? "var(--green2)" : f.pct > 70 ? "var(--amber)" : "var(--red2)", borderRadius: 2 } })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, color: "var(--gray3)" } }, f.filled, "/", parcels.length, " records populated"), f.pct < 100 && onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `Missing: ${f.label} (${parcels.length - f.filled} parcels)`, parcels: parcels.filter((p) => {
+    return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "Data Quality Scorecard"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Field completeness, county joins, geometry coverage, and parcel-level warnings"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "DQ", title: "What this scorecard now checks", color: "#3b82f6" }, "This panel no longer stops at blank-field percentages. It also tracks whether each parcel joins to the Albany County parcel reference, whether it matches the parcel geometry layer, and whether the record carries structural warning flags such as impossible value relationships or missing market value. That makes it much easier to tell the difference between a true policy signal and a thin-data artifact."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "summary-grid", style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Overall Completeness"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: overall > 90 ? "var(--green2)" : overall > 75 ? "var(--amber)" : "var(--red2)" } }, overall, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Average fill rate across the key parcel fields used by the app")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "County Join"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: countyJoin ? "var(--blue3)" : "var(--gray2)" } }, countyJoin ? `${countyJoin.joinRatePct}%` : "N/A"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, countyJoin ? `${nf(countyJoin.matched)} parcels linked to county reference rows` : "County parcel reference not loaded into this dataset")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Geometry Match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: geometryJoin ? "var(--teal2)" : "var(--gray2)" } }, geometryJoin ? `${geometryJoin.joinRatePct}%` : "N/A"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, geometryJoin ? `${nf(geometryJoin.matched)} parcels matched to map geometry` : "Geometry join summary not available in this dataset")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Warning Flags"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: parcelsWithWarnings.length ? "var(--red2)" : "var(--green2)" } }, nf(parcelsWithWarnings.length)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Parcels carrying at least one join, geometry, or value warning"))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)" } }, "Field Completeness"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 20, fontWeight: 700, color: overall > 90 ? "var(--green2)" : overall > 70 ? "var(--amber)" : "var(--red2)" } }, overall, "% overall")), completeness.map((f) => /* @__PURE__ */ import_react45.default.createElement("div", { key: f.key, style: { marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)" } }, f.label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 12, color: f.pct === 100 ? "var(--green2)" : f.pct > 70 ? "var(--amber)" : "var(--red2)", fontWeight: 600 } }, f.pct, "%")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: 4, background: "var(--bg)", borderRadius: 2, overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { height: "100%", width: `${f.pct}%`, background: f.pct === 100 ? "var(--green2)" : f.pct > 70 ? "var(--amber)" : "var(--red2)", borderRadius: 2 } })), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, color: "var(--gray3)" } }, f.filled, "/", parcels.length, " records populated"), f.pct < 100 && onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `Missing: ${f.label} (${parcels.length - f.filled} parcels)`, parcels: parcels.filter((p) => {
       const v = p[f.key];
       return v == null || v === "" || v === 0 || v === "UNKNOWN";
-    }) }), style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", color: "var(--blue3)", borderRadius: 4, padding: "1px 6px", fontSize: 10, cursor: "pointer" } }, "View ", parcels.length - f.filled, " missing"))))), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Prepared Warning Flags"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12 } }, "These flags are carried with the prepared dataset and then rechecked at runtime. They highlight missing county joins, geometry gaps, and structurally suspect value records."), warningSummary.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, warningSummary.slice(0, showAllWarnings ? warningSummary.length : DQ_LIMIT).map((item) => /* @__PURE__ */ import_react45.default.createElement("div", { key: item.code, style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", marginBottom: 7 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, item.label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 2 } }, item.code)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: item.code.includes("missing") ? "#f59e0b" : "#dc2626", small: true }, nf(item.count)), onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `${item.label} (${item.count} parcels)`, parcels: parcels.filter((p) => hasParcelWarning(p, item.code)) }), style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", color: "var(--blue3)", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer" } }, "View")))), warningSummary.length > DQ_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllWarnings((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "9px", fontSize: 12, cursor: "pointer", width: "100%", marginTop: 4 } }, showAllWarnings ? `Show top ${DQ_LIMIT}` : `Show all ${warningSummary.length.toLocaleString()} warning types`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 20, color: "var(--gray2)", fontSize: 12 } }, "No parcel-level warning flags in the current dataset"))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Assessment Consistency Flags"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12 } }, "Properties on the same street, same class, whose FMV deviates more than 1.5 standard deviations from street peers. These may be genuine outliers, data entry issues, or reassessment lags worth investigating."), inconsistent.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, inconsistent.slice(0, showAllInconsist ? inconsistent.length : DQ_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "rgba(220,38,38,.07)", border: "1px solid rgba(220,38,38,.2)", borderRadius: 9, padding: "11px 14px", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | Parcel ", p.parcelId), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, marginTop: 6 } }, "Street avg: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", color: "var(--gray)" } }, $f(p.streetAvg)), " | Deviation: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", color: p.deviation > 0 ? "var(--red2)" : "var(--amber)" } }, p.deviation > 0 ? "+" : "", $f(p.deviation)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, $f(p.fullMarketValue)))))), inconsistent.length > DQ_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllInconsist((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "9px", fontSize: 12, cursor: "pointer", width: "100%", marginTop: 4 } }, showAllInconsist ? `Show top ${DQ_LIMIT}` : `Show all ${inconsistent.length.toLocaleString()} consistency flags`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 30, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 700, marginBottom: 8 } }, "OK"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12 } }, "No major consistency issues in the current dataset."))), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Mapping Gaps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 10 } }, "These parcels either do not match the parcel geometry layer or still lack the raw EAST/NRTH coordinates needed for point fallback mapping."), mappingGaps.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, mappingGaps.slice(0, showAllNoCoords ? mappingGaps.length : DQ_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 12px", marginBottom: 6, display: "flex", justifyContent: "space-between", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)" } }, p.parcelId)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" } }, hasParcelWarning(p, "missing_geometry_join") && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#64748b", small: true }, "No geometry"), (!p.eastCoord || p.eastCoord === 0) && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#94a3b8", small: true }, "No coords")))), mappingGaps.length > DQ_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllNoCoords((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "9px", fontSize: 12, cursor: "pointer", width: "100%", marginTop: 4 } }, showAllNoCoords ? `Show top ${DQ_LIMIT}` : `Show all ${mappingGaps.length.toLocaleString()} mapping gaps`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 20, color: "var(--gray2)", fontSize: 12 } }, "Every parcel in the current dataset has geometry or coordinate fallback")))));
+    }) }), style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", color: "var(--blue3)", borderRadius: 4, padding: "1px 6px", fontSize: 10, cursor: "pointer" } }, "View ", parcels.length - f.filled, " missing"))))), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Prepared Warning Flags"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12 } }, "These flags are carried with the prepared dataset and then rechecked at runtime. They highlight missing county joins, geometry gaps, and structurally suspect value records."), warningSummary.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, warningSummary.slice(0, showAllWarnings ? warningSummary.length : DQ_LIMIT).map((item) => /* @__PURE__ */ import_react45.default.createElement("div", { key: item.code, style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", marginBottom: 7 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, item.label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 2 } }, item.code)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: item.code.includes("missing") ? "#f59e0b" : "#dc2626", small: true }, nf(item.count)), onDrill && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onDrill({ title: `${item.label} (${item.count} parcels)`, parcels: parcels.filter((p) => hasParcelWarning(p, item.code)) }), style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", color: "var(--blue3)", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer" } }, "View")))), warningSummary.length > DQ_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllWarnings((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "9px", fontSize: 12, cursor: "pointer", width: "100%", marginTop: 4 } }, showAllWarnings ? `Show top ${DQ_LIMIT}` : `Show all ${warningSummary.length.toLocaleString()} warning types`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 20, color: "var(--gray2)", fontSize: 12 } }, "No parcel-level warning flags in the current dataset"))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Assessment Consistency Flags"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 12 } }, "Properties on the same street, same class, whose FMV deviates more than 1.5 standard deviations from street peers. These may be genuine outliers, data entry issues, or reassessment lags worth investigating."), inconsistent.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, inconsistent.slice(0, showAllInconsist ? inconsistent.length : DQ_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "rgba(220,38,38,.07)", border: "1px solid rgba(220,38,38,.2)", borderRadius: 9, padding: "11px 14px", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.propClassDesc, " | Parcel ", p.parcelId), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, marginTop: 6 } }, "Street avg: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", color: "var(--gray)" } }, $f(p.streetAvg)), " | Deviation: ", /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", color: p.deviation > 0 ? "var(--red2)" : "var(--amber)" } }, p.deviation > 0 ? "+" : "", $f(p.deviation)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 14, color: "var(--amber)" } }, $f(p.fullMarketValue)))))), inconsistent.length > DQ_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllInconsist((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "9px", fontSize: 12, cursor: "pointer", width: "100%", marginTop: 4 } }, showAllInconsist ? `Show top ${DQ_LIMIT}` : `Show all ${inconsistent.length.toLocaleString()} consistency flags`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 30, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 700, marginBottom: 8 } }, "OK"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12 } }, "No major consistency issues in the current dataset."))), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 12 } }, "Mapping Gaps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 10 } }, "These parcels either do not match the parcel geometry layer or still lack the raw EAST/NRTH coordinates needed for point fallback mapping."), mappingGaps.length > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", null, mappingGaps.slice(0, showAllNoCoords ? mappingGaps.length : DQ_LIMIT).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 12px", marginBottom: 6, display: "flex", justifyContent: "space-between", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)" } }, p.parcelId)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" } }, hasParcelWarning(p, "missing_geometry_join") && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#64748b", small: true }, "No geometry"), (!p.eastCoord || p.eastCoord === 0) && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#94a3b8", small: true }, "No coords")))), mappingGaps.length > DQ_LIMIT && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowAllNoCoords((x2) => !x2), style: { background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 8, padding: "9px", fontSize: 12, cursor: "pointer", width: "100%", marginTop: 4 } }, showAllNoCoords ? `Show top ${DQ_LIMIT}` : `Show all ${mappingGaps.length.toLocaleString()} mapping gaps`)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 20, color: "var(--gray2)", fontSize: 12 } }, "Every parcel in the current dataset has geometry or coordinate fallback")))));
   };
   var Compare = ({ parcels, compareList, onRemove, onAdd }) => {
     const [pick, setPick] = (0, import_react45.useState)("");
@@ -51545,6 +53671,11 @@ self.onmessage = function(ev){
       { label: "Owner", v: (p) => p.owner1 },
       { label: "Class", v: (p) => propClassLabel(p) },
       { label: "Neighborhood", v: (p) => p.neighborhood || "-" },
+      { label: "Building Style", v: (p) => inventoryStyle(p) || "-" },
+      { label: "Year Built", v: (p) => inventoryYearBuilt(p) || "-", mono: true },
+      { label: "Living Area", v: (p) => inventorySqft(p) != null ? `${inventorySqft(p).toLocaleString()} sq ft` : "-", num: (p) => inventorySqft(p) || 0 },
+      { label: "Bedrooms", v: (p) => inventoryBedrooms(p) != null ? inventoryBedrooms(p) : "-", mono: true },
+      { label: "Baths", v: (p) => inventoryBathText(p), mono: true },
       { label: "Full Market Value", v: (p) => $f(p.fullMarketValue), hi: true, num: (p) => p.fullMarketValue },
       { label: "Assessed Value", v: (p) => $f(p.assessedValue), num: (p) => p.assessedValue },
       { label: "Land Value", v: (p) => $f(p.landValue), num: (p) => p.landValue },
@@ -51566,12 +53697,12 @@ self.onmessage = function(ev){
       } else {
         setPick(p.address);
       }
-    }, onEnter: addBySearch, placeholder: "Search address or parcel ID to add...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: addBySearch, style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "+ Add")), compareList.length === 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 60, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 40, marginBottom: 12 } }, "Compare"), 'Search above or go to Browse, then click "+ Compare" on any property card to begin comparing.') : /* @__PURE__ */ import_react45.default.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ import_react45.default.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ import_react45.default.createElement("thead", null, /* @__PURE__ */ import_react45.default.createElement("tr", null, /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "10px 14px", textAlign: "left", color: "var(--gray2)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, width: 160, background: "var(--bg2)" } }, "Field"), compareList.map((p) => /* @__PURE__ */ import_react45.default.createElement("th", { key: p.parcelId, style: { padding: "10px 14px", textAlign: "left", borderLeft: "1px solid var(--border)", background: "var(--bg2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 13 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 2 } }, p.parcelId), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onRemove(p), style: { marginTop: 6, background: "rgba(220,38,38,.15)", border: "1px solid rgba(220,38,38,.3)", color: "#f87171", borderRadius: 4, padding: "2px 8px", fontSize: 10, cursor: "pointer" } }, "Remove"))))), /* @__PURE__ */ import_react45.default.createElement("tbody", null, fields.map((f, i) => /* @__PURE__ */ import_react45.default.createElement("tr", { key: f.label, style: { background: i % 2 === 0 ? "var(--card)" : "transparent" } }, /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "9px 14px", color: "var(--gray2)", fontSize: 11 } }, f.label), compareList.map((p) => {
+    }, onEnter: addBySearch, placeholder: "Search address or parcel ID to add...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: addBySearch, style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "+ Add")), compareList.length === 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { textAlign: "center", padding: 60, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 40, marginBottom: 12 } }, "Compare"), 'Search above or go to Browse, then click "+ Compare" on any property card to begin comparing.') : /* @__PURE__ */ import_react45.default.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ import_react45.default.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ import_react45.default.createElement("thead", null, /* @__PURE__ */ import_react45.default.createElement("tr", null, /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "10px 14px", textAlign: "left", color: "var(--gray2)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, width: 160, background: "var(--bg2)" } }, "Field"), compareList.map((p) => /* @__PURE__ */ import_react45.default.createElement("th", { key: p.parcelId, style: { padding: "10px 14px", textAlign: "left", borderLeft: "1px solid var(--border)", background: "var(--bg2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 13 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 2 } }, p.parcelId), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => onRemove(p), style: { marginTop: 6, background: "rgba(220,38,38,.15)", border: "1px solid rgba(220,38,38,.3)", color: "#f87171", borderRadius: 4, padding: "2px 8px", fontSize: 10, cursor: "pointer" } }, "Remove"))))), /* @__PURE__ */ import_react45.default.createElement("tbody", null, fields.map((f, i) => /* @__PURE__ */ import_react45.default.createElement("tr", { key: f.label, style: { background: i % 2 === 0 ? "var(--card)" : "transparent" } }, /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "9px 14px", color: "var(--gray2)", fontSize: 11 } }, f.label), compareList.map((p) => {
       const val = f.v(p);
       const nums = f.num ? compareList.map((x2) => f.num(x2)) : [];
       const myNum = f.num ? f.num(p) : null;
       const isMax = f.hi && myNum !== null && myNum === Math.max(...nums);
-      return /* @__PURE__ */ import_react45.default.createElement("td", { key: p.parcelId, style: { padding: "9px 14px", borderLeft: "1px solid var(--border)", fontFamily: f.mono ? "var(--fm)" : "inherit", color: isMax ? "var(--amber)" : "var(--white)", fontWeight: isMax ? 600 : 400 } }, f.label === "Address" ? /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, stopPropagation: false }, val) : val);
+      return /* @__PURE__ */ import_react45.default.createElement("td", { key: p.parcelId, style: { padding: "9px 14px", borderLeft: "1px solid var(--border)", fontFamily: f.mono ? "var(--fm)" : "inherit", color: isMax ? "var(--amber)" : "var(--white)", fontWeight: isMax ? 600 : 400 } }, f.label === "Address" ? /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId, stopPropagation: false }, val) : val);
     })))))));
   };
   var HomebuyerGuide = ({ parcels, myHome }) => {
@@ -51606,7 +53737,7 @@ self.onmessage = function(ev){
     return /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement(SectionTitle, null, "First-Time Homebuyer Guide"), /* @__PURE__ */ import_react45.default.createElement(Sub, null, "Plain-English explanations of every field in the Albany assessment roll"), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Guide", title: "Who Is This Guide For?", color: "#f59e0b" }, "The Albany assessment roll is a public document - but it was designed for government administrators, not homeowners. This guide exists to bridge that gap. Whether you just bought your first home, are thinking about buying, or have lived in Albany for decades and never quite understood your tax bill, this tab explains every field, every number, and every code in language that makes sense. Look up any address to get a plain-English walkthrough of that specific property's record, or scroll down for the complete glossary."), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 18, background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 10, color: "var(--amber2)" } }, "Look Up Any Address - We'll Explain Everything in Plain English"), /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: loadMyHome, label: "Look Up My Home" }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: address, onChange: setAddress, onSelectParcel: (p) => {
       setAddress(p.address);
       setFound(p);
-    }, onEnter: lookup, placeholder: "Enter an address or parcel ID...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: lookup, style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 } }, "Look Up")), found && /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi", style: { marginTop: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 16, fontWeight: 700, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: found.address, zip: found.zip, neighborhood: found.neighborhood }, found.address), " - Here's What It All Means"), [
+    }, onEnter: lookup, placeholder: "Enter an address or parcel ID...", inputStyle: { ...SI, width: "100%", cursor: "text" }, wrapperStyle: { flex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: lookup, style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 } }, "Look Up")), found && /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi", style: { marginTop: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 16, fontWeight: 700, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: found.address, zip: found.zip, neighborhood: found.neighborhood, parcelId: found.parcelId }, found.address), " - Here's What It All Means"), [
       ["What is the Full Market Value?", `The city assessor estimates this property is worth ${$f(found.fullMarketValue)} on the open market. This is their professional opinion of what a willing buyer and seller would agree on today.`],
       ["What is the Assessed Value?", `The city uses ${$f(found.assessedValue)} to calculate the property tax bill - not the full market value. Albany uses a specific percentage of market value for assessments.`],
       ["Is this assessment fair?", `The equity ratio is ${eqRFast(found)}%. ${eqFlagFast(found) === "fair" ? "This falls in the fair range (80-120%) and the assessment appears proportional to market value." : eqFlagFast(found) === "under" ? "Warning: this is below 80%, meaning the property may be under-assessed. The owner pays taxes on less than the standard share of market value." : "Alert: this is above 120%, meaning the owner may be paying more than their fair share. They may have grounds to file an assessment grievance."}`],
@@ -51634,26 +53765,29 @@ self.onmessage = function(ev){
     const [neighborhoodAssociations, setNeighborhoodAssociations] = (0, import_react45.useState)(null);
     const [dataSource, setDataSource] = (0, import_react45.useState)("sample");
     const [autoloadState, setAutoloadState] = (0, import_react45.useState)({ phase: "idle", entries: [] });
-    const [mode, setMode] = (0, import_react45.useState)(() => {
-      try {
-        const savedVersion = localStorage.getItem("albany_app_ui_version");
-        if (savedVersion !== APP_UI_VERSION) return "resident";
-        return localStorage.getItem("albany_app_mode") || "resident";
-      } catch {
-        return "resident";
-      }
-    });
+    const mode = "app";
+    const initialUrlSnapshotRef = (0, import_react45.useRef)(parseComparableSnapshotSearch(typeof window !== "undefined" ? window.location.search : ""));
+    const requestedUrlTab = initialUrlSnapshotRef.current?.tab || "";
     const [tab, setTab] = (0, import_react45.useState)(() => {
+      if (APP_TAB_IDS.has(requestedUrlTab)) return requestedUrlTab;
       try {
         const savedVersion = localStorage.getItem("albany_app_ui_version");
-        if (savedVersion !== APP_UI_VERSION) return "resident-home";
-        const savedMode = localStorage.getItem("albany_app_mode") || "resident";
-        return localStorage.getItem(`albany_app_tab_${savedMode}`) || (savedMode === "research" ? "research-home" : "resident-home");
+        if (savedVersion !== APP_UI_VERSION) return "home";
+        return localStorage.getItem("albany_app_tab") || "home";
       } catch {
-        return "resident-home";
+        return "home";
       }
     });
     const [compareList, setCompareList] = (0, import_react45.useState)([]);
+    const [mobileNavOpen, setMobileNavOpen] = (0, import_react45.useState)(false);
+    const [pendingScrollTab, setPendingScrollTab] = (0, import_react45.useState)("");
+    const contentTopRef = (0, import_react45.useRef)(null);
+    const navigateToTab = (0, import_react45.useCallback)((nextTab, options = {}) => {
+      const shouldScroll = options.scroll !== false;
+      setTab(nextTab);
+      setMobileNavOpen(false);
+      if (shouldScroll) setPendingScrollTab(nextTab);
+    }, []);
     const [uploading, setUploading] = (0, import_react45.useState)(false);
     const [myHome, setMyHome] = (0, import_react45.useState)(() => {
       try {
@@ -51667,6 +53801,7 @@ self.onmessage = function(ev){
     const [homeSetupAddr, setHomeSetupAddr] = (0, import_react45.useState)("");
     const [drillList, setDrillList] = (0, import_react45.useState)(null);
     const [showWhatsNew, setShowWhatsNew] = (0, import_react45.useState)(false);
+    const [mapJumpRequest, setMapJumpRequest] = (0, import_react45.useState)(null);
     const fileRef = (0, import_react45.useRef)();
     const geomCoverage = (0, import_react45.useMemo)(() => {
       const gp = parcelGeometry?.parcels;
@@ -51685,6 +53820,8 @@ self.onmessage = function(ev){
         coordSystem: parcelGeometry.coordSystem || null
       };
     }, [parcelGeometry, parcels]);
+    const ownerPortfolioGroups = (0, import_react45.useMemo)(() => buildOwnerPortfolioGroups(parcels), [parcels]);
+    const ownerPortfolioIndex = (0, import_react45.useMemo)(() => new Map(ownerPortfolioGroups.map((group) => [group.ownerKey, group])), [ownerPortfolioGroups]);
     const loadDataFromText = (0, import_react45.useCallback)((raw, fname, opts = {}) => new Promise((resolve) => {
       const silent = !!opts.silent;
       const exactName = (fname || "").trim();
@@ -51947,6 +54084,34 @@ You selected: ${exactName || "(unnamed file)"}`
       if (!myHome?.parcelId) return null;
       return parcels.find((p) => p.parcelId === myHome.parcelId) || myHome.parcel || null;
     }, [myHome, parcels]);
+    const openApplicationMapForParcel = (0, import_react45.useCallback)((detail) => {
+      const rawAddress = (detail?.address || detail?.parcel?.address || "").toString().trim();
+      const directParcelId = (detail?.parcelId || detail?.parcel?.parcelId || "").toString().trim();
+      const matchedParcel = directParcelId ? parcels.find((p) => p.parcelId === directParcelId) || null : rawAddress ? findBestAddressMatch(parcels, rawAddress) : null;
+      const nextParcel = matchedParcel || detail?.parcel || null;
+      const nextAddress = nextParcel?.address || rawAddress;
+      if (!nextAddress && !directParcelId) return;
+      navigateToTab("mapview");
+      try {
+        localStorage.setItem("albany_app_tab", "mapview");
+        localStorage.setItem("albany_app_ui_version", APP_UI_VERSION);
+      } catch {
+      }
+      setMapJumpRequest({
+        token: Date.now(),
+        address: nextAddress || "",
+        parcelId: nextParcel?.parcelId || directParcelId || ""
+      });
+    }, [APP_UI_VERSION, navigateToTab, parcels]);
+    (0, import_react45.useEffect)(() => {
+      const handler = (ev) => openApplicationMapForParcel(ev?.detail || {});
+      window.addEventListener("albany:jump-to-app-map", handler);
+      window.addEventListener("albany:jump-to-research-map", handler);
+      return () => {
+        window.removeEventListener("albany:jump-to-app-map", handler);
+        window.removeEventListener("albany:jump-to-research-map", handler);
+      };
+    }, [openApplicationMapForParcel]);
     const stats = (0, import_react45.useMemo)(() => ({
       total: parcels.length,
       totalFMV: parcels.reduce((s2, p) => s2 + p.fullMarketValue, 0),
@@ -51986,71 +54151,60 @@ You selected: ${exactName || "(unnamed file)"}`
       fetch_error: "Fetch failed",
       parse_failed: "Parse failed"
     })[status] || status;
-    const residentTabs = [
-      { id: "resident-home", label: "Start Here" },
-      { id: "browse", label: "Check My Property" },
-      { id: "equity", label: "Assessment Fairness" },
-      { id: "taxtools", label: "Lower My Tax Bill" },
-      { id: "ownership", label: "Who Owns It" },
-      { id: "mapview", label: "Neighborhood Map" },
-      { id: "compare", label: `Compare Homes${compareList.length > 0 ? ` (${compareList.length})` : ""}` },
-      { id: "guide", label: "Understand My Bill" }
-    ];
-    const researchTabs = [
-      { id: "research-home", label: "Workbench" },
-      { id: "browse", label: "Parcel Browser" },
-      { id: "analytics", label: "Analytics" },
-      { id: "ownership", label: "Ownership" },
-      { id: "equity", label: "Tax Fairness" },
-      { id: "opportunity", label: "Change Signals" },
-      { id: "taxtools", label: "Tax Tools" },
-      { id: "mapview", label: "Research Map" },
-      { id: "dataquality", label: "Data Quality" },
+    const tabs = [
+      { id: "home", label: "Home" },
+      { id: "browse", label: "Property Search" },
+      { id: "mapview", label: "Application Map" },
+      { id: "equity", label: "Fairness" },
+      { id: "taxtools", label: "Tax Relief" },
       { id: "compare", label: `Compare${compareList.length > 0 ? ` (${compareList.length})` : ""}` },
+      { id: "ownership", label: "Ownership" },
+      { id: "analytics", label: "Analytics" },
+      { id: "opportunity", label: "Change Signals" },
+      { id: "dataquality", label: "Data Quality" },
       { id: "guide", label: "Guide" }
     ];
-    const tabs = mode === "resident" ? residentTabs : researchTabs;
+    const currentTabMeta = tabs.find((t) => t.id === tab) || tabs[0];
     (0, import_react45.useEffect)(() => {
       try {
         const savedVersion = localStorage.getItem("albany_app_ui_version");
         if (savedVersion !== APP_UI_VERSION) {
           localStorage.setItem("albany_app_ui_version", APP_UI_VERSION);
-          localStorage.setItem("albany_app_mode", "resident");
-          localStorage.setItem("albany_app_tab_resident", "resident-home");
-          localStorage.setItem("albany_app_tab_research", "research-home");
-          setMode("resident");
-          setTab("resident-home");
+          if (APP_TAB_IDS.has(requestedUrlTab)) {
+            localStorage.setItem("albany_app_tab", requestedUrlTab);
+            setTab(requestedUrlTab);
+          } else {
+            localStorage.setItem("albany_app_tab", "home");
+            setTab("home");
+          }
+        } else if (APP_TAB_IDS.has(requestedUrlTab)) {
+          localStorage.setItem("albany_app_tab", requestedUrlTab);
+          setTab(requestedUrlTab);
         }
       } catch {
       }
       setShowWhatsNew(false);
-    }, []);
+    }, [APP_UI_VERSION, requestedUrlTab]);
     (0, import_react45.useEffect)(() => {
       try {
-        localStorage.setItem("albany_app_mode", mode);
+        localStorage.setItem("albany_app_tab", tab);
       } catch {
       }
-    }, [mode]);
-    (0, import_react45.useEffect)(() => {
-      try {
-        localStorage.setItem(`albany_app_tab_${mode}`, tab);
-      } catch {
-      }
-    }, [mode, tab]);
+    }, [tab]);
     (0, import_react45.useEffect)(() => {
       const allowed = new Set(tabs.map((t) => t.id));
-      if (!allowed.has(tab)) setTab(mode === "resident" ? "resident-home" : "research-home");
-    }, [mode, tab, tabs]);
-    const switchMode = (next) => {
-      if (next === mode) return;
-      setMode(next);
-      try {
-        const savedTab = localStorage.getItem(`albany_app_tab_${next}`);
-        setTab(savedTab || (next === "resident" ? "resident-home" : "research-home"));
-      } catch {
-        setTab(next === "resident" ? "resident-home" : "research-home");
-      }
-    };
+      if (!allowed.has(tab)) setTab("home");
+    }, [tab, tabs]);
+    (0, import_react45.useEffect)(() => {
+      if (!pendingScrollTab || pendingScrollTab !== tab) return;
+      const runner = () => contentTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const id = typeof window !== "undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner, 0);
+      setPendingScrollTab("");
+      return () => {
+        if (typeof id === "number" && typeof window !== "undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
+        else clearTimeout(id);
+      };
+    }, [pendingScrollTab, tab]);
     const dismissWhatsNew = () => {
       setShowWhatsNew(false);
       try {
@@ -52058,40 +54212,36 @@ You selected: ${exactName || "(unnamed file)"}`
       } catch {
       }
     };
-    const residentQuickActions = [
-      { id: "browse", title: "Check my property", icon: "", body: "Search your address, see who owns it, and understand the numbers on the roll." },
-      { id: "equity", title: "Is my assessment fair?", icon: "", body: "See whether your assessment looks high compared with market value and similar parcels." },
-      { id: "taxtools", title: "Lower my tax bill", icon: "", body: "Find exemptions, estimate missing savings, and look for relief you may have missed." },
-      { id: "ownership", title: "Who owns that building?", icon: "", body: "Identify absentee owners and mailing addresses for problem properties or nearby rentals." }
+    const appQuickActions = [
+      { id: "browse", title: "Search a property", body: "Look up an address, parcel ID, or owner and open the full parcel record." },
+      { id: "mapview", title: "Open the application map", body: "Inspect parcel boundaries, neighborhoods, ownership patterns, and thematic layers in one map." },
+      { id: "equity", title: "Check tax fairness", body: "Review equity ratios, over-assessment signals, and comparable parcels." },
+      { id: "taxtools", title: "Find tax relief", body: "Check exemptions, missed savings, and homeowner tax-relief opportunities." },
+      { id: "ownership", title: "Study ownership", body: "Find absentee owners, duplicate owners, and larger property portfolios." },
+      { id: "analytics", title: "See citywide patterns", body: "Review class mix, market values, and trend summaries across Albany." },
+      { id: "dataquality", title: "Check data quality", body: "Review joins, missing geometry, and record issues before drawing conclusions." },
+      { id: "guide", title: "Understand the roll", body: "Use the glossary and parcel explainer to make sense of assessment fields." }
     ];
-    const researchQuickActions = [
-      { id: "analytics", title: "Pattern finder", icon: "", body: "See class mix, value distributions, and citywide trends without losing the parcel-level detail." },
-      { id: "mapview", title: "Research map", icon: "", body: "Inspect parcel boundaries, point fallback coverage, and spatial patterns with the full map controls." },
-      { id: "dataquality", title: "Trust the data", icon: "", body: "Audit completeness, outliers, and field integrity before drawing public conclusions." },
-      { id: "opportunity", title: "Change signals", icon: "", body: "Track underused land, neighborhood pressure, and assessments that lag the market." }
-    ];
-    const renderResidentHome = () => /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "summary-grid", style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Likely Over-Assessed"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--red2)" } }, nf(stats.overAssessedCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Parcels above the fair 120% threshold"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab("equity"), style: { marginTop: 10, background: "rgba(220,38,38,.12)", border: "1px solid rgba(220,38,38,.25)", color: "var(--red2)", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "Review fairness ->")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Missing Exemptions"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--amber2)" } }, nf(stats.missingExemptionCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Homestead parcels with no exemption on record"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab("taxtools"), style: { marginTop: 10, background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.25)", color: "var(--amber2)", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "Find savings ->")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Absentee Owners"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "#f97316" } }, nf(stats.absenteeCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Parcels with a mailing address that differs from the property"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab("ownership"), style: { marginTop: 10, background: "rgba(249,115,22,.12)", border: "1px solid rgba(249,115,22,.25)", color: "#c2410c", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "See owners ->")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Citywide Market Value"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--blue3)" } }, moneyCompact(stats.totalFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Assessor-estimated market value in the loaded dataset"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab("mapview"), style: { marginTop: 10, background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.25)", color: "var(--blue3)", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "Open map ->"))), currentHome ? /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 18, background: "linear-gradient(135deg,rgba(34,197,94,.08) 0%,rgba(37,99,235,.06) 100%)", border: "1px solid rgba(34,197,94,.22)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "My Home Snapshot"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 24, fontWeight: 800, marginTop: 6 } }, currentHome.address), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, parcelAreaSummary(currentHome), " | Parcel ", currentHome.parcelId), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: eqFlagFast(currentHome) === "over" ? "#dc2626" : eqFlagFast(currentHome) === "under" ? "#f59e0b" : "#22c55e" }, FL[eqFlagFast(currentHome)]), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#3b82f6" }, "FMV ", $f(currentHome.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#a78bfa" }, currentHome.exemptions.length, " exemption", currentHome.exemptions.length === 1 ? "" : "s"), isAbsenteeFast(currentHome) && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316" }, "Absentee flag"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab("browse"), style: { background: "var(--green)", color: "white", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Open my property"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab("equity"), style: { background: "var(--card2)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Check fairness"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => saveHome(null), style: { background: "rgba(220,38,38,.12)", color: "var(--red2)", border: "1px solid rgba(220,38,38,.22)", borderRadius: 9, padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Clear my home")))) : /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 18, border: "1px solid rgba(37,99,235,.22)", background: "linear-gradient(135deg,rgba(37,99,235,.08) 0%,rgba(13,148,136,.05) 100%)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800 } }, "Save your home once"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 6, maxWidth: 620 } }, "Your address can drive the entire resident experience: fairness checks, exemption lookup, neighbor comparison, and tax-bill guidance without retyping it everywhere.")), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowHomeSetup(true), style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Set My Home"))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "quick-grid", style: { marginBottom: 18 } }, residentQuickActions.map((card) => /* @__PURE__ */ import_react45.default.createElement(Card, { key: card.id, style: { display: "flex", flexDirection: "column", justifyContent: "space-between" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, card.icon && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 24, marginBottom: 8 } }, card.icon), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 800, marginBottom: 6 } }, card.title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, card.body)), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab(card.id), style: { marginTop: 14, alignSelf: "flex-start", background: "var(--card2)", border: "1px solid var(--border)", color: "var(--blue3)", borderRadius: 9, padding: "8px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700 } }, "Open ->")))), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Use Cases", title: "What this can do for Albany residents", color: "#22c55e" }, "Use this site to answer practical public questions: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Am I paying more than my fair share?"), " ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Did I miss STAR or another exemption?"), " ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Who owns the neglected house on my block?"), " ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Is my neighborhood heavy on absentee ownership?"), " The goal is not just data access. The goal is clearer civic action."));
-    const renderResearchHome = () => /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "summary-grid", style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Loaded Parcels"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--blue3)" } }, nf(stats.total)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Current working dataset for analysis and drill-down")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Parcel Geometry"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--teal2)" } }, geomCoverage ? `${geomCoverage.pct}%` : "None"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, geomCoverage ? `${geomCoverage.matched.toLocaleString()} matched parcels with geometry` : "Upload parcel boundaries to unlock polygon rendering")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Absentee Ownership"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "#f97316" } }, nf(stats.absenteeCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Useful for block groups, tenant advocates, and policy research")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Underused Lots"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--amber2)" } }, nf(stats.underusedLotCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Small improvements on valuable land, a proxy for change pressure"))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "quick-grid", style: { marginBottom: 18 } }, researchQuickActions.map((card) => /* @__PURE__ */ import_react45.default.createElement(Card, { key: card.id, style: { display: "flex", flexDirection: "column", justifyContent: "space-between" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, card.icon && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 24, marginBottom: 8 } }, card.icon), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 800, marginBottom: 6 } }, card.title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, card.body)), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab(card.id), style: { marginTop: 14, alignSelf: "flex-start", background: "var(--card2)", border: "1px solid var(--border)", color: "var(--blue3)", borderRadius: 9, padding: "8px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700 } }, "Open ->")))), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Research", title: "Why a separate research mode exists", color: "#2563eb" }, "Researchers, journalists, organizers, and policy staff need more control than a typical resident. Research Mode keeps the deeper toolkit intact: uploads, data quality, advanced map layers, citywide analytics, and parcel anomaly hunting. The resident mode stays simple because that simplicity is what makes the public use it."));
+    const renderHome = () => /* @__PURE__ */ import_react45.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "summary-grid", style: { marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Likely Over-Assessed"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--red2)" } }, nf(stats.overAssessedCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Parcels above the fair 120% threshold"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("equity"), style: { marginTop: 10, background: "rgba(220,38,38,.12)", border: "1px solid rgba(220,38,38,.25)", color: "var(--red2)", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "Review fairness ->")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Missing Exemptions"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--amber2)" } }, nf(stats.missingExemptionCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Homestead parcels with no exemption on record"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("taxtools"), style: { marginTop: 10, background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.25)", color: "var(--amber2)", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "Find savings ->")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Absentee Owners"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "#f97316" } }, nf(stats.absenteeCount)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, "Parcels flagged for likely off-site ownership"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("ownership"), style: { marginTop: 10, background: "rgba(249,115,22,.12)", border: "1px solid rgba(249,115,22,.25)", color: "#c2410c", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "See owners ->")), /* @__PURE__ */ import_react45.default.createElement(Card, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Parcel Geometry"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 30, fontWeight: 800, marginTop: 6, color: "var(--teal2)" } }, geomCoverage ? `${geomCoverage.pct}%` : "None"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, geomCoverage ? `${geomCoverage.matched.toLocaleString()} parcels linked to boundaries` : "Parcel boundaries are not loaded yet"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("mapview"), style: { marginTop: 10, background: "rgba(13,148,136,.12)", border: "1px solid rgba(13,148,136,.25)", color: "var(--teal2)", borderRadius: 8, padding: "6px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 } }, "Open map ->"))), currentHome ? /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 18, background: "linear-gradient(135deg,rgba(34,197,94,.08) 0%,rgba(37,99,235,.06) 100%)", border: "1px solid rgba(34,197,94,.22)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Saved property snapshot"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 24, fontWeight: 800, marginTop: 6 } }, currentHome.address), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, parcelAreaSummary(currentHome), " | Parcel ", currentHome.parcelId), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: eqFlagFast(currentHome) === "over" ? "#dc2626" : eqFlagFast(currentHome) === "under" ? "#f59e0b" : "#22c55e" }, FL[eqFlagFast(currentHome)]), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#3b82f6" }, "FMV ", $f(currentHome.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#a78bfa" }, currentHome.exemptions.length, " exemption", currentHome.exemptions.length === 1 ? "" : "s"), isAbsenteeFast(currentHome) && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f97316" }, "Absentee flag"), /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: currentHome, compact: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("browse"), style: { background: "var(--green)", color: "white", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Open saved property"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => openApplicationMapForParcel({ parcel: currentHome }), style: { background: "var(--card2)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Open on map"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => saveHome(null), style: { background: "rgba(220,38,38,.12)", color: "var(--red2)", border: "1px solid rgba(220,38,38,.22)", borderRadius: 9, padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Clear saved property")))) : /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 18, border: "1px solid rgba(37,99,235,.22)", background: "linear-gradient(135deg,rgba(37,99,235,.08) 0%,rgba(13,148,136,.05) 100%)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800 } }, "Save a property once"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 6, maxWidth: 620 } }, "Save a home or target property once, then reuse it across search, fairness checks, tax tools, comparison, and the map.")), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowHomeSetup(true), style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Save a Property"))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "quick-grid", style: { marginBottom: 18 } }, appQuickActions.map((card) => /* @__PURE__ */ import_react45.default.createElement(Card, { key: card.id, style: { display: "flex", flexDirection: "column", justifyContent: "space-between" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 800, marginBottom: 6 } }, card.title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7 } }, card.body)), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab(card.id), style: { marginTop: 14, alignSelf: "flex-start", background: "var(--card2)", border: "1px solid var(--border)", color: "var(--blue3)", borderRadius: 9, padding: "8px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700 } }, "Open ->")))), /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "Guide", title: "How to use this application", color: "#2563eb" }, "Start with ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Property Search"), " if you know an address. Use ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Application Map"), " when you want to inspect parcels, neighborhoods, and ownership spatially. Use ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Fairness"), " and ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Tax Relief"), " for homeowner questions, then move to ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Analytics"), ", ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Change Signals"), ", and ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Data Quality"), " when you need deeper citywide analysis."));
     const renderTab = () => {
-      if (tab === "resident-home") return renderResidentHome();
-      if (tab === "research-home") return renderResearchHome();
-      if (tab === "browse") return /* @__PURE__ */ import_react45.default.createElement(Browse, { parcels, meta, compareList, onCompare: toggleCompare, myHome, onSaveHome: saveHome, onOpenHomeSetup: () => setShowHomeSetup(true) });
-      if (tab === "analytics") return /* @__PURE__ */ import_react45.default.createElement(Analytics, { parcels, onDrill: setDrillList });
-      if (tab === "ownership") return /* @__PURE__ */ import_react45.default.createElement(Ownership, { parcels, onDrill: setDrillList });
+      if (tab === "home") return renderHome();
+      if (tab === "browse") return /* @__PURE__ */ import_react45.default.createElement(Browse, { parcels, meta, compareList, onCompare: toggleCompare, myHome, onSaveHome: saveHome, onOpenHomeSetup: () => setShowHomeSetup(true), ownerPortfolioIndex });
+      if (tab === "mapview") return /* @__PURE__ */ import_react45.default.createElement(MapView, { parcels, parcelGeometry, streetCenterlines, neighborhoodBoundaries, neighborhoodAssociations, compareList, onCompare: toggleCompare, onDrill: setDrillList, jumpRequest: mapJumpRequest, advanced: true, ownerPortfolioIndex });
       if (tab === "equity") return /* @__PURE__ */ import_react45.default.createElement(Equity, { parcels, onDrill: setDrillList });
-      if (tab === "opportunity") return /* @__PURE__ */ import_react45.default.createElement(Opportunity, { parcels, onDrill: setDrillList });
-      if (tab === "taxtools") return /* @__PURE__ */ import_react45.default.createElement(TaxTools, { parcels, myHome });
-      if (tab === "mapview") return /* @__PURE__ */ import_react45.default.createElement(MapView, { parcels, parcelGeometry, streetCenterlines, neighborhoodBoundaries, neighborhoodAssociations, compareList, onCompare: toggleCompare, onDrill: setDrillList, advanced: mode === "research" });
-      if (tab === "dataquality") return /* @__PURE__ */ import_react45.default.createElement(DataQuality, { parcels, meta, onDrill: setDrillList });
+      if (tab === "taxtools") return /* @__PURE__ */ import_react45.default.createElement(TaxTools, { parcels, myHome, meta, ownerPortfolioIndex });
       if (tab === "compare") return /* @__PURE__ */ import_react45.default.createElement(Compare, { parcels, compareList, onRemove: removeCompare, onAdd: addToCompare });
+      if (tab === "ownership") return /* @__PURE__ */ import_react45.default.createElement(Ownership, { parcels, onDrill: setDrillList, ownerPortfolioGroups });
+      if (tab === "analytics") return /* @__PURE__ */ import_react45.default.createElement(Analytics, { parcels, onDrill: setDrillList });
+      if (tab === "opportunity") return /* @__PURE__ */ import_react45.default.createElement(Opportunity, { parcels, onDrill: setDrillList });
+      if (tab === "dataquality") return /* @__PURE__ */ import_react45.default.createElement(DataQuality, { parcels, meta, onDrill: setDrillList });
       if (tab === "guide") return /* @__PURE__ */ import_react45.default.createElement(HomebuyerGuide, { parcels, myHome });
       return null;
     };
-    return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(GS, null), /* @__PURE__ */ import_react45.default.createElement("div", { style: { minHeight: "100vh", background: "linear-gradient(180deg,var(--bg) 0%,#edf3f9 38%,var(--bg) 100%)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 55%,#d8e3f0 100%)", borderBottom: "1px solid var(--border)", padding: "0 0 24px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-shell", style: { paddingTop: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: 48, height: 48, background: "linear-gradient(135deg,var(--blue) 0%,var(--teal) 100%)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0, boxShadow: "0 12px 24px rgba(37,99,235,.18)" } }, "ALB"), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 800, fontSize: 24, letterSpacing: -0.6 } }, "Albany Property Tax Explorer"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray)", marginTop: 2 } }, heroSubtitle))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.7)", border: "1px solid var(--border)", borderRadius: 999, padding: "6px 12px" } }, /* @__PURE__ */ import_react45.default.createElement("span", { className: "pulse", style: { width: 7, height: 7, borderRadius: "50%", background: dataStatusColor, display: "inline-block" } }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)", fontFamily: "var(--fm)" } }, dataStatusLabel)), currentHome && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)", borderRadius: 999, padding: "6px 12px", cursor: "pointer" }, onClick: () => setTab("browse"), title: "Open my property" }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12 } }, "Home"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700, maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, currentHome.address), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: (e) => {
+    return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(GS, null), /* @__PURE__ */ import_react45.default.createElement("div", { style: { minHeight: "100vh", background: "linear-gradient(180deg,var(--bg) 0%,#edf3f9 38%,var(--bg) 100%)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 55%,#d8e3f0 100%)", borderBottom: "1px solid var(--border)", padding: "0 0 24px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-shell", style: { paddingTop: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-header-row" }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-brand" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: 48, height: 48, background: "linear-gradient(135deg,var(--blue) 0%,var(--teal) 100%)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0, boxShadow: "0 12px 24px rgba(37,99,235,.18)" } }, "ALB"), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-title" }, "Albany Property Tax Explorer"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray)", marginTop: 2 } }, heroSubtitle))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-toolbar" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.7)", border: "1px solid var(--border)", borderRadius: 999, padding: "6px 12px" } }, /* @__PURE__ */ import_react45.default.createElement("span", { className: "pulse", style: { width: 7, height: 7, borderRadius: "50%", background: dataStatusColor, display: "inline-block" } }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray)", fontFamily: "var(--fm)" } }, dataStatusLabel)), currentHome && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)", borderRadius: 999, padding: "6px 12px", cursor: "pointer" }, onClick: () => navigateToTab("browse"), title: "Open my property" }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 12 } }, "Home"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700, maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, currentHome.address), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: (e) => {
       e.stopPropagation();
       saveHome(null);
-    }, style: { background: "none", border: "none", color: "var(--gray3)", cursor: "pointer", fontSize: 12, padding: 0 } }, "X")), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowHomeSetup(true), style: { background: currentHome ? "rgba(34,197,94,.15)" : "rgba(255,255,255,.8)", color: currentHome ? "var(--green2)" : "var(--gray)", border: `1px solid ${currentHome ? "rgba(34,197,94,.35)" : "var(--border)"}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, currentHome ? "My Home" : "Set My Home"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => fileRef.current?.click(), disabled: uploading, style: { background: mode === "research" ? "var(--blue)" : "rgba(37,99,235,.92)", color: "white", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }, title: "Load a roll CSV/TXT/JSON or map geometry JSON/GeoJSON" }, uploading ? "Parsing..." : mode === "research" ? "Upload Data" : "Load Data Files"), /* @__PURE__ */ import_react45.default.createElement("input", { ref: fileRef, type: "file", accept: ".json,.geojson,.txt,.csv", style: { display: "none" }, onChange: handleFile }))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "hero-grid", style: { marginTop: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { background: "linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(248,250,252,.92) 100%)", border: "1px solid rgba(37,99,235,.16)", boxShadow: "0 18px 40px rgba(15,23,42,.06)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "mode-nav", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => switchMode("resident"), style: { background: mode === "resident" ? "var(--blue)" : "rgba(255,255,255,.75)", color: mode === "resident" ? "white" : "var(--gray)", border: `1px solid ${mode === "resident" ? "var(--blue)" : "var(--border)"}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Resident Mode"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => switchMode("research"), style: { background: mode === "research" ? "var(--teal)" : "rgba(255,255,255,.75)", color: mode === "research" ? "white" : "var(--gray)", border: `1px solid ${mode === "research" ? "var(--teal)" : "var(--border)"}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Research Mode")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: mode === "resident" ? "var(--blue3)" : "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.1 } }, mode === "resident" ? "Made for Albany residents" : "Made for analysts, advocates, and journalists"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 36, lineHeight: 1.05, fontWeight: 800, marginTop: 10, maxWidth: 720 } }, mode === "resident" ? "Find out whether your property taxes look fair and what you can do next." : "Audit Albany's assessment roll with full analytics, uploads, and spatial controls."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, color: "var(--gray2)", lineHeight: 1.8, marginTop: 12, maxWidth: 760 } }, mode === "resident" ? "Start with an address, not a dataset. Look up your property, compare nearby homes, find exemptions you may have missed, and understand who owns buildings in your neighborhood." : "Research Mode keeps the full intelligence toolkit available: parcel browser, advanced map layers, data quality scoring, neighborhood change signals, and upload support for roll and geometry files."), dataSource === "sample" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "#7c2d12", lineHeight: 1.7, marginTop: 10, maxWidth: 760, background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.28)", borderRadius: 12, padding: "10px 12px" } }, "Sample data is still active. The full Albany roll did not load at startup. Check the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "#431407" } }, "Startup autoload"), " panel for the exact file-by-file result, or use ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "#431407" } }, "Load Data Files"), " to load the Albany files manually."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab(mode === "resident" ? "browse" : "analytics"), style: { background: mode === "resident" ? "var(--blue)" : "var(--teal)", color: "white", border: "none", borderRadius: 10, padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, mode === "resident" ? "Check My Property" : "Open Workbench"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setTab(mode === "resident" ? "taxtools" : "mapview"), style: { background: "rgba(255,255,255,.78)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, mode === "resident" ? "Find Tax Savings" : "Open Research Map"))), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { background: "linear-gradient(180deg,rgba(13,148,136,.08) 0%,rgba(255,255,255,.88) 72%)", border: "1px solid rgba(13,148,136,.14)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1.1, fontWeight: 700 } }, "Current dataset"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 12, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Roll status"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, dataStatusLabel)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Startup autoload"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, autoloadSummary), autoloadEntries.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8, marginTop: 10 } }, autoloadEntries.map((entry) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${entry.kind}:${entry.name}`, style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "8px 10px", border: "1px solid rgba(15,23,42,.08)", borderRadius: 10, background: "rgba(248,250,252,.8)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--gray)", wordBreak: "break-word" } }, entry.name), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 3 } }, entry.message || entry.kind)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: autoloadStatusTone(entry.status), whiteSpace: "nowrap" } }, autoloadStatusLabel(entry.status)))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Map coverage"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, geomCoverage ? `${geomCoverage.pct}% of loaded parcels are linked to parcel geometry.` : uploading ? "Checking for parcel geometry files." : "Parcel boundaries are not loaded yet. The map will fall back to point locations where coordinates exist.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Next step"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, dataSource === "sample" ? "Load the Albany roll and geometry files to unlock the full parcel inventory and parcel-boundary mapping." : mode === "resident" ? "Search an address or open Neighborhood Map to inspect parcels and ownership." : "Open Research Map or Data Quality to inspect joins, geometry coverage, and parcel-level patterns."))))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.55)", borderBottom: "1px solid var(--border)", backdropFilter: "blur(8px)", overflowX: "auto" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-shell", style: { display: "flex", gap: 6, paddingTop: 8, paddingBottom: 0 } }, tabs.map((t) => /* @__PURE__ */ import_react45.default.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: {
-      background: tab === t.id ? mode === "resident" ? "var(--blue)" : "var(--teal)" : "transparent",
+    }, style: { background: "none", border: "none", color: "var(--gray3)", cursor: "pointer", fontSize: 12, padding: 0 } }, "X")), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowHomeSetup(true), style: { background: currentHome ? "rgba(34,197,94,.15)" : "rgba(255,255,255,.8)", color: currentHome ? "var(--green2)" : "var(--gray)", border: `1px solid ${currentHome ? "rgba(34,197,94,.35)" : "var(--border)"}`, borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, currentHome ? "My Home" : "Set My Home"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => fileRef.current?.click(), disabled: uploading, style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }, title: "Load a roll CSV/TXT/JSON or map geometry JSON/GeoJSON" }, uploading ? "Parsing..." : "Load Data Files"), /* @__PURE__ */ import_react45.default.createElement("input", { ref: fileRef, type: "file", accept: ".json,.geojson,.txt,.csv", style: { display: "none" }, onChange: handleFile }))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "hero-grid", style: { marginTop: 18 } }, /* @__PURE__ */ import_react45.default.createElement(Card, { style: { background: "linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(248,250,252,.92) 100%)", border: "1px solid rgba(37,99,235,.16)", boxShadow: "0 18px 40px rgba(15,23,42,.06)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.1 } }, "One application for Albany property intelligence"), /* @__PURE__ */ import_react45.default.createElement("div", { className: "hero-title" }, "Search, map, and analyze the 2025 Albany assessment roll in one place."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, color: "var(--gray2)", lineHeight: 1.8, marginTop: 12, maxWidth: 760 } }, "This version merges resident and research workflows into one interface. You can move from address lookup to parcel mapping, fairness checks, ownership review, analytics, and data-quality review without switching modes."), dataSource === "sample" && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "#7c2d12", lineHeight: 1.7, marginTop: 10, maxWidth: 760, background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.28)", borderRadius: 12, padding: "10px 12px" } }, "Sample data is still active. The full Albany roll did not load at startup. Check the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "#431407" } }, "Startup autoload"), " panel for the exact file-by-file result, or use ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "#431407" } }, "Load Data Files"), " to load the Albany files manually."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "hero-actions" }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("browse"), style: { background: "var(--blue)", color: "white", border: "none", borderRadius: 10, padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Search a parcel"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => navigateToTab("mapview"), style: { background: "rgba(255,255,255,.78)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Open Application Map"))), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { background: "linear-gradient(180deg,rgba(13,148,136,.08) 0%,rgba(255,255,255,.88) 72%)", border: "1px solid rgba(13,148,136,.14)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1.1, fontWeight: 700 } }, "Current dataset"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginTop: 12, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Roll status"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, dataStatusLabel)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Startup autoload"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, autoloadSummary), autoloadEntries.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8, marginTop: 10 } }, autoloadEntries.map((entry) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${entry.kind}:${entry.name}`, style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "8px 10px", border: "1px solid rgba(15,23,42,.08)", borderRadius: 10, background: "rgba(248,250,252,.8)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--gray)", wordBreak: "break-word" } }, entry.name), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 3 } }, entry.message || entry.kind)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: autoloadStatusTone(entry.status), whiteSpace: "nowrap" } }, autoloadStatusLabel(entry.status)))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Map coverage"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, geomCoverage ? `${geomCoverage.pct}% of loaded parcels are linked to parcel geometry.` : uploading ? "Checking for parcel geometry files." : "Parcel boundaries are not loaded yet. The map will fall back to point locations where coordinates exist.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.75)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 15, fontWeight: 800 } }, "Next step"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.7 } }, dataSource === "sample" ? "Load the Albany roll and geometry files to unlock the full parcel inventory and parcel-boundary mapping." : "Start with Property Search or open the Application Map, then move into Ownership, Fairness, Analytics, and Data Quality as needed."))))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.55)", borderBottom: "1px solid var(--border)", backdropFilter: "blur(8px)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-shell desktop-tab-rail" }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "tab-rail" }, tabs.map((t) => /* @__PURE__ */ import_react45.default.createElement("button", { key: t.id, onClick: () => navigateToTab(t.id), style: {
+      background: tab === t.id ? "var(--blue)" : "transparent",
       color: tab === t.id ? "white" : "var(--gray2)",
       border: "none",
       borderRadius: "10px 10px 0 0",
@@ -52100,8 +54250,8 @@ You selected: ${exactName || "(unnamed file)"}`
       fontWeight: 700,
       cursor: "pointer",
       whiteSpace: "nowrap",
-      borderBottom: tab === t.id ? `2px solid ${mode === "resident" ? "var(--blue2)" : "var(--teal2)"}` : "2px solid transparent"
-    } }, t.icon ? /* @__PURE__ */ import_react45.default.createElement("span", { style: { marginRight: 6 } }, t.icon) : null, t.label)))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-shell", style: { paddingTop: 22, paddingBottom: 40 } }, renderTab()), /* @__PURE__ */ import_react45.default.createElement("div", { style: { borderTop: "1px solid var(--border)", padding: "14px 24px", textAlign: "center", color: "var(--gray3)", fontSize: 11 } }, "Albany Property Tax Explorer | 2025 Final Assessment Roll | City of Albany, NY | Resident mode for public questions | Research mode for deeper analysis")), drillList && /* @__PURE__ */ import_react45.default.createElement(PropListModal, { data: drillList, onClose: () => setDrillList(null) }), showHomeSetup && /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", backdropFilter: "blur(4px)", zIndex: 1e3, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }, onClick: () => setShowHomeSetup(false) }, /* @__PURE__ */ import_react45.default.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 16, padding: 28, maxWidth: 520, width: "100%", boxShadow: "0 25px 60px rgba(0,0,0,.5)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 6 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 28 } }, "Home"), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 800, fontSize: 20 } }, "Set My Home"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray)", marginTop: 1 } }, "Save your address once - use it everywhere"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.8, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid var(--border)" } }, "Once saved, your home address will be ready in the property browser, tax-savings tools, comparison workflow, and guide views. It stays in this browser only and is never sent anywhere."), currentHome && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.08)", border: "1px solid rgba(34,197,94,.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--green2)" } }, "Currently Saved Home"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginTop: 2 } }, currentHome.address, currentHome.neighborhood ? ` | ${currentHome.neighborhood}` : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 1 } }, "Parcel ", currentHome.parcelId)), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => saveHome(null), style: { background: "rgba(220,38,38,.15)", border: "1px solid rgba(220,38,38,.3)", color: "#f87171", borderRadius: 8, padding: "6px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" } }, "Clear")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--gray)", marginBottom: 8 } }, "Search for your address in the dataset:"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: homeSetupAddr, onChange: setHomeSetupAddr, onSelectParcel: (p) => setHomeSetupAddr(p.address), onEnter: setupHomeFromAddr, placeholder: "e.g. 77 Academy, 15 Quail...", inputStyle: { flex: 1, width: "100%", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--white)", borderRadius: 9, padding: "10px 14px", fontSize: 14, fontFamily: "var(--fb)", cursor: "text" }, wrapperStyle: { flex: 1 }, autoFocus: true }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: setupHomeFromAddr, style: { background: "var(--green)", color: "white", border: "none", borderRadius: 9, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Save")), homeSetupAddr && !findBestAddressMatch(parcels, homeSetupAddr) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--red2)", marginTop: 8 } }, 'No matching address found. Try a partial address like "Academy" or "Willett". Make sure the full roll file is loaded if your address is not in the demo.')), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 14 } }, "Tip: you can also save your home from the property detail panel after opening any parcel."), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowHomeSetup(false), style: { marginTop: 18, width: "100%", background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray)", borderRadius: 9, padding: "9px", fontSize: 13, cursor: "pointer" } }, "Close"))));
+      borderBottom: tab === t.id ? "2px solid var(--blue2)" : "2px solid transparent"
+    }, className: "tab-chip" }, t.icon ? /* @__PURE__ */ import_react45.default.createElement("span", { style: { marginRight: 6 } }, t.icon) : null, t.label)))), /* @__PURE__ */ import_react45.default.createElement("div", { className: "app-shell mobile-tab-shell", style: { paddingTop: 10, paddingBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", className: "mobile-tab-trigger", onClick: () => setMobileNavOpen((v) => !v), "aria-expanded": mobileNavOpen }, /* @__PURE__ */ import_react45.default.createElement("span", null, currentTabMeta?.label || "Menu"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontSize: 12, color: "var(--gray2)" } }, mobileNavOpen ? "Close" : "Menu")), mobileNavOpen && /* @__PURE__ */ import_react45.default.createElement("div", { className: "mobile-tab-list" }, tabs.map((t) => /* @__PURE__ */ import_react45.default.createElement("button", { key: t.id, type: "button", onClick: () => navigateToTab(t.id), className: "mobile-tab-item", style: { background: tab === t.id ? "rgba(37,99,235,.12)" : "rgba(255,255,255,.92)", borderColor: tab === t.id ? "rgba(37,99,235,.28)" : "var(--border)", color: tab === t.id ? "var(--blue3)" : "var(--gray)" } }, t.label))))), /* @__PURE__ */ import_react45.default.createElement("div", { ref: contentTopRef, className: "app-shell", style: { paddingTop: 22, paddingBottom: 40 } }, renderTab()), /* @__PURE__ */ import_react45.default.createElement("div", { style: { borderTop: "1px solid var(--border)", padding: "14px 24px", textAlign: "center", color: "var(--gray3)", fontSize: 11 } }, "Albany Property Tax Explorer | 2025 Final Assessment Roll | City of Albany, NY | Unified property search, mapping, fairness, ownership, and analytics")), drillList && /* @__PURE__ */ import_react45.default.createElement(PropListModal, { data: drillList, onClose: () => setDrillList(null) }), showHomeSetup && /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", backdropFilter: "blur(4px)", zIndex: 1e3, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }, onClick: () => setShowHomeSetup(false) }, /* @__PURE__ */ import_react45.default.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "var(--bg2)", border: "1px solid var(--border2)", borderRadius: 16, padding: 28, maxWidth: 520, width: "100%", boxShadow: "0 25px 60px rgba(0,0,0,.5)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 6 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 28 } }, "Home"), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 800, fontSize: 20 } }, "Set My Home"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray)", marginTop: 1 } }, "Save your address once - use it everywhere"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.8, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid var(--border)" } }, "Once saved, your home address will be ready in the property browser, tax-savings tools, comparison workflow, and guide views. It stays in this browser only and is never sent anywhere."), currentHome && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.08)", border: "1px solid rgba(34,197,94,.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--green2)" } }, "Currently Saved Home"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginTop: 2 } }, currentHome.address, currentHome.neighborhood ? ` | ${currentHome.neighborhood}` : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 10, color: "var(--gray)", marginTop: 1 } }, "Parcel ", currentHome.parcelId)), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => saveHome(null), style: { background: "rgba(220,38,38,.15)", border: "1px solid rgba(220,38,38,.3)", color: "#f87171", borderRadius: 8, padding: "6px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" } }, "Clear")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--gray)", marginBottom: 8 } }, "Search for your address in the dataset:"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(AddressAutocompleteInput, { parcels, value: homeSetupAddr, onChange: setHomeSetupAddr, onSelectParcel: (p) => setHomeSetupAddr(p.address), onEnter: setupHomeFromAddr, placeholder: "e.g. 77 Academy, 15 Quail...", inputStyle: { flex: 1, width: "100%", background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--white)", borderRadius: 9, padding: "10px 14px", fontSize: 14, fontFamily: "var(--fb)", cursor: "text" }, wrapperStyle: { flex: 1 }, autoFocus: true }), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: setupHomeFromAddr, style: { background: "var(--green)", color: "white", border: "none", borderRadius: 9, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Save")), homeSetupAddr && !findBestAddressMatch(parcels, homeSetupAddr) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--red2)", marginTop: 8 } }, 'No matching address found. Try a partial address like "Academy" or "Willett". Make sure the full roll file is loaded if your address is not in the demo.')), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 14 } }, "Tip: you can also save your home from the property detail panel after opening any parcel."), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowHomeSetup(false), style: { marginTop: 18, width: "100%", background: "var(--card2)", border: "1px solid var(--border)", color: "var(--gray)", borderRadius: 9, padding: "9px", fontSize: 13, cursor: "pointer" } }, "Close"))));
   }
 
   // entry.jsx

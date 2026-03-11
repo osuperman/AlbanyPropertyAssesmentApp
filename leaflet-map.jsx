@@ -9,7 +9,7 @@ const ALBANY_DEFAULT_ZOOM = 13;
 const ALBANY_SAFE_BOUNDS = { south: 42.57, west: -73.91, north: 42.76, east: -73.67 };
 const BOUNDARY_RENDER_MIN_ZOOM = 12;
 const POINT_RENDER_MIN_ZOOM = 14;
-const POLYGON_RENDER_MIN_ZOOM = 15;
+const POLYGON_RENDER_MIN_ZOOM = 12;
 const MAX_POLYGON_FEATURES = 1800;
 const MAX_POINT_FEATURES = 1400;
 const BOUNDARY_PALETTE = [
@@ -127,7 +127,7 @@ const colorForBoundaryLabel = label => {
   return BOUNDARY_PALETTE[Math.abs(hash) % BOUNDARY_PALETTE.length];
 };
 
-export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, advanced = true, utils }) => {
+export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, utils }) => {
   const {
     normalizeParcelId,
     FC,
@@ -136,12 +136,20 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     eqRFast,
     propClassLabel,
     isAbsenteeFast,
+    getAbsenteeModelFast,
     getParcelWarnings,
     $f,
     SectionTitle,
     Sub,
     Card,
     Badge,
+    inventoryStyle,
+    inventoryYearBuilt,
+    inventorySqft,
+    inventoryBedrooms,
+    inventoryBathText,
+    hasInventoryProfile,
+    getOwnerPortfolioGroup,
   } = utils;
 
   const mapElRef = useRef(null);
@@ -175,11 +183,18 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
   const [showNeighborhoodOverlay, setShowNeighborhoodOverlay] = useState(true);
   const [showAssociationOverlay, setShowAssociationOverlay] = useState(false);
   const [legendOpen, setLegendOpen] = useState({ coloring: true, boundaries: true });
+  const [ownerPortfolioOpen, setOwnerPortfolioOpen] = useState(false);
+  const pendingJumpRef = useRef(null);
+  const handledJumpTokenRef = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  useEffect(() => {
+    setOwnerPortfolioOpen(false);
+  }, [selectedParcelId]);
   const [renderStats, setRenderStats] = useState({ visible: 0, polygons: 0, points: 0, neighborhoods: 0, associations: 0, polygonCandidates: 0, pointCandidates: 0, polygonCapped: false, pointCapped: false });
 
   useEffect(() => {
@@ -402,6 +417,29 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     map.fitBounds(bounds, { padding: [36, 36], maxZoom: 17 });
   }, [focusParcel, mappedById, searchMatches]);
 
+  useEffect(() => {
+    if (!jumpRequest || !jumpRequest.token || handledJumpTokenRef.current === jumpRequest.token) return;
+    handledJumpTokenRef.current = jumpRequest.token;
+    pendingJumpRef.current = jumpRequest;
+    didFitInitialRef.current = true;
+    if (jumpRequest.address) setAddrSearch(jumpRequest.address);
+    if (jumpRequest.parcelId) setSelectedParcelId(jumpRequest.parcelId);
+  }, [jumpRequest]);
+
+  useEffect(() => {
+    const pending = pendingJumpRef.current;
+    if (!pending || !mapRef.current) return;
+    if (pending.parcelId && mappedById.has(pending.parcelId)) {
+      focusParcel(pending.parcelId, 18);
+      pendingJumpRef.current = null;
+      return;
+    }
+    if (!pending.parcelId && searchMatches[0]) {
+      focusParcel(searchMatches[0].parcelId, 18);
+      pendingJumpRef.current = null;
+    }
+  }, [focusParcel, mappedById, searchMatches, viewport]);
+
   const stepZoom = useCallback(direction => {
     const map = mapRef.current;
     if (!map) return;
@@ -442,10 +480,10 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !datasetLatLngBounds || didFitInitialRef.current) return;
+    if (!map || !datasetLatLngBounds || didFitInitialRef.current || pendingJumpRef.current || selectedParcelId) return;
     map.fitBounds(datasetLatLngBounds, { padding: [30, 30], maxZoom: 16 });
     didFitInitialRef.current = true;
-  }, [datasetLatLngBounds]);
+  }, [datasetLatLngBounds, selectedParcelId]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -617,9 +655,9 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       associationVisibleCount ? "Association boundaries" : null,
     ].filter(Boolean);
     if (currentZoom < BOUNDARY_RENDER_MIN_ZOOM) {
-      setMapStatus(`Zoom to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood boundaries, then z${POINT_RENDER_MIN_ZOOM}+ for parcel locations.`);
+      setMapStatus(`Zoom to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries, then z${POINT_RENDER_MIN_ZOOM}+ for parcel locations.`);
     } else if (currentZoom < POINT_RENDER_MIN_ZOOM) {
-      setMapStatus(`Neighborhood boundaries are active. Zoom to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`);
+      setMapStatus(`Neighborhood and parcel boundaries are active. Zoom to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`);
     } else if (polygonCapped || pointCapped) {
       const cappedKinds = [polygonCapped ? "boundaries" : null, pointCapped ? "markers" : null].filter(Boolean).join(" and ");
       setMapStatus(`This view is limiting ${cappedKinds} for performance. Zoom in for full parcel detail.`);
@@ -643,10 +681,27 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
 
   const selectedWarnings = selectedParcel ? getParcelWarnings(selectedParcel) : [];
   const selectedParcelMapsUrl = selectedParcel ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedParcel.address || selectedParcel.parcelId}, Albany, NY ${selectedParcel.zip || ""}`.trim())}` : "#";
+  const selectedInventoryRows = selectedParcel && hasInventoryProfile(selectedParcel)
+    ? [
+        ["Building style", inventoryStyle(selectedParcel) || "Not available"],
+        ["Year built", inventoryYearBuilt(selectedParcel) || "Not available"],
+        ["Living area", inventorySqft(selectedParcel) ? `${inventorySqft(selectedParcel).toLocaleString()} sq ft` : "Not available"],
+        ["Bedrooms / baths", [
+          inventoryBedrooms(selectedParcel) != null ? `${inventoryBedrooms(selectedParcel)} bed` : null,
+          inventoryBathText(selectedParcel) || null,
+        ].filter(Boolean).join(" | ") || "Not available"],
+      ]
+    : [];
+  const selectedOwnerPortfolio = useMemo(() => {
+    if (!selectedParcel || typeof getOwnerPortfolioGroup !== "function") return null;
+    const group = getOwnerPortfolioGroup(selectedParcel);
+    return group && group.propertyCount > 1 && Array.isArray(group.parcels) ? group : null;
+  }, [getOwnerPortfolioGroup, selectedParcel]);
   const selectedInCompare = selectedParcel ? compareIds.has(selectedParcel.parcelId) : false;
   const legendItems = LEGEND[colorBy] || [];
   const overlayNotice = useMemo(() => {
-    if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
+    if (zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM) return `Zoom in to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries.`;
+    if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Parcel boundaries are active. Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
     if (renderStats.polygonCapped || renderStats.pointCapped) return "This view is trimmed for speed. Zoom in for complete parcel detail.";
     if (!hasParcelGeometry) return "Point locations are active because parcel boundary geometry is not loaded.";
     return null;
@@ -654,14 +709,10 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
 
   return (
     <div className="fi">
-      <SectionTitle>{advanced ? "Research Map" : "Neighborhood Map"}</SectionTitle>
-      <Sub>{advanced
-        ? (hasParcelGeometry
-          ? "Leaflet parcel map with Albany parcel boundaries and point fallback for unmatched records."
-          : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map can only show point fallback.")
-        : (hasParcelGeometry
-          ? "Resident map uses parcel boundaries when available and keeps the controls limited to the civic questions most people actually ask."
-          : "Resident map is active, but the parcel boundary file is not loaded so the map is limited to point fallback.")}</Sub>
+      <SectionTitle>Application Map</SectionTitle>
+      <Sub>{hasParcelGeometry
+        ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace."
+        : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."}</Sub>
       <Card style={{ marginBottom: 14 }}>
         <div style={{ display: "grid", gap: 14 }}>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -705,25 +756,25 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,360px)", gap: 14, alignItems: "start" }}>
+      <div className="leaflet-layout">
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
             <div>
-              <div style={{ fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{advanced ? "Leaflet parcel inspection" : "Leaflet resident parcel map"}</div>
-              <div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4 }}>{hasParcelGeometry ? `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, parcel locations at z${POINT_RENDER_MIN_ZOOM}+, and parcel boundaries at z${POLYGON_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`}</div>
+              <div style={{ fontSize: 11, color: "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Application map workspace</div>
+              <div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4 }}>{hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`}</div>
             </div>
             <div style={{ fontSize: 12, color: "var(--gray2)" }}>{selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : `${renderStats.visible.toLocaleString()} visible parcels`}</div>
           </div>
           <div style={{ position: "relative", borderTop: "none" }}>
             {!mapRuntimeReady ? (
-              <div style={{ height: 620, display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 }}>
+              <div style={{ height: "min(620px, 70vh)", display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 }}>
                 <div style={{ maxWidth: 520, textAlign: "center" }}>
                   <div style={{ fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 }}>Leaflet is not ready</div>
                   <div style={{ fontSize: 14, color: "var(--gray2)", lineHeight: 1.7, marginTop: 10 }}>The base mapping assets did not load. Check internet access for the browser session, then refresh.</div>
                 </div>
               </div>
             ) : (
-              <div ref={mapElRef} style={{ height: 620, width: "100%", background: "#dbe4ee" }} />
+              <div ref={mapElRef} style={{ height: "min(620px, 70vh)", width: "100%", background: "#dbe4ee" }} />
             )}
             {overlayNotice && (
               <div style={{ position: "absolute", top: 14, left: 14, maxWidth: 360, background: "rgba(248,250,252,0.96)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 12, padding: "10px 12px", fontSize: 12, color: "#0f172a", boxShadow: "0 8px 20px rgba(15,23,42,.08)" }}>
@@ -737,32 +788,89 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
           </div>
         </Card>
 
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <Card style={{ padding: 0, overflow: "hidden", minWidth: 0 }}>
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{selectedParcel ? "Selected parcel" : "Map inspector"}</div>
-              <div style={{ fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0 }}>{selectedParcel ? <a href={selectedParcelMapsUrl} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3 }}>{selectedParcel.address || selectedParcel.parcelId}</a> : (addrSearch ? "Search results" : "Use the map")}</div>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0, lineHeight: 1.08, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel ? <a href={selectedParcelMapsUrl} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel.address || selectedParcel.parcelId}</a> : (addrSearch ? "Search results" : "Use the map")}</div>
             </div>
-            {selectedParcel && <button onClick={() => setSelectedParcelId(null)} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}>×</button>}
+            {selectedParcel && <button onClick={() => setSelectedParcelId(null)} aria-label="Close selected parcel" style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}>x</button>}
           </div>
-          <div style={{ padding: "14px 16px", display: "grid", gap: 14 }}>
+          <div style={{ padding: "14px 16px", display: "grid", gap: 14, minWidth: 0 }}>
             {selectedParcel ? <>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 }}>
                 <Badge color="#6366f1">{propClassLabel(selectedParcel)}</Badge>
                 <Badge color={selectedItem?.geom ? "#0d9488" : "#f59e0b"}>{selectedItem?.geom ? "Boundary loaded" : "Point location only"}</Badge>
                 <Badge color={FC[eqFlagFast(selectedParcel)]}>{FL[eqFlagFast(selectedParcel)]}</Badge>
                 {isAbsenteeFast(selectedParcel) && <Badge color="#f97316">Absentee</Badge>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Full market value</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5 }}>{$f(selectedParcel.fullMarketValue)}</div></div>
-                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Assessed value</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5 }}>{$f(selectedParcel.assessedValue)}</div></div>
-                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Owner</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>{selectedParcel.owner1 || "Unknown owner"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6 }}>{selectedParcel.mailAddress || "Mailing address not available"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6 }}>{selectedParcel.neighborhood || selectedParcel.neighborhoodAssociation || "Neighborhood unknown"}{selectedParcel.neighborhoodAssociation && selectedParcel.neighborhoodAssociation !== selectedParcel.neighborhood ? ` | ${selectedParcel.neighborhoodAssociation}` : ""}</div></div>
-                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Equity ratio</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, color: FC[eqFlagFast(selectedParcel)] }}>{eqRFast(selectedParcel)}%</div></div>
+              {isAbsenteeFast(selectedParcel) && <details style={{ background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" }}><summary style={{ cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" }}>Why flagged as absentee?</summary><div style={{ display: "grid", gap: 4, marginTop: 8 }}><div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 }}>{getAbsenteeModelFast(selectedParcel).label} ({getAbsenteeModelFast(selectedParcel).confidence}, score {getAbsenteeModelFast(selectedParcel).score})</div>{(getAbsenteeModelFast(selectedParcel).signals?.length ? getAbsenteeModelFast(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => <div key={`${selectedParcel.parcelId}-absentee-${idx}`} style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 }}>{signal}</div>)}</div></details>}
+              <div className="metric-grid-2" style={{ display: "grid", gap: 10, minWidth: 0 }}>
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Full market value</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{$f(selectedParcel.fullMarketValue)}</div></div>
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Assessed value</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{$f(selectedParcel.assessedValue)}</div></div>
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Owner</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel.owner1 || "Unknown owner"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel.mailAddress || "Mailing address not available"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel.neighborhood || selectedParcel.neighborhoodAssociation || "Neighborhood unknown"}{selectedParcel.neighborhoodAssociation && selectedParcel.neighborhoodAssociation !== selectedParcel.neighborhood ? ` | ${selectedParcel.neighborhoodAssociation}` : ""}</div></div>
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Equity ratio</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, color: FC[eqFlagFast(selectedParcel)], overflowWrap: "anywhere", wordBreak: "break-word" }}>{eqRFast(selectedParcel)}%</div></div>
               </div>
-              {selectedWarnings.length > 0 && <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" }}>{selectedWarnings.slice(0, 4).map(w => <div key={w} style={{ fontSize: 12, color: "var(--gray2)" }}>{w.replace(/_/g, " ")}</div>)}</div>}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
-                <button onClick={() => focusParcel(selectedParcel.parcelId, 18)} style={{ background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px" }}>Center on parcel</button>
-                {typeof onCompare === "function" && <button onClick={() => onCompare(selectedParcel)} style={{ background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px" }}>{selectedInCompare ? "✓ Compare" : "+ Compare"}</button>}
+              {selectedInventoryRows.length > 0 && (
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Residential profile</div>
+                  <div className="metric-grid-2" style={{ display: "grid", gap: 10, marginTop: 10, minWidth: 0 }}>
+                    {selectedInventoryRows.map(([label, value]) => (
+                      <div key={label} style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "var(--gray3)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>{label}</div>
+                        <div style={{ fontSize: 13, color: "var(--gray)", lineHeight: 1.55, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedOwnerPortfolio && (
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => setOwnerPortfolioOpen(v => !v)}
+                    style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer", textAlign: "left", minWidth: 0 }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Owner portfolio</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedOwnerPortfolio.propertyCount.toLocaleString()} parcel{selectedOwnerPortfolio.propertyCount === 1 ? "" : "s"} potentially owned by same owner</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--blue3)", fontWeight: 700, flexShrink: 0 }}>{ownerPortfolioOpen ? "Hide list" : "Show list"}</div>
+                  </button>
+                  {ownerPortfolioOpen && (
+                    <div style={{ display: "grid", gap: 10, padding: "0 14px 14px", marginTop: -2, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 }}>Grouped by normalized owner name across the loaded Albany roll. Verify manually before treating this as confirmed common ownership.</div>
+                      <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 2 }}>
+                        {selectedOwnerPortfolio.parcels.map(p => {
+                          const current = p.parcelId === selectedParcel.parcelId;
+                          return (
+                            <button
+                              key={p.parcelId}
+                              type="button"
+                              onClick={() => focusParcel(p.parcelId, 18)}
+                              style={{ textAlign: "left", background: current ? "rgba(37,99,235,.10)" : "var(--card)", border: `1px solid ${current ? "rgba(37,99,235,.28)" : "var(--border)"}`, borderRadius: 9, padding: "11px 12px", cursor: "pointer", minWidth: 0 }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 }}>
+                                <div style={{ minWidth: 0, flex: "1 1 180px" }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.address || p.parcelId}</div>
+                                  <div style={{ fontSize: 11, color: "var(--gray2)", marginTop: 4, lineHeight: 1.5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.parcelId} | {p.neighborhood || "Neighborhood unknown"}{current ? " | Current parcel" : ""}</div>
+                                </div>
+                                <div style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto" }}>
+                                  <div style={{ fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" }}>{$f(p.fullMarketValue)}</div>
+                                  <div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 4 }}>{propClassLabel(p)}</div>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}              {selectedWarnings.length > 0 && <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" }}>{selectedWarnings.slice(0, 4).map(w => <div key={w} style={{ fontSize: 12, color: "var(--gray2)" }}>{w.replace(/_/g, " ")}</div>)}</div>}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 }}>
+                <button onClick={() => focusParcel(selectedParcel.parcelId, 18)} style={{ background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>Center on parcel</button>
+                {typeof onCompare === "function" && <button onClick={() => onCompare(selectedParcel)} style={{ background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>{selectedInCompare ? "In Compare" : "+ Compare"}</button>}
               </div>
             </> : addrSearch ? <>
               <div style={{ display: "grid", gap: 8 }}>
@@ -784,6 +892,11 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     </div>
   );
 };
+
+
+
+
+
 
 
 

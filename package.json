@@ -7,12 +7,13 @@
     "build": "node build-app.js",
     "convert:roll": "node convert-roll.js \"Albany 2025 Final Roll conv.txt\" albany-roll.json",
     "prepare:data": "node prepare-albany-data.js albany-roll.json Albany_County_Parcels_2024_-1728787929616575091.csv albany-parcel-geometry.json albany-roll.json",
-    "refresh:data": "npm run convert:roll && npm run prepare:data",
+    "refresh:data": "npm run convert:roll && npm run prepare:inventory && npm run prepare:data",
     "serve": "node serve.js",
     "start": "node serve.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:site": "node stage-pages.js",
-    "check:publish": "npm run build && npm run build:site"
+    "check:publish": "npm run build && npm run build:site",
+    "prepare:inventory": "node normalize-residential-inventory.js Residential_Inventory.csv residential-inventory-2025.csv residential-inventory-2025.json"
   },
   "repository": {
     "type": "git",

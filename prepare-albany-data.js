@@ -312,6 +312,68 @@ function loadCountyReference(csvPath) {
   };
 }
 
+
+function toInteger(raw) {
+  const value = toNumber(raw);
+  return Number.isFinite(value) ? Math.round(value) : null;
+}
+
+function isResidentialInventoryClass(raw) {
+  return /^2\d\d$/.test((raw || '').toString().trim());
+}
+
+function loadResidentialInventory(csvPath) {
+  if (!csvPath || !fs.existsSync(csvPath)) return null;
+  const raw = fs.readFileSync(csvPath, 'utf8');
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return null;
+  const headers = lowerHeaderMap(parseCsvLine(lines[0]));
+  const find = (...keys) => keys.map(k => headers.indexOf(k)).find(i => i >= 0) ?? -1;
+  const c = {
+    printKey: find('printkey', 'print_key'),
+    propClass: find('propclass', 'prop_class'),
+    houseNumber: find('housenumber', 'house_number', 'locstnbr', 'loc_st_nbr'),
+    streetName: find('streetname', 'street_name', 'locstname', 'loc_st_name'),
+    streetSuffix: find('streetsuffix', 'street_suffix', 'locmailstsuff', 'loc_mail_st_suff'),
+    buildingStyle: find('buildingstyle', 'building_style', 'bldgstyle', 'bldg_style'),
+    yearBuilt: find('yearbuilt', 'year_built', 'yrbuilt', 'yr_built'),
+    sqftLivingArea: find('sqftlivingarea', 'sqft_living_area', 'sfla'),
+    bedrooms: find('bedrooms', 'nbrbedrooms', 'nbr_bedrooms'),
+    halfBaths: find('halfbaths', 'half_baths', 'nbrhalfbaths', 'nbr_half_baths'),
+    fullBaths: find('fullbaths', 'full_baths', 'nbrfullbaths', 'nbr_full_baths'),
+    inventoryTotalAssessedValue: find('inventorytotalassessedvalue', 'inventory_total_assessed_value', 'totalav', 'total_av'),
+    sourceSheet: find('sourcesheet', 'source_sheet'),
+  };
+  const index = new Map();
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    const printKey = normalizeParcelId(cols[c.printKey]);
+    if (!printKey || printKey === 'print_key') continue;
+    if (index.has(printKey)) continue;
+    const row = {
+      printKey,
+      propClass: tidyLabel(cols[c.propClass]),
+      houseNumber: tidyLabel(cols[c.houseNumber]),
+      streetName: tidyLabel(cols[c.streetName]),
+      streetSuffix: tidyLabel(cols[c.streetSuffix]),
+      buildingStyle: tidyLabel(cols[c.buildingStyle]),
+      yearBuilt: toInteger(cols[c.yearBuilt]),
+      sqftLivingArea: toInteger(cols[c.sqftLivingArea]),
+      bedrooms: toInteger(cols[c.bedrooms]),
+      halfBaths: toInteger(cols[c.halfBaths]),
+      fullBaths: toInteger(cols[c.fullBaths]),
+      inventoryTotalAssessedValue: toInteger(cols[c.inventoryTotalAssessedValue]),
+      sourceSheet: tidyLabel(cols[c.sourceSheet]),
+    };
+    index.set(printKey, row);
+  }
+  return {
+    sourceFile: path.basename(csvPath),
+    rows: index.size,
+    index,
+  };
+}
+
 function loadGeometryIndex(geometryPath) {
   const payload = readJsonIfExists(geometryPath);
   if (!payload || !payload.parcels || Array.isArray(payload.parcels)) return null;
@@ -534,6 +596,7 @@ function enrichRollPayload(payload, options = {}) {
   const corporateRef = options.corporateCsvPath ? loadCorporateRegistry(options.corporateCsvPath) : null;
   const neighborhoodRef = options.neighborhoodAssocPath ? loadNeighborhoodAssociations(options.neighborhoodAssocPath) : null;
   const neighborhoodGeoRef = options.neighborhoodGeoJsonPath ? loadNeighborhoodGeoJson(options.neighborhoodGeoJsonPath) : null;
+  const inventoryRef = options.inventoryCsvPath ? loadResidentialInventory(options.inventoryCsvPath) : null;
   const rollSwis = normalizeSwisCode(payload.swisCode || payload.meta?.swisCode || '');
   let countyMatched = 0;
   let geometryMatched = 0;
@@ -542,11 +605,14 @@ function enrichRollPayload(payload, options = {}) {
   let corporatePropertyAddressMatched = 0;
   let neighborhoodMatched = 0;
   let neighborhoodGeoMatched = 0;
+  let inventoryMatched = 0;
+  let inventoryResidentialCandidates = 0;
+  let inventoryClassMismatchCount = 0;
 
   const parcels = payload.parcels.map(parcel => {
     const parcelIdNorm = normalizeParcelId(parcel.parcelIdNorm || parcel.parcelId || parcel.printKey || parcel.pinSbl);
     const swisCode = normalizeSwisCode(parcel.swisCode || rollSwis);
-    const countyKey = `${swisCode}:${parcelIdNorm}`;
+    const countyKey = swisCode + ':' + parcelIdNorm;
     const county = countyRef?.index.get(countyKey) || null;
     const hasGeometry = geometryRef ? geometryRef.index.has(parcelIdNorm) : null;
     if (county) countyMatched += 1;
@@ -558,7 +624,6 @@ function enrichRollPayload(payload, options = {}) {
       county ? [] : (countyRef ? ['missing_county_reference_join'] : []),
       hasGeometry === false ? ['missing_geometry_join'] : []
     );
-    if (warnings.length) warningCount += 1;
 
     const nextParcel = {
       ...parcel,
@@ -575,13 +640,6 @@ function enrichRollPayload(payload, options = {}) {
       parcelArea: parcel.parcelArea ?? county?.parcelArea ?? null,
       countyReferenceJoin: county ? 'matched' : (countyRef ? 'missing' : null),
       geometryJoin: hasGeometry === null ? null : (hasGeometry ? 'matched' : 'missing'),
-      qualityWarnings: warnings,
-      quality: {
-        ...(parcel.quality && typeof parcel.quality === 'object' ? parcel.quality : {}),
-        countyReferenceJoin: county ? 'matched' : (countyRef ? 'missing' : null),
-        hasGeometry: hasGeometry === null ? (parcel.quality?.hasGeometry ?? null) : hasGeometry,
-        warnings,
-      },
     };
 
     const entityRegistryMatch = findEntityRegistryMatch(nextParcel, corporateRef);
@@ -590,10 +648,7 @@ function enrichRollPayload(payload, options = {}) {
     if (entityRegistryMatch) nextParcel.entityRegistryMatch = entityRegistryMatch;
 
     const centroid = geometryRef?.centroidByParcel?.get(parcelIdNorm);
-    const point = centroid
-      || (Number.isFinite(Number(nextParcel.eastCoord)) && Number.isFinite(Number(nextParcel.nrthCoord))
-        ? { x: Number(nextParcel.eastCoord), y: Number(nextParcel.nrthCoord) }
-        : null);
+    const point = centroid || (Number.isFinite(Number(nextParcel.eastCoord)) && Number.isFinite(Number(nextParcel.nrthCoord)) ? { x: Number(nextParcel.eastCoord), y: Number(nextParcel.nrthCoord) } : null);
     const neighborhoodMatch = findNeighborhoodAssociation(point, neighborhoodRef);
     if (neighborhoodMatch) neighborhoodMatched += 1;
     const pointLonLat = point ? projectNativePointToLonLat(point.x, point.y) : null;
@@ -602,25 +657,61 @@ function enrichRollPayload(payload, options = {}) {
     nextParcel.neighborhoodAssociation = neighborhoodMatch?.associationName || nextParcel.neighborhoodAssociation || null;
     nextParcel.neighborhoodLabel = neighborhoodGeoMatch?.label || neighborhoodMatch?.label || nextParcel.neighborhoodLabel || nextParcel.neighborhood || null;
     nextParcel.neighborhood = neighborhoodGeoMatch?.label || neighborhoodMatch?.label || nextParcel.neighborhood || null;
-    nextParcel.neighborhoodJoin = neighborhoodGeoRef
-      ? (neighborhoodGeoMatch ? 'matched' : 'missing')
-      : (neighborhoodRef ? (neighborhoodMatch ? 'matched' : 'missing') : null);
-    nextParcel.neighborhoodSource = neighborhoodGeoMatch
-      ? 'albany.geojson'
-      : (neighborhoodMatch ? 'City of Albany Neighborhood Association Boundary Public View' : (nextParcel.neighborhoodSource || null));
+    nextParcel.neighborhoodJoin = neighborhoodGeoRef ? (neighborhoodGeoMatch ? 'matched' : 'missing') : (neighborhoodRef ? (neighborhoodMatch ? 'matched' : 'missing') : null);
+    nextParcel.neighborhoodSource = neighborhoodGeoMatch ? 'albany.geojson' : (neighborhoodMatch ? 'City of Albany Neighborhood Association Boundary Public View' : (nextParcel.neighborhoodSource || null));
+
+    const inventoryEligible = isResidentialInventoryClass(nextParcel.propClass || '');
+    const inventoryRow = inventoryEligible ? (inventoryRef?.index.get(parcelIdNorm) || null) : null;
+    const inventoryClassMatches = !inventoryRow || !inventoryRow.propClass || !nextParcel.propClass || String(inventoryRow.propClass).trim() === String(nextParcel.propClass).trim();
+    if (inventoryEligible) inventoryResidentialCandidates += 1;
+    if (inventoryRow && !inventoryClassMatches) {
+      warnings.push('inventory_prop_class_mismatch');
+      inventoryClassMismatchCount += 1;
+    }
+    if (inventoryEligible && inventoryRef && !inventoryRow) warnings.push('missing_residential_inventory_join');
+    if (inventoryRow && inventoryClassMatches) {
+      inventoryMatched += 1;
+      nextParcel.inventory = {
+        printKey: inventoryRow.printKey,
+        propClass: inventoryRow.propClass,
+        houseNumber: inventoryRow.houseNumber,
+        streetName: inventoryRow.streetName,
+        streetSuffix: inventoryRow.streetSuffix,
+        buildingStyle: inventoryRow.buildingStyle,
+        yearBuilt: inventoryRow.yearBuilt,
+        sqftLivingArea: inventoryRow.sqftLivingArea,
+        bedrooms: inventoryRow.bedrooms,
+        halfBaths: inventoryRow.halfBaths,
+        fullBaths: inventoryRow.fullBaths,
+        inventoryTotalAssessedValue: inventoryRow.inventoryTotalAssessedValue,
+        joinSource: inventoryRef.sourceFile,
+        joinConfidence: 'print_key_and_class',
+      };
+    }
+
+    if (warnings.length) warningCount += 1;
+    nextParcel.qualityWarnings = warnings;
+    nextParcel.quality = {
+      ...(parcel.quality && typeof parcel.quality === 'object' ? parcel.quality : {}),
+      countyReferenceJoin: county ? 'matched' : (countyRef ? 'missing' : null),
+      hasGeometry: hasGeometry === null ? (parcel.quality?.hasGeometry ?? null) : hasGeometry,
+      warnings,
+      residentialInventoryJoin: inventoryEligible ? (nextParcel.inventory ? 'matched' : (inventoryRef ? 'missing' : null)) : null,
+    };
 
     return nextParcel;
   });
 
-  const sourceFiles = new Set([...(payload.sourceFiles || []), countyRef?.sourceFile, geometryRef?.sourceFile, corporateRef?.sourceFile, neighborhoodRef?.sourceFile, neighborhoodGeoRef?.sourceFile].filter(Boolean));
+  const sourceFiles = new Set([...(payload.sourceFiles || []), countyRef?.sourceFile, geometryRef?.sourceFile, corporateRef?.sourceFile, neighborhoodRef?.sourceFile, neighborhoodGeoRef?.sourceFile, inventoryRef?.sourceFile].filter(Boolean));
   const countyJoinRate = countyRef ? +(countyMatched / Math.max(1, parcels.length) * 100).toFixed(2) : null;
   const geometryJoinRate = geometryRef ? +(geometryMatched / Math.max(1, parcels.length) * 100).toFixed(2) : null;
   const neighborhoodJoinRate = neighborhoodRef ? +(neighborhoodMatched / Math.max(1, parcels.length) * 100).toFixed(2) : null;
   const neighborhoodGeoJoinRate = neighborhoodGeoRef ? +(neighborhoodGeoMatched / Math.max(1, parcels.length) * 100).toFixed(2) : null;
+  const inventoryJoinRate = inventoryRef && inventoryResidentialCandidates ? +(inventoryMatched / Math.max(1, inventoryResidentialCandidates) * 100).toFixed(2) : null;
 
   return {
     ...payload,
-    version: Math.max(5, payload.version || 0),
+    version: Math.max(7, payload.version || 0),
     sourceFiles: [...sourceFiles],
     preparedAt: new Date().toISOString(),
     parcels,
@@ -662,6 +753,15 @@ function enrichRollPayload(payload, options = {}) {
         joinRatePct: neighborhoodGeoJoinRate,
         coordSystem: neighborhoodGeoRef.coordSystem,
       } : null,
+      residentialInventory: inventoryRef ? {
+        sourceFile: inventoryRef.sourceFile,
+        rows: inventoryRef.rows,
+        eligibleResidentialParcels: inventoryResidentialCandidates,
+        matched: inventoryMatched,
+        unmatched: Math.max(0, inventoryResidentialCandidates - inventoryMatched),
+        classMismatchCount: inventoryClassMismatchCount,
+        joinRatePct: inventoryJoinRate,
+      } : null,
       qualitySummary: {
         parcelsWithWarnings: warningCount,
         warningRatePct: +(warningCount / Math.max(1, parcels.length) * 100).toFixed(2),
@@ -671,7 +771,7 @@ function enrichRollPayload(payload, options = {}) {
 }
 
 function main() {
-  const [,, rollArg, countyArg, geometryArg, outArg, corporateArg, neighborhoodArg] = process.argv;
+  const [,, rollArg, countyArg, geometryArg, outArg, corporateArg, neighborhoodArg, inventoryArg] = process.argv;
   const cwd = process.cwd();
   const rollPath = path.resolve(cwd, rollArg || 'albany-roll.json');
   const countyCsvPath = path.resolve(cwd, countyArg || 'Albany_County_Parcels_2024_-1728787929616575091.csv');
@@ -683,21 +783,31 @@ function main() {
   const neighborhoodAssocPath = fs.existsSync(inferredNeighborhoodPath) ? inferredNeighborhoodPath : null;
   const inferredNeighborhoodGeoPath = path.resolve(cwd, 'albany.geojson');
   const neighborhoodGeoJsonPath = fs.existsSync(inferredNeighborhoodGeoPath) ? inferredNeighborhoodGeoPath : null;
+  const inventoryCandidates = [
+    inventoryArg,
+    'residential-inventory-2025.csv',
+    'Residential_Inventory.csv',
+  ]
+    .filter(Boolean)
+    .map(name => path.resolve(cwd, name));
+  const inventoryCsvPath = inventoryCandidates.find(candidate => fs.existsSync(candidate)) || null;
   const payload = JSON.parse(fs.readFileSync(rollPath, 'utf8'));
-  const enriched = enrichRollPayload(payload, { countyCsvPath, geometryJsonPath, corporateCsvPath, neighborhoodAssocPath, neighborhoodGeoJsonPath });
+  const enriched = enrichRollPayload(payload, { countyCsvPath, geometryJsonPath, corporateCsvPath, neighborhoodAssocPath, neighborhoodGeoJsonPath, inventoryCsvPath });
   fs.writeFileSync(outPath, JSON.stringify(enriched));
   const countySummary = enriched.meta?.countyReference;
   const geomSummary = enriched.meta?.geometryReference;
   const corporateSummary = enriched.meta?.corporateRegistry;
   const neighborhoodSummary = enriched.meta?.neighborhoodAssociationBoundaries;
   const neighborhoodGeoSummary = enriched.meta?.neighborhoodBoundaries;
-  console.log(`Prepared ${path.basename(outPath)} with ${enriched.parcels.length.toLocaleString()} parcels.`);
-  if (countySummary) console.log(`  County join: ${countySummary.matched.toLocaleString()} matched (${countySummary.joinRatePct}%).`);
-  if (geomSummary) console.log(`  Geometry join: ${geomSummary.matched.toLocaleString()} matched (${geomSummary.joinRatePct}%).`);
-  if (corporateSummary) console.log(`  Corporate registry: ${corporateSummary.matchedParcels.toLocaleString()} matched, ${corporateSummary.propertyAddressMatched.toLocaleString()} with filing address match.`);
-  if (neighborhoodSummary) console.log(`  Neighborhood association join: ${neighborhoodSummary.matched.toLocaleString()} matched (${neighborhoodSummary.joinRatePct}%).`);
-  if (neighborhoodGeoSummary) console.log(`  Neighborhood label join: ${neighborhoodGeoSummary.matched.toLocaleString()} matched (${neighborhoodGeoSummary.joinRatePct}%).`);
-  console.log(`  Parcels with warnings: ${enriched.meta?.qualitySummary?.parcelsWithWarnings?.toLocaleString?.() || 0}.`);
+  const inventorySummary = enriched.meta?.residentialInventory;
+  console.log('Prepared ' + path.basename(outPath) + ' with ' + enriched.parcels.length.toLocaleString() + ' parcels.');
+  if (countySummary) console.log('  County join: ' + countySummary.matched.toLocaleString() + ' matched (' + countySummary.joinRatePct + '%).');
+  if (geomSummary) console.log('  Geometry join: ' + geomSummary.matched.toLocaleString() + ' matched (' + geomSummary.joinRatePct + '%).');
+  if (corporateSummary) console.log('  Corporate registry: ' + corporateSummary.matchedParcels.toLocaleString() + ' matched, ' + corporateSummary.propertyAddressMatched.toLocaleString() + ' with filing address match.');
+  if (neighborhoodSummary) console.log('  Neighborhood association join: ' + neighborhoodSummary.matched.toLocaleString() + ' matched (' + neighborhoodSummary.joinRatePct + '%).');
+  if (neighborhoodGeoSummary) console.log('  Neighborhood label join: ' + neighborhoodGeoSummary.matched.toLocaleString() + ' matched (' + neighborhoodGeoSummary.joinRatePct + '%).');
+  if (inventorySummary) console.log('  Residential inventory join: ' + inventorySummary.matched.toLocaleString() + ' matched of ' + inventorySummary.eligibleResidentialParcels.toLocaleString() + ' eligible parcels (' + inventorySummary.joinRatePct + '%), ' + inventorySummary.classMismatchCount.toLocaleString() + ' class mismatches.');
+  console.log('  Parcels with warnings: ' + ((enriched.meta?.qualitySummary?.parcelsWithWarnings?.toLocaleString?.()) || 0) + '.');
 }
 
 if (require.main === module) main();
@@ -709,8 +819,11 @@ module.exports = {
   loadCorporateRegistry,
   loadNeighborhoodAssociations,
   loadNeighborhoodGeoJson,
+  loadResidentialInventory,
+  isResidentialInventoryClass,
   normalizeParcelId,
   normalizeSwisCode,
   normalizeZip5,
   normalizeEntityName,
 };
+

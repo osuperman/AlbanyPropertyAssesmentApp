@@ -1,10 +1,11 @@
-﻿import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, ScatterChart, Scatter, LineChart, Line, Legend } from "recharts";
 import { LeafletMapView } from "./leaflet-map.jsx";
 import { AddressAutocompleteInput, findBestAddressMatch } from "./address-autocomplete.jsx";
+import propertyTypeClassificationCodes from "./property-type-classification-codes.json";
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ GLOBAL STYLES Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ GLOBAL STYLES ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const GS = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -39,18 +40,60 @@ const GS = () => (
     .quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .mode-nav{display:flex;gap:8px;flex-wrap:wrap}
     .resident-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .app-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .app-brand{display:flex;align-items:center;gap:14px;min-width:0}
+    .app-title{font-family:var(--fd);font-weight:800;font-size:24px;letter-spacing:-.6px;line-height:1.1}
+    .hero-title{font-family:var(--fd);font-size:36px;line-height:1.05;font-weight:800;margin-top:10px;max-width:720px}
+    .app-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    .tab-rail{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+    .desktop-tab-rail{display:block}
+    .mobile-tab-shell{display:none}
+    .mobile-tab-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;color:var(--gray);cursor:pointer}
+    .mobile-tab-list{display:grid;gap:8px;margin-top:10px}
+    .mobile-tab-item{width:100%;text-align:left;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;font-weight:700;color:var(--gray);cursor:pointer}
+    .tab-chip{display:flex;align-items:center;justify-content:center;white-space:nowrap;text-align:center}
+    .leaflet-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,400px);gap:14px;align-items:start}
+    .panel-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px;align-items:start}
+    .leaflet-layout>*,.panel-split>*{min-width:0}
+    .metric-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+    .cols-2{grid-template-columns:1fr 1fr}
+    .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    @media (max-width: 1100px){
+      .leaflet-layout,.panel-split{grid-template-columns:1fr}
+    }
     @media (max-width: 980px){
       .hero-grid,.resident-grid,.quick-grid{grid-template-columns:1fr}
       .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .app-header-row{align-items:flex-start}
+      .app-brand{width:100%}
+      .app-toolbar{width:100%}
+      .tab-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .tab-chip{width:100%;white-space:normal;min-height:44px}
+      .hero-title{font-size:30px}
+    }
+    @media (max-width: 760px){
+      .cols-2,.cols-3{grid-template-columns:1fr}
+      .app-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .app-toolbar > *{min-width:0;width:100%}
+      .hero-title{font-size:26px}
+      .app-title{font-size:20px}
     }
     @media (max-width: 640px){
-      .app-shell{padding:0 16px}
-      .summary-grid{grid-template-columns:1fr}
+      .app-shell{padding:0 14px}
+      .summary-grid,.metric-grid-2,.cols-2,.cols-3{grid-template-columns:1fr}
+      .tab-rail{grid-template-columns:1fr}
+      .desktop-tab-rail{display:none}
+      .mobile-tab-shell{display:block}
+      .app-toolbar{grid-template-columns:1fr}
+      .hero-actions{flex-direction:column;align-items:stretch}
+      .hero-actions > button{width:100%}
+      .hero-title{font-size:22px}
     }
   `}</style>
 );
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ INFO BOX Ã¢â‚¬â€ contextual description blocks used throughout Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ INFO BOX ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â contextual description blocks used throughout ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const InfoBox = ({icon="Info", title, children, color="#3b82f6"}) => (
   <div style={{background:`${color}0d`,border:`1px solid ${color}28`,borderRadius:10,padding:"14px 18px",marginBottom:16}}>
     <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -63,7 +106,7 @@ const InfoBox = ({icon="Info", title, children, color="#3b82f6"}) => (
   </div>
 );
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ MY HOME BANNER Ã¢â‚¬â€ shown inside lookup panels when home is saved Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ MY HOME BANNER ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â shown inside lookup panels when home is saved ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const MyHomeBanner = ({myHome, onUse, label="Use My Home"}) => {
   if(!myHome) return null;
   return (
@@ -78,7 +121,7 @@ const MyHomeBanner = ({myHome, onUse, label="Use My Home"}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ REAL SAMPLE DATA (62 parcels Ã¢â‚¬â€ Albany 2025 Final Assessment Roll) Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ REAL SAMPLE DATA (62 parcels ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Albany 2025 Final Assessment Roll) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const SAMPLE = [
   {parcelId:"65.46-3-53",address:"470 Elk St",zip:"12208",neighborhood:"Pine Hills",owner1:"RIDGE RENTALS LLC",owner2:null,propClass:"210",propClassDesc:"1 Family Res",parcelType:"HOMESTEAD",landValue:23600,assessedValue:118000,fullMarketValue:122917,countyTaxable:118000,cityTaxable:118000,schoolTaxable:118000,frontage:36.64,depth:70.0,eastCoord:650630,nrthCoord:972060,deedYear:null,exemptions:[],mailAddress:"000 Albany, NY 12208"},
   {parcelId:"64.78-2-7",address:"7 Berncliffe Ave",zip:"12208",neighborhood:"Pine Hills",owner1:"Mihel Abigail L",owner2:null,propClass:"210",propClassDesc:"1 Family Res",parcelType:"HOMESTEAD",landValue:62600,assessedValue:313000,fullMarketValue:326042,countyTaxable:313000,cityTaxable:313000,schoolTaxable:313000,frontage:50.0,depth:100.0,eastCoord:638600,nrthCoord:968430,deedYear:2018,exemptions:[],mailAddress:"000\nAlbany, NY 12208"},
@@ -144,7 +187,7 @@ const SAMPLE = [
   {parcelId:"75.25-1-1",address:"632 New Scotland Ave",zip:"12207",neighborhood:"Downtown / Arbor Hill",owner1:"St. Peter's Hospital",owner2:null,propClass:"641",propClassDesc:"Hospital",parcelType:"HOMESTEAD",landValue:5266000,assessedValue:0,fullMarketValue:132175427,countyTaxable:0,cityTaxable:0,schoolTaxable:0,frontage:0,depth:0,eastCoord:642181,nrthCoord:967789,deedYear:null,exemptions:[],mailAddress:"0 Troy, NY 12180"}
 ];
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ CSV PARSER Ã¢â‚¬â€ supports Albany County Parcels 2024 CSV + generic formats Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ CSV PARSER ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â supports Albany County Parcels 2024 CSV + generic formats ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 function parseCSV(text) {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
@@ -296,6 +339,62 @@ function normalizeDatasetMeta(meta={}, parcels=[], sourceName=""){
     taxableStatusDate: next.taxableStatusDate || null,
     uniformPercentOfValue: Number.isFinite(uniformPercentOfValue) ? uniformPercentOfValue : null,
   };
+}
+
+const APP_TAB_IDS = new Set(["home","browse","mapview","equity","taxtools","compare","ownership","analytics","opportunity","dataquality","guide"]);
+const COMPARE_SNAPSHOT_QUERY_KEYS = ["tab","tool","subject","comps","dataset","label"];
+function slugifyShareLabel(raw){
+  return (raw||"").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+}
+function buildComparableDatasetKey(meta={}, parcels=[]){
+  const normalized = normalizeDatasetMeta(meta, parcels);
+  const year = normalized.assessmentYear ? String(normalized.assessmentYear) : "";
+  const rollType = normalizeRollType(normalized.rollType||"");
+  const swisCode = normalizeSwisCode(normalized.swisCode||"");
+  if(year && rollType) return [year, rollType, swisCode || "albany"].filter(Boolean).join("-");
+  return swisCode ? `albany-roll-${swisCode}` : "albany-roll";
+}
+function parseComparableSnapshotSearch(searchString=""){
+  const params = new URLSearchParams((searchString||"").toString().replace(/^\?/,""));
+  const rawSubjectId = normalizeParcelId(params.get("subject") || "");
+  const rawCompIds = (params.get("comps") || "").split(",").map(normalizeParcelId).filter(Boolean);
+  const compIds = [...new Set(rawCompIds)];
+  const tool = (params.get("tool") || "").trim().toLowerCase();
+  const tab = (params.get("tab") || "").trim().toLowerCase();
+  return {
+    tab: APP_TAB_IDS.has(tab) ? tab : ((tool==="neighbor" && (rawSubjectId || compIds.length)) ? "taxtools" : ""),
+    tool,
+    subjectId: rawSubjectId,
+    compIds,
+    datasetKey: (params.get("dataset") || "").trim(),
+    label: (params.get("label") || "").trim(),
+    hasSnapshot: !!(rawSubjectId || compIds.length),
+  };
+}
+function buildComparableSnapshotUrl({subjectId="", compIds=[], datasetKey="", label=""}={}){
+  if(typeof window==="undefined") return "";
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  params.set("tab", "taxtools");
+  params.set("tool", "neighbor");
+  const normalizedSubjectId = normalizeParcelId(subjectId);
+  const normalizedCompIds = [...new Set((compIds||[]).map(normalizeParcelId).filter(Boolean))];
+  if(normalizedSubjectId) params.set("subject", normalizedSubjectId);
+  else params.delete("subject");
+  if(normalizedCompIds.length) params.set("comps", normalizedCompIds.join(","));
+  else params.delete("comps");
+  if(datasetKey) params.set("dataset", datasetKey);
+  else params.delete("dataset");
+  const labelSlug = slugifyShareLabel(label);
+  if(labelSlug) params.set("label", labelSlug);
+  else params.delete("label");
+  return url.toString();
+}
+function replaceComparableSnapshotUrl(snapshot){
+  const href = buildComparableSnapshotUrl(snapshot);
+  if(!href || typeof window==="undefined") return "";
+  try{ window.history.replaceState({}, "", href); }catch{}
+  return href;
 }
 
 function extractPayloadMeta(payload){
@@ -811,6 +910,16 @@ function preprocessParcels(arr, datasetMeta={}){
     const ownerPortfolioKey = normalizeOwnerPortfolioKey(owner1);
     const ownerPortfolio = ownerPortfolioKey ? (ownerPortfolioStats.get(ownerPortfolioKey)||{ count: 1, offsiteMailCount: 0 }) : { count: 1, offsiteMailCount: 0 };
     const ownerPortfolioCount = ownerPortfolio.count || 1;
+    const inv = (p && p.inventory && typeof p.inventory==="object") ? p.inventory : null;
+    const invStyle = (inv?.buildingStyle||"").toString().trim().toLowerCase();
+    const invYear = Number.isFinite(Number(inv?.yearBuilt)) ? Number(inv.yearBuilt) : (Number.isFinite(Number(p.yearBuilt)) ? Number(p.yearBuilt) : null);
+    const invSqft = Number.isFinite(Number(inv?.sqftLivingArea)) ? Number(inv.sqftLivingArea) : null;
+    const invBeds = Number.isFinite(Number(inv?.bedrooms)) ? Number(inv.bedrooms) : null;
+    const invFullBaths = Number.isFinite(Number(inv?.fullBaths)) ? Number(inv.fullBaths) : null;
+    const invHalfBaths = Number.isFinite(Number(inv?.halfBaths)) ? Number(inv.halfBaths) : null;
+    const invBaths = (Number.isFinite(invFullBaths) || Number.isFinite(invHalfBaths))
+      ? (Number(invFullBaths || 0) + (Number(invHalfBaths || 0) * 0.5))
+      : null;
     const next = {
       ...p,
       parcelId: parcelIdRaw || p.printKey || p.pinSbl || "",
@@ -842,7 +951,19 @@ function preprocessParcels(arr, datasetMeta={}){
       _addrLower: addrLower,
       _owner1Lower: owner1Lower,
       _owner2Lower: owner2Lower,
-      _searchBlob: [addrLower, parcelIdNorm.toLowerCase(), clsDesc.toLowerCase(), nbr.toLowerCase(), (next.zip||"").toLowerCase(), cleanMail.toLowerCase()].join("|"),
+      _searchBlob: [
+        addrLower,
+        parcelIdNorm.toLowerCase(),
+        clsDesc.toLowerCase(),
+        nbr.toLowerCase(),
+        (next.zip||"").toLowerCase(),
+        cleanMail.toLowerCase(),
+        invStyle,
+        invYear != null ? String(invYear) : "",
+        invSqft != null ? String(Math.round(invSqft)) : "",
+        invBeds != null ? String(Math.round(invBeds)) : "",
+        invBaths != null ? String(invBaths) : "",
+      ].join("|"),
       _ownerBlob: [owner1Lower, owner2Lower].join("|"),
       _absentee: absentee,
       _absenteeModel: absenteeModel,
@@ -852,6 +973,11 @@ function preprocessParcels(arr, datasetMeta={}){
       _ownerPortfolioCount: ownerPortfolioCount,
       _ownerPortfolioOffsiteCount: absenteeModel.ownerPortfolioOffsiteCount,
       _ownerEntity: absenteeModel.ownerEntity,
+      _invStyle: invStyle,
+      _invYearBuilt: invYear,
+      _invSqft: invSqft,
+      _invBedrooms: invBeds,
+      _invBaths: invBaths,
       _eqRatioNum: eqRatioNum,
       _eqBand: eqBand,
       _qualityWarnings: warnings,
@@ -860,6 +986,79 @@ function preprocessParcels(arr, datasetMeta={}){
   });
 }
 
+function buildOwnerPortfolioGroups(parcels=[]){
+  const groups = new Map();
+  parcels.forEach((p, idx)=>{
+    const ownerKey = normalizeOwnerPortfolioKey(p?.owner1||"");
+    if(!ownerKey) return;
+    let group = groups.get(ownerKey);
+    if(!group){
+      const slug = ownerKey.replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80) || `owner-${idx+1}`;
+      group = {
+        id:`owner-${slug}`,
+        ownerKey,
+        parcels:[],
+        totalFMV:0,
+        totalAssessed:0,
+        totalLand:0,
+        zips:new Set(),
+        labels:new Map(),
+      };
+      groups.set(ownerKey, group);
+    }
+    const label = (p?.owner1||"Unknown owner").toString().trim() || "Unknown owner";
+    const labelKey = label.toLowerCase();
+    const existingLabel = group.labels.get(labelKey);
+    if(existingLabel){
+      existingLabel.count += 1;
+      if(label.length > existingLabel.label.length) existingLabel.label = label;
+    }else{
+      group.labels.set(labelKey, { label, count: 1 });
+    }
+    group.parcels.push(p);
+    group.totalFMV += Number(p?.fullMarketValue) || 0;
+    group.totalAssessed += Number(p?.assessedValue) || 0;
+    group.totalLand += Number(p?.landValue) || 0;
+    if(p?.zip) group.zips.add(String(p.zip));
+  });
+  return [...groups.values()]
+    .map(group=>{
+      const displayOwner = [...group.labels.values()]
+        .sort((a,b)=>b.count-a.count || b.label.length-a.label.length || a.label.localeCompare(b.label))[0]?.label || "Unknown owner";
+      const parcels = [...group.parcels].sort((a,b)=>{
+        const byAddress = (a?.address||"").localeCompare((b?.address||""), undefined, { numeric:true, sensitivity:"base" });
+        if(byAddress) return byAddress;
+        return (b?.fullMarketValue||0) - (a?.fullMarketValue||0);
+      });
+      return {
+        id:group.id,
+        ownerKey:group.ownerKey,
+        name:displayOwner,
+        displayOwner,
+        parcels,
+        propertyCount:parcels.length,
+        totalFMV:group.totalFMV,
+        totalAssessed:group.totalAssessed,
+        totalLand:group.totalLand,
+        zips:[...group.zips].sort((a,b)=>a.localeCompare(b)),
+      };
+    })
+    .sort((a,b)=>b.propertyCount-a.propertyCount || b.totalFMV-a.totalFMV || a.displayOwner.localeCompare(b.displayOwner));
+}
+function getOwnerPortfolioGroupFromIndex(parcel, ownerPortfolioIndex){
+  if(!parcel || !ownerPortfolioIndex) return null;
+  const ownerKey = normalizeOwnerPortfolioKey(parcel?.owner1 || "");
+  return ownerKey ? (ownerPortfolioIndex.get(ownerKey) || null) : null;
+}
+
+function getOwnerPortfolioCountFast(parcel){
+  return Math.max(1, parseInt(parcel?._ownerPortfolioCount, 10) || 1);
+}
+
+function ownerPortfolioBadgeLabel(parcel){
+  const count = getOwnerPortfolioCountFast(parcel);
+  return count > 1 ? `Portfolio ${count}` : "";
+}
 const eqRFast = p => (typeof p?._eqRatioNum==="number" && isFinite(p._eqRatioNum))
   ? p._eqRatioNum.toFixed(1)
   : eqR(p);
@@ -1023,36 +1222,100 @@ const VirtualRows = ({items,rowHeight=96,height=480,overscan=4,renderRow,empty})
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ SHARED UI ATOMS Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ SHARED UI ATOMS ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const googleMapsHref = (address, zip, neighborhood) => {
   const q = [address, neighborhood, "Albany, NY", zip].filter(Boolean).join(", ");
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 };
-const AddrLink = ({address, zip, neighborhood, children, stopPropagation=true, style={}}) => {
+async function copyTextToClipboard(text){
+  if(!text || typeof document==="undefined") return false;
+  try{
+    if(typeof navigator!=="undefined" && navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  }catch{}
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "readonly");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    ta.style.pointerEvents = "none";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return !!ok;
+  }catch{
+    return false;
+  }
+}
+
+const dispatchApplicationMapJump = detail => {
+  if(typeof window==="undefined" || !detail?.address) return;
+  try{
+    window.dispatchEvent(new CustomEvent("albany:jump-to-app-map", { detail }));
+    window.dispatchEvent(new CustomEvent("albany:jump-to-research-map", { detail }));
+  }catch{}
+};
+const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, children, stopPropagation=true, style={}}) => {
   const label = children ?? address ?? "(no address)";
   if(!address) return <>{label}</>;
   return (
-    <a
-      href={googleMapsHref(address, zip, neighborhood)}
-      target="_blank"
-      rel="noreferrer"
-      onClick={e=>{ if(stopPropagation) e.stopPropagation(); }}
-      title={`Open ${address}${neighborhood?` (${neighborhood})`:""}${zip?` ${zip}`:""} in Google Maps`}
-      style={{color:"inherit",textDecoration:"underline",textDecorationColor:"rgba(59,130,246,.55)",textUnderlineOffset:2,...style}}
-    >
-      {label}
-      {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` | ${neighborhood}`}</span>}
-    </a>
+    <span style={{display:"inline-flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+      <a
+        href={googleMapsHref(address, zip, neighborhood)}
+        target="_blank"
+        rel="noreferrer"
+        onClick={e=>{ if(stopPropagation) e.stopPropagation(); }}
+        title={`Open ${address}${neighborhood?` (${neighborhood})`:""}${zip?` ${zip}`:""} in Google Maps`}
+        style={{color:"inherit",textDecoration:"underline",textDecorationColor:"rgba(59,130,246,.55)",textUnderlineOffset:2,...style}}
+      >
+        {label}
+        {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` | ${neighborhood}`}</span>}
+      </a>
+      <button
+        type="button"
+        onClick={e=>{ if(stopPropagation) e.stopPropagation(); dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel }); }}
+        title={`Open ${address} in Application Map`}
+        style={{background:"transparent",border:"none",padding:0,color:"var(--teal2)",fontSize:"0.85em",fontWeight:700,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}
+      >
+        Application Map
+      </button>
+    </span>
   );
 };
+const PROP_CLASSIFICATION_MAP = (propertyTypeClassificationCodes || []).reduce((acc, row) => {
+  const code = String(row?.Code || "").trim();
+  if(!code) return acc;
+  acc[code] = {
+    title: String(row?.Title || "").trim(),
+    description: String(row?.Description || "").trim(),
+  };
+  return acc;
+}, {});
+const propClassMeta = code => PROP_CLASSIFICATION_MAP[(code||"").toString().trim()] || null;
+const propClassOfficialTitle = code => (propClassMeta(code)?.title || "").toString().trim();
+const propClassOfficialDescription = code => (propClassMeta(code)?.description || "").toString().trim();
 const formatPropClassLabel = (code, desc) => {
   const c = (code||"").toString().trim();
   const d = (desc||"").toString().trim();
   if(d && c && d!==c) return `${d} (${c})`;
   return d || c || "Unknown";
 };
+const formatPropClassOfficialLabel = (code, desc) => {
+  const c = (code||"").toString().trim();
+  const official = propClassOfficialTitle(c);
+  if(official && c) return `${official} (${c})`;
+  return formatPropClassLabel(code, desc);
+};
 const propClassLabel = p => formatPropClassLabel(p?.propClass, p?.propClassDesc);
-const propClassDescLabel = p => (p?.propClassDesc||p?.propClass||"Unknown");
+const propClassDescLabel = p => (p?.propClassDesc||propClassOfficialTitle(p?.propClass)||p?.propClass||"Unknown");
+const propClassOfficialLabel = p => formatPropClassOfficialLabel(p?.propClass, p?.propClassDesc);
+const propClassMeaning = p => propClassOfficialDescription(p?.propClass);
+const propClassTooltip = p => [propClassOfficialLabel(p), propClassMeaning(p)].filter(Boolean).join(" | ") || propClassLabel(p);
 const parcelNeighborhoodName = p => (p?.neighborhood || p?.neighborhoodLabel || "").toString().trim();
 const parcelNeighborhoodAssociation = p => (p?.neighborhoodAssociation || "").toString().trim();
 const parcelAreaSummary = p => {
@@ -1060,6 +1323,382 @@ const parcelAreaSummary = p => {
   const association = parcelNeighborhoodAssociation(p);
   return association && association !== neighborhood ? `${neighborhood || "Neighborhood unknown"} | ${association}` : (neighborhood || association || "");
 };
+const inventoryOf = p => (p && p.inventory && typeof p.inventory === "object") ? p.inventory : null;
+const inventoryStyle = p => {
+  const raw = ((inventoryOf(p)?.buildingStyle || "").toString().trim());
+  if(!raw) return "";
+  if(/^style code\s+/i.test(raw)) return raw;
+  return /^\d+$/.test(raw) ? `Style code ${raw}` : raw;
+};
+const inventoryYearBuilt = p => {
+  const invYear = Number(inventoryOf(p)?.yearBuilt);
+  if (Number.isFinite(invYear) && invYear > 0) return invYear;
+  const baseYear = Number(p?.yearBuilt);
+  return Number.isFinite(baseYear) && baseYear > 0 ? baseYear : null;
+};
+const inventorySqft = p => {
+  const v = Number(inventoryOf(p)?.sqftLivingArea);
+  return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+};
+const inventoryBedrooms = p => {
+  const v = Number(inventoryOf(p)?.bedrooms);
+  return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+};
+const inventoryFullBaths = p => {
+  const v = Number(inventoryOf(p)?.fullBaths);
+  return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+};
+const inventoryHalfBaths = p => {
+  const v = Number(inventoryOf(p)?.halfBaths);
+  return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+};
+const inventoryBathText = p => {
+  const full = inventoryFullBaths(p);
+  const half = inventoryHalfBaths(p);
+  if (full == null && half == null) return "-";
+  if (half == null || half === 0) return String(full ?? 0);
+  return `${full ?? 0} + ${half} half`;
+};
+const hasInventoryProfile = p => !!(
+  inventoryStyle(p) ||
+  inventoryYearBuilt(p) ||
+  inventorySqft(p) ||
+  inventoryBedrooms(p) != null ||
+  inventoryFullBaths(p) != null ||
+  inventoryHalfBaths(p) != null
+);
+const isResidentialPropClass = code => /^2\d\d$/.test((code||"").toString().trim());
+const inventoryBathCount = p => {
+  const full = inventoryFullBaths(p);
+  const half = inventoryHalfBaths(p);
+  if(full == null && half == null) return null;
+  return Number(full || 0) + (Number(half || 0) * 0.5);
+};
+const streetNameKeyForComp = addr => {
+  const k = normalizeStreetKeyForCompare(addr||"");
+  if(!k) return "";
+  const t = k.split(" ").filter(Boolean);
+  return (t.length>1 && /^\d+[a-z]?$/i.test(t[0])) ? t.slice(1).join(" ") : t.join(" ");
+};
+const comparePctDelta = (a,b) => {
+  if(!(Number.isFinite(a) && a>0 && Number.isFinite(b) && b>0)) return null;
+  return Math.abs(a-b) / Math.max(a, 1);
+};
+const buildComparableProfile = p => {
+  const livingArea = inventorySqft(p);
+  const yearBuilt = inventoryYearBuilt(p);
+  const bedrooms = inventoryBedrooms(p);
+  const bathCount = inventoryBathCount(p);
+  const bathText = inventoryBathText(p);
+  const style = inventoryStyle(p) || null;
+  const availablePhysicalFields = [];
+  if(livingArea != null) availablePhysicalFields.push("Living area");
+  if(yearBuilt != null) availablePhysicalFields.push("Year built");
+  if(bedrooms != null) availablePhysicalFields.push("Bedrooms");
+  if(bathCount != null) availablePhysicalFields.push("Baths");
+  if(style) availablePhysicalFields.push("Style");
+  return {
+    livingArea,
+    yearBuilt,
+    bedrooms,
+    bathCount,
+    bathText: bathText === "-" ? null : bathText,
+    style,
+    availablePhysicalFields,
+    neighborhood: parcelNeighborhoodName(p) || null,
+    classLabel: propClassLabel(p),
+    equity: Number.isFinite(parseFloat(eqRFast(p))) ? parseFloat(eqRFast(p)) : null,
+  };
+};
+const buildComparableDelta = (subject, comp, subjectProfile, compProfile) => ({
+  fmv: Number.isFinite(subject?.fullMarketValue) && Number.isFinite(comp?.fullMarketValue) ? comp.fullMarketValue - subject.fullMarketValue : null,
+  assessed: Number.isFinite(subject?.assessedValue) && Number.isFinite(comp?.assessedValue) ? comp.assessedValue - subject.assessedValue : null,
+  equity: subjectProfile?.equity != null && compProfile?.equity != null ? +(compProfile.equity - subjectProfile.equity).toFixed(1) : null,
+  livingArea: subjectProfile?.livingArea != null && compProfile?.livingArea != null ? compProfile.livingArea - subjectProfile.livingArea : null,
+  yearBuilt: subjectProfile?.yearBuilt != null && compProfile?.yearBuilt != null ? compProfile.yearBuilt - subjectProfile.yearBuilt : null,
+  bedrooms: subjectProfile?.bedrooms != null && compProfile?.bedrooms != null ? compProfile.bedrooms - subjectProfile.bedrooms : null,
+  baths: subjectProfile?.bathCount != null && compProfile?.bathCount != null ? +(compProfile.bathCount - subjectProfile.bathCount).toFixed(1) : null,
+});
+const comparableProfileBadgeItems = p => {
+  const profile = buildComparableProfile(p);
+  const items = [];
+  if(profile.livingArea != null) items.push(nf(profile.livingArea) + " sq ft");
+  if(profile.yearBuilt != null) items.push("Built " + profile.yearBuilt);
+  if(profile.bedrooms != null) items.push(profile.bedrooms + " beds");
+  if(profile.bathText) items.push(profile.bathText + " baths");
+  if(profile.style) items.push(profile.style);
+  return items;
+};
+const comparableProfileTableRows = p => {
+  const profile = buildComparableProfile(p);
+  return [
+    ["FMV", $f(p.fullMarketValue)],
+    ["Assessed", $f(p.assessedValue)],
+    ["Equity %", profile.equity != null ? profile.equity + "%" : "-"],
+    ["Neighborhood", profile.neighborhood || "-"],
+    ["Class", profile.classLabel || "-"],
+    ["Living area", profile.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-"],
+    ["Year built", profile.yearBuilt != null ? String(profile.yearBuilt) : "-"],
+    ["Bedrooms", profile.bedrooms != null ? String(profile.bedrooms) : "-"],
+    ["Baths", profile.bathText || "-"],
+    ["Style", profile.style || "-"]
+  ];
+};
+const formatSignedComparableMoney = value => {
+  if(value == null || !Number.isFinite(value)) return "-";
+  if(value === 0) return "$0";
+  return (value > 0 ? "+" : "-") + $f(Math.abs(value));
+};
+const formatSignedComparableCount = (value, suffix="") => {
+  if(value == null || !Number.isFinite(value)) return "-";
+  if(value === 0) return "0" + suffix;
+  const abs = Math.abs(value);
+  const rounded = Math.abs(abs - Math.round(abs)) < 0.001 ? nf(Math.round(abs)) : abs.toFixed(1);
+  return (value > 0 ? "+" : "-") + rounded + suffix;
+};
+const comparableDeltaTone = (value, betterWhenLower=false) => {
+  if(value == null || !Number.isFinite(value)) return "var(--gray3)";
+  if(value === 0) return "var(--gray2)";
+  if(betterWhenLower) return value < 0 ? "var(--green2)" : "var(--red2)";
+  return value > 0 ? "var(--green2)" : "var(--amber2)";
+};
+const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
+  const candidate = buildComparableCandidate(subject, comp);
+  if(candidate) return candidate;
+  const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
+  const compProfile = buildComparableProfile(comp);
+  const subjectNeighborhood = baseSubjectProfile.neighborhood;
+  const compNeighborhood = compProfile.neighborhood;
+  const subjectStreet = streetNameKeyForComp(subject.address);
+  const compStreet = streetNameKeyForComp(comp.address);
+  return {
+    ...comp,
+    _compScore: 0,
+    _compReasons: [
+      "Included from shared comparable snapshot",
+      subjectNeighborhood && compNeighborhood && subjectNeighborhood===compNeighborhood ? "Same neighborhood: " + subjectNeighborhood : null,
+      subjectStreet && compStreet && subjectStreet===compStreet ? "Same street: " + subjectStreet : null,
+      comp.propClass===subject.propClass ? "Same residential class: " + propClassLabel(subject) : null
+    ].filter(Boolean),
+    _compSignals: ["Snapshot"],
+    _compEvidenceCount: 0,
+    _compPhysicalFieldsUsed: [],
+    _compUnusedPhysicalFields: baseSubjectProfile.availablePhysicalFields,
+    _compPhysicalFieldCountPossible: baseSubjectProfile.availablePhysicalFields.length,
+    _compProfile: compProfile,
+    _compDelta: buildComparableDelta(subject, comp, baseSubjectProfile, compProfile),
+    _compSnapshotIncluded: true,
+  };
+};
+
+const buildComparableCandidate = (subject, comp) => {
+  if(!subject || !comp || comp.parcelId===subject.parcelId) return null;
+  if(!isResidentialPropClass(subject.propClass) || comp.propClass!==subject.propClass) return null;
+  const subjectProfile = buildComparableProfile(subject);
+  const compProfile = buildComparableProfile(comp);
+  let score = 18;
+  const reasons = [];
+  const allSignals = [];
+  const physicalFieldsUsed = [];
+  let evidenceCount = 0;
+  const subjectNeighborhood = subjectProfile.neighborhood;
+  const compNeighborhood = compProfile.neighborhood;
+  if(subjectNeighborhood && compNeighborhood && subjectNeighborhood===compNeighborhood){
+    score += 28;
+    reasons.push("Same neighborhood: " + subjectNeighborhood);
+    allSignals.push("Neighborhood");
+  }else if(subject.zip && comp.zip===subject.zip){
+    score += 10;
+    reasons.push("Same ZIP: " + subject.zip);
+    allSignals.push("ZIP");
+  }
+  const subjectStreet = streetNameKeyForComp(subject.address);
+  const compStreet = streetNameKeyForComp(comp.address);
+  if(subjectStreet && compStreet && subjectStreet===compStreet){
+    score += 8;
+    reasons.push("Same street: " + subjectStreet);
+    allSignals.push("Street");
+  }
+  const subjectSqft = subjectProfile.livingArea;
+  const compSqft = compProfile.livingArea;
+  if(subjectSqft && compSqft){
+    const pct = comparePctDelta(subjectSqft, compSqft);
+    if(pct!=null && pct>0.6) return null;
+    score += Math.max(0, 28 - ((pct || 0) * 40));
+    reasons.push("Living area within " + Math.round((pct || 0) * 100) + "% (" + compSqft.toLocaleString() + " sq ft)");
+    physicalFieldsUsed.push("Living area");
+    evidenceCount += 1;
+  }
+  const subjectYear = subjectProfile.yearBuilt;
+  const compYear = compProfile.yearBuilt;
+  if(subjectYear && compYear){
+    const diff = Math.abs(compYear-subjectYear);
+    if(diff>80) return null;
+    score += diff<=10 ? 16 : diff<=25 ? 10 : diff<=40 ? 5 : 1;
+    reasons.push(diff===0 ? "Year built matches (" + compYear + ")" : "Year built within " + diff + " years (" + compYear + ")");
+    physicalFieldsUsed.push("Year built");
+    evidenceCount += 1;
+  }
+  const subjectBeds = subjectProfile.bedrooms;
+  const compBeds = compProfile.bedrooms;
+  if(subjectBeds!=null && compBeds!=null){
+    const diff = Math.abs(compBeds-subjectBeds);
+    if(diff>2) return null;
+    score += diff===0 ? 12 : diff===1 ? 6 : 2;
+    reasons.push(diff===0 ? compBeds + " bedrooms, same count" : compBeds + " bedrooms, within " + diff);
+    physicalFieldsUsed.push("Bedrooms");
+    evidenceCount += 1;
+  }
+  const subjectBaths = subjectProfile.bathCount;
+  const compBaths = compProfile.bathCount;
+  if(subjectBaths!=null && compBaths!=null){
+    const diff = Math.abs(compBaths-subjectBaths);
+    if(diff>2) return null;
+    score += diff===0 ? 10 : diff<=0.5 ? 8 : diff<=1 ? 4 : 1;
+    reasons.push(diff===0 ? compBaths + " baths, same count" : compBaths + " baths, within " + diff);
+    physicalFieldsUsed.push("Baths");
+    evidenceCount += 1;
+  }
+  const subjectStyle = (subjectProfile.style || "").toLowerCase();
+  const compStyle = (compProfile.style || "").toLowerCase();
+  if(subjectStyle && compStyle && subjectStyle===compStyle){
+    score += 8;
+    reasons.push("Same building style: " + subjectProfile.style);
+    physicalFieldsUsed.push("Style");
+    evidenceCount += 1;
+  }
+  const valuePct = comparePctDelta(subject.fullMarketValue, comp.fullMarketValue);
+  if(valuePct!=null && valuePct<=0.35){
+    score += 6;
+    reasons.push("Market value within " + Math.round(valuePct * 100) + "%");
+    allSignals.push("Market value");
+  }
+  if(hasInventoryProfile(subject) && evidenceCount===0) score -= 12;
+  const delta = buildComparableDelta(subject, comp, subjectProfile, compProfile);
+  const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter(label => !physicalFieldsUsed.includes(label));
+  return {
+    ...comp,
+    _compScore: score,
+    _compReasons: reasons,
+    _compSignals: allSignals.concat(physicalFieldsUsed),
+    _compEvidenceCount: evidenceCount,
+    _compPhysicalFieldsUsed: physicalFieldsUsed,
+    _compUnusedPhysicalFields: unusedPhysicalFields,
+    _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
+    _compProfile: compProfile,
+    _compDelta: delta
+  };
+};
+const buildComparableResult = (subject, parcels, options={}) => {
+  if(!subject) return null;
+  const subjectProfile = buildComparableProfile(subject);
+  const residential = isResidentialPropClass(subject.propClass);
+  const exactCompIds = [...new Set((options?.exactCompIds||[]).map(normalizeParcelId).filter(Boolean))];
+  const requestedDatasetKey = (options?.snapshotDatasetKey || "").trim();
+  const currentDatasetKey = (options?.currentDatasetKey || "").trim();
+  let neighbors = [];
+  let comparableMode = "physical";
+  let snapshot = {
+    active: false,
+    requestedCompIds: [],
+    resolvedCompIds: [],
+    missingCompIds: [],
+    requestedDatasetKey,
+    currentDatasetKey,
+    datasetMismatch: false,
+  };
+  if(exactCompIds.length){
+    comparableMode = "snapshot";
+    snapshot = {
+      active: true,
+      requestedCompIds: exactCompIds,
+      resolvedCompIds: [],
+      missingCompIds: [],
+      requestedDatasetKey,
+      currentDatasetKey,
+      datasetMismatch: !!(requestedDatasetKey && currentDatasetKey && requestedDatasetKey!==currentDatasetKey),
+    };
+    const parcelById = new Map();
+    for(const parcel of parcels||[]){
+      const key = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+      if(key && !parcelById.has(key)) parcelById.set(key, parcel);
+    }
+    neighbors = exactCompIds.map(compId=>{
+      const comp = parcelById.get(compId);
+      if(!comp || normalizeParcelId(comp.parcelIdNorm || comp.parcelId)===normalizeParcelId(subject.parcelIdNorm || subject.parcelId)) return null;
+      return buildComparableSnapshotCandidate(subject, comp, subjectProfile);
+    }).filter(Boolean);
+    snapshot.resolvedCompIds = neighbors.map(comp=>normalizeParcelId(comp.parcelIdNorm || comp.parcelId || comp.printKey || comp.pinSbl)).filter(Boolean);
+    snapshot.missingCompIds = exactCompIds.filter(compId=>!snapshot.resolvedCompIds.includes(compId));
+  }else if(residential){
+    neighbors = parcels
+      .map(comp => buildComparableCandidate(subject, comp))
+      .filter(Boolean)
+      .sort((a,b)=>(b._compScore-a._compScore) || (Math.abs((a.fullMarketValue||0)-(subject.fullMarketValue||0)) - Math.abs((b.fullMarketValue||0)-(subject.fullMarketValue||0))))
+      .slice(0,8);
+  }
+  if(!exactCompIds.length && !neighbors.length){
+    comparableMode = "fallback";
+    const streetKey = streetNameKeyForComp(subject.address);
+    const subjectNeighborhood = subjectProfile.neighborhood;
+    neighbors = parcels
+      .filter(comp => comp.parcelId!==subject.parcelId)
+      .filter(comp => comp.propClass===subject.propClass)
+      .filter(comp => {
+        if(subjectNeighborhood && parcelNeighborhoodName(comp)===subjectNeighborhood) return true;
+        return streetKey && streetNameKeyForComp(comp.address)===streetKey;
+      })
+      .slice(0,8)
+      .map(comp => {
+        const compProfile = buildComparableProfile(comp);
+        return {
+          ...comp,
+          _compScore: 0,
+          _compEvidenceCount: 0,
+          _compSignals: ["Neighborhood", "Street", "Class"],
+          _compPhysicalFieldsUsed: [],
+          _compUnusedPhysicalFields: subjectProfile.availablePhysicalFields,
+          _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
+          _compProfile: compProfile,
+          _compDelta: buildComparableDelta(subject, comp, subjectProfile, compProfile),
+          _compReasons: [
+            subjectNeighborhood && parcelNeighborhoodName(comp)===subjectNeighborhood ? "Same neighborhood: " + subjectNeighborhood : null,
+            streetKey && streetNameKeyForComp(comp.address)===streetKey ? "Same street: " + streetKey : null,
+            "Same residential class: " + propClassLabel(subject)
+          ].filter(Boolean)
+        };
+      });
+  }
+  const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/neighbors.length) : null;
+  const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/neighbors.length) : null;
+  const avgEquity = neighbors.length ? +(neighbors.reduce((sum, comp)=>sum+(parseFloat(eqRFast(comp))||0),0)/neighbors.length).toFixed(1) : null;
+  const subjectEquity = subjectProfile.equity;
+  const deltaFMV = avgFMV!=null ? subject.fullMarketValue-avgFMV : null;
+  const deltaFMVPct = (avgFMV && deltaFMV!=null) ? (deltaFMV/avgFMV)*100 : null;
+  const deltaAssessed = avgAssessed!=null ? subject.assessedValue-avgAssessed : null;
+  const deltaEquity = (avgEquity!=null && subjectEquity!=null) ? +(subjectEquity-avgEquity).toFixed(1) : null;
+  const fairnessSignal = deltaEquity==null ? null : (deltaEquity>8 ? "Assessed above physically similar homes" : deltaEquity<-8 ? "Assessed below physically similar homes" : "Assessment is broadly in line with similar homes");
+  return {
+    p: subject,
+    neighbors,
+    avgFMV,
+    avgAssessed,
+    avgEquity,
+    deltaFMV,
+    deltaFMVPct,
+    deltaAssessed,
+    deltaEquity,
+    fairnessSignal,
+    comparableMode,
+    usedInventory: residential && hasInventoryProfile(subject),
+    scopeNeighborhood: subjectProfile.neighborhood || null,
+    streetKey: streetNameKeyForComp(subject.address),
+    subjectProfile,
+    grievanceCandidates: neighbors.slice(0,4),
+    snapshot,
+  };
+};
+
 function pointInRingXY(x,y,ring){
   let inside=false;
   for(let i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -1271,6 +1910,80 @@ function convertGeoJsonFeatureCollectionToStreetCenterlines(payload, sourceName=
 const Badge = ({children,color="#3b82f6",small}) => (
   <span style={{background:color+"22",color,border:`1px solid ${color}33`,borderRadius:5,padding:small?"1px 6px":"2px 8px",fontSize:small?10:11,fontWeight:600,fontFamily:"var(--fm)",whiteSpace:"nowrap"}}>{children}</span>
 );
+const AbsenteeExplain = ({parcel,compact=false}) => {
+  if(!parcel) return null;
+  const model = getAbsenteeModelFast(parcel);
+  const details = model?.signals?.length ? model.signals : ["No strong off-site ownership signal."];
+  return (
+    <details style={{
+      background:"rgba(249,115,22,.06)",
+      border:"1px solid rgba(249,115,22,.18)",
+      borderRadius:8,
+      padding:compact ? "5px 8px" : "8px 10px",
+      marginTop:compact ? 4 : 6,
+      width:"100%"
+    }}>
+      <summary style={{
+        cursor:"pointer",
+        listStyle:"none",
+        fontSize:compact ? 10 : 11,
+        fontWeight:700,
+        color:"#c2410c",
+        fontFamily:"var(--fm)"
+      }}>
+        {model.flag ? "Why flagged as absentee?" : "Why not flagged as absentee?"}
+      </summary>
+      <div style={{display:"grid",gap:4,marginTop:compact ? 6 : 8}}>
+        <div style={{fontSize:compact ? 10 : 11,color:"var(--gray2)",lineHeight:1.5}}>
+          {model.label} ({model.confidence}, score {model.score})
+        </div>
+        {details.map((signal,idx)=>(
+          <div key={`${parcel.parcelId||parcel.address||"parcel"}-absentee-${idx}`} style={{fontSize:compact ? 10 : 11,color:"var(--gray2)",lineHeight:1.45}}>
+            {signal}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+};
+const OwnerPortfolioSection = ({parcel, ownerPortfolioIndex, onSelectParcel}) => {
+  const group = useMemo(()=>getOwnerPortfolioGroupFromIndex(parcel, ownerPortfolioIndex), [parcel, ownerPortfolioIndex]);
+  if(!group || group.propertyCount<=1) return null;
+  return (
+    <details key={parcel?.parcelId||group.id} style={{background:"rgba(13,148,136,.06)",border:"1px solid rgba(13,148,136,.18)",borderRadius:8,padding:"8px 10px",marginTop:8,width:"100%"}}>
+      <summary style={{cursor:"pointer",listStyle:"none",fontSize:11,fontWeight:700,color:"var(--teal2)",fontFamily:"var(--fm)"}}>
+        {group.propertyCount} parcels potentially owned by same owner
+      </summary>
+      <div style={{display:"grid",gap:8,marginTop:8}}>
+        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Grouped by normalized owner name across the loaded Albany roll. Verify manually before treating this as confirmed common ownership.</div>
+        <div style={{display:"grid",gap:7,maxHeight:280,overflowY:"auto",paddingRight:2}}>
+          {group.parcels.map(other=>{
+            const current = other.parcelId===parcel.parcelId;
+            return (
+              <button
+                key={other.parcelId}
+                type="button"
+                onClick={()=>onSelectParcel&&onSelectParcel(other)}
+                style={{textAlign:"left",background:current?"rgba(37,99,235,.10)":"var(--card)",border:`1px solid ${current?"rgba(37,99,235,.26)":"var(--border)"}`,borderRadius:8,padding:"9px 11px",cursor:onSelectParcel?"pointer":"default",minWidth:0}}
+              >
+                <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap",minWidth:0}}>
+                  <div style={{minWidth:0,flex:"1 1 160px"}}>
+                    <div style={{fontSize:12,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}>{other.address||other.parcelId}</div>
+                    <div style={{fontSize:10,color:"var(--gray2)",marginTop:3,overflowWrap:"anywhere",wordBreak:"break-word"}}>{other.parcelId} | {other.neighborhood||"Neighborhood unknown"}{current?" | Current parcel":""}</div>
+                  </div>
+                  <div style={{textAlign:"right",minWidth:0,flex:"0 1 auto"}}>
+                    <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--amber)"}}>{$f(other.fullMarketValue)}</div>
+                    <div style={{fontSize:10,color:"var(--gray3)",marginTop:3}}>{propClassLabel(other)}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </details>
+  );
+};
 const Card = ({children,style={}}) => (
   <div style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:12,padding:"18px 20px",...style}}>{children}</div>
 );
@@ -1282,7 +1995,7 @@ const Sub = ({children}) => (
 );
 const TT = {contentStyle:{background:"#0a1628",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,fontFamily:"var(--fb)",fontSize:12},labelStyle:{color:"#f1f5f9"},itemStyle:{color:"#94a3b8"}};
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ STAT CARD Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ STAT CARD ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const StatCard = ({label,value,icon,color="#3b82f6",sub,onClick}) => (
   <div onClick={onClick} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:12,padding:"16px 18px",flex:1,minWidth:140,cursor:onClick?"pointer":"default",transition:"opacity .15s"}} onMouseEnter={e=>{if(onClick)e.currentTarget.style.opacity=".8"}} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1296,9 +2009,10 @@ const StatCard = ({label,value,icon,color="#3b82f6",sub,onClick}) => (
   </div>
 );
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ PARCEL MINI CARD Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ PARCEL MINI CARD ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
   const flag=eqFlagFast(p); const fc=FC[flag];
+  const ownerPortfolioCount = getOwnerPortfolioCountFast(p);
   return (
     <div className="fi" onClick={()=>onClick&&onClick(p)} style={{
       background:selected?"rgba(37,99,235,0.12)":"var(--card)",border:`1px solid ${selected?"var(--blue)":"var(--border)"}`,
@@ -1308,13 +2022,14 @@ const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
     onMouseLeave={e=>{if(!selected&&onClick)e.currentTarget.style.background="var(--card)"}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
           <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",margin:"3px 0 7px"}}>{p.parcelId} | {p.zip}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
             <Badge color="#6366f1" small>{propClassLabel(p)}</Badge>
+            {ownerPortfolioCount>1&&<Badge color="#0f766e" small>{ownerPortfolioBadgeLabel(p)}</Badge>}
             {p.parcelType==="HOMESTEAD"&&<Badge color="#0d9488" small>Homestead</Badge>}
             {p.exemptions.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} Exemption{p.exemptions.length>1?"s":""}</Badge>}
-            {isAbsenteeFast(p)&&<Badge color="#f97316" small>Absentee</Badge>}
+            {isAbsenteeFast(p)&&<><Badge color="#f97316" small>Absentee</Badge><AbsenteeExplain parcel={p} compact /></>}
           </div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
@@ -1331,17 +2046,19 @@ const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ DETAIL PANEL Ã¢â€â‚¬Ã¢â€â‚¬ */
-const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ DETAIL PANEL ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectParcel}) => {
   const flag=eqFlagFast(p); const fc=FC[flag]; const r=parseFloat(eqRFast(p)); const absenteeModel=getAbsenteeModelFast(p);
+  const ownerPortfolioGroup = getOwnerPortfolioGroupFromIndex(p, ownerPortfolioIndex);
+  const ownerPortfolioCount = ownerPortfolioGroup?.propertyCount || 0;
   const Row = ({label,value,color,mono}) => (
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,gap:12}}>
-      <span style={{fontSize:12,color:"var(--gray)",flex:1}}>{label}</span>
-      <span style={{fontSize:12,fontFamily:mono?"var(--fm)":"inherit",fontWeight:500,color:color||"var(--white)",textAlign:"right"}}>{value}</span>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",marginBottom:6,gap:12,minWidth:0}}>
+      <span style={{fontSize:12,color:"var(--gray)",flex:"1 1 120px",minWidth:0}}>{label}</span>
+      <span style={{fontSize:12,fontFamily:mono?"var(--fm)":"inherit",fontWeight:500,color:color||"var(--white)",textAlign:"right",flex:"1 1 160px",minWidth:0,maxWidth:"100%",overflowWrap:"anywhere",wordBreak:"break-word",whiteSpace:"normal"}}>{value}</span>
     </div>
   );
   const Sec = ({title,children}) => (
-    <div style={{marginBottom:18}}>
+    <div style={{marginBottom:18,minWidth:0}}>
       <div style={{fontSize:9,fontWeight:700,color:"var(--gray2)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:8,paddingBottom:5,borderBottom:"1px solid var(--border)"}}>{title}</div>
       {children}
     </div>
@@ -1350,10 +2067,10 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
   const totExCI=p.exemptions.reduce((s,e)=>s+e.cityAmt,0);
   const totExS=p.exemptions.reduce((s,e)=>s+e.schoolAmt,0);
   return (
-    <div className="fi" style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:20,height:"100%",overflowY:"auto",position:"relative"}}>
-      <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--gray)",width:26,height:26,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>X</button>
-      <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:32}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
-      <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)",marginBottom:10}}>Parcel {p.parcelId} | Albany, NY {p.zip}{parcelAreaSummary(p)?` | ${parcelAreaSummary(p)}`:""}</div>
+    <div className="fi" style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:20,height:"100%",maxWidth:"100%",minWidth:0,overflowY:"auto",position:"relative"}}>
+      <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--gray)",width:26,height:26,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>x</button>
+      <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:32,lineHeight:1.1,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
+      <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)",marginBottom:10,overflowWrap:"anywhere",wordBreak:"break-word"}}>Parcel {p.parcelId} | Albany, NY {p.zip}{parcelAreaSummary(p)?` | ${parcelAreaSummary(p)}`:""}</div>
       {/* Save My Home button */}
       {onSaveHome&&<button onClick={()=>onSaveHome(p)} style={{
         display:"flex",alignItems:"center",gap:6,
@@ -1364,6 +2081,11 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
       }}>
         {myHome?.parcelId===p.parcelId?"Home: This is My Home (saved)":"Save as My Home"}
       </button>}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14,minWidth:0}}>
+        {ownerPortfolioCount>1&&<Badge color="#0f766e">{ownerPortfolioBadgeLabel(p)}</Badge>}
+        {isAbsenteeFast(p)&&<Badge color="#f97316">Absentee</Badge>}
+        {p.exemptions.length>0&&<Badge color="#f59e0b">{p.exemptions.length} exemption{p.exemptions.length===1?"":"s"}</Badge>}
+      </div>
       {/* Equity meter */}
       <div style={{background:`${fc}11`,border:`1px solid ${fc}33`,borderRadius:9,padding:12,marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
@@ -1381,8 +2103,10 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
         <Row label="Neighborhood" value={parcelNeighborhoodName(p)||"Not available"}/>
         {parcelNeighborhoodAssociation(p)&&parcelNeighborhoodAssociation(p)!==parcelNeighborhoodName(p)&&<Row label="Neighborhood Association" value={parcelNeighborhoodAssociation(p)}/>}
         <Row label="Mailing Address" value={p.mailAddress||"Not available"}/>
+        {ownerPortfolioCount>1&&<Row label="Owner Portfolio" value={`${ownerPortfolioCount} parcels potentially owned by same owner`} color="var(--teal2)"/>}
         <Row label="Absentee Signal" value={absenteeModel.label+" ("+absenteeModel.confidence+", score "+absenteeModel.score+")"}  color={isAbsenteeFast(p)?"#f97316":"#22c55e"}/>
-        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.5,marginTop:-2}}>{absenteeModel.signals.join(" | ") || "No strong off-site ownership signal."}</div>
+        <AbsenteeExplain parcel={p} />
+        <OwnerPortfolioSection parcel={p} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={onSelectParcel} />
       </Sec>
       <Sec title="Valuation">
         <Row label="Full Market Value" value={$f(p.fullMarketValue)} mono color="#f59e0b"/>
@@ -1403,15 +2127,26 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
               <span style={{fontFamily:"var(--fm)",fontSize:12,fontWeight:600,color:"var(--amber2)"}}>{ex.name}</span>
               <Badge color="#f59e0b" small>Sec. {ex.code}</Badge>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,fontSize:11,color:"var(--gray)"}}>
+            <div className="cols-3" style={{display:"grid",gap:4,fontSize:11,color:"var(--gray)"}}>
               <span>County: {$f(ex.countyAmt)}</span><span>City: {$f(ex.cityAmt)}</span><span>School: {$f(ex.schoolAmt)}</span>
             </div>
           </div>
         ))}
         <div style={{fontSize:10,color:"var(--gray2)",marginTop:4}}>Totals - County: {$f(totExC)} | City: {$f(totExCI)} | School: {$f(totExS)}</div>
       </Sec>}
+      {hasInventoryProfile(p)&&<Sec title="Residential Profile">
+        {inventoryStyle(p)&&<Row label="Building Style" value={inventoryStyle(p)}/>}
+        {inventoryYearBuilt(p)&&<Row label="Year Built (inventory)" value={inventoryYearBuilt(p)} mono color="var(--teal2)"/>}
+        {inventorySqft(p)!=null&&<Row label="Living Area" value={`${inventorySqft(p).toLocaleString()} sq ft`} mono/>}
+        {inventoryBedrooms(p)!=null&&<Row label="Bedrooms" value={inventoryBedrooms(p)} mono/>}
+        {(inventoryFullBaths(p)!=null || inventoryHalfBaths(p)!=null)&&<Row label="Baths" value={inventoryBathText(p)} mono/>}
+        {Number.isFinite(Number(inventoryOf(p)?.inventoryTotalAssessedValue))&&<Row label="Inventory Total AV" value={$f(Number(inventoryOf(p)?.inventoryTotalAssessedValue))} mono/>}
+        {inventoryOf(p)?.joinSource&&<Row label="Inventory Source" value={inventoryOf(p)?.joinSource}/>} 
+      </Sec>}
       <Sec title="Property Details">
         <Row label="Class" value={propClassLabel(p)}/>
+        {propClassOfficialTitle(p?.propClass)&&propClassOfficialLabel(p)!==propClassLabel(p)&&<Row label="Official Class" value={propClassOfficialLabel(p)}/>} 
+        {propClassMeaning(p)&&<Row label="Class Meaning" value={propClassMeaning(p)}/>}
         <Row label="Type" value={p.parcelType}/>
         <Row label="Lot Size" value={p.frontage&&p.depth?`${p.frontage}x${p.depth} ft (${nf(p.frontage*p.depth)} sq ft)`:"-"}/>
         {p.acres&&<Row label="Lot Acres" value={p.acres.toFixed(4)+" ac"} mono/>}
@@ -1433,7 +2168,7 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ PROPERTY LIST MODAL Ã¢â‚¬â€ slide-over panel for drilldown from any stat Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ PROPERTY LIST MODAL ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â slide-over panel for drilldown from any stat ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const PropListModal = ({data, onClose}) => {
   if (!data) return null;
   const [search, setSearch] = useState("");
@@ -1446,14 +2181,14 @@ const PropListModal = ({data, onClose}) => {
     <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"11px 14px",marginBottom:7}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address||"(no address)"}</AddrLink></div>
+          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address||"(no address)"}</AddrLink></div>
           <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:1}}>{p.parcelId} | {p.zip}</div>
           <div style={{fontSize:11,color:"var(--gray2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.owner1}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>
             <Badge color="#6366f1" small>{propClassLabel(p)}</Badge>
             {p.parcelType==="HOMESTEAD"&&<Badge color="#0d9488" small>Homestead</Badge>}
             {p.exemptions?.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} Exempt</Badge>}
-            {isAbsenteeFast(p)&&<Badge color="#f97316" small>Absentee</Badge>}
+            {isAbsenteeFast(p)&&<><Badge color="#f97316" small>Absentee</Badge><AbsenteeExplain parcel={p} compact /></>}
           </div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
@@ -1499,7 +2234,7 @@ const PropListModal = ({data, onClose}) => {
   );
 };
 
-/* u{00E2}u{0080}u{009D}u{00E2}u{0082}u{00AC}u{00E2}u{0080}u{009D} DEBOUNCE HOOK Ã¢â‚¬â€ delays useMemo recomputation until typing stops Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* u{00E2}u{0080}u{009D}u{00E2}u{0082}u{00AC}u{00E2}u{0080}u{009D} DEBOUNCE HOOK ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â delays useMemo recomputation until typing stops ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 function useDebounce(value, delay) {
   const [dv, setDv] = useState(value);
   useEffect(() => {
@@ -1509,15 +2244,16 @@ function useDebounce(value, delay) {
   return dv;
 }
 
-/* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
    TAB PANELS
-Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 1. BROWSE Ã¢â€â‚¬Ã¢â€â‚¬ */
-const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup}) => {
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 1. BROWSE ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup,ownerPortfolioIndex}) => {
   const [search,setSearch]=useState("");
   const [fZip,setFZip]=useState(""); const [fCls,setFCls]=useState(""); const [fTyp,setFTyp]=useState("");
   const [fEx,setFEx]=useState(""); const [fEq,setFEq]=useState(""); const [fNbr,setFNbr]=useState("");
+  const [fBeds,setFBeds]=useState(""); const [fSqft,setFSqft]=useState(""); const [fYear,setFYear]=useState(""); const [fStyle,setFStyle]=useState("");
   const [sort,setSort]=useState("fmv-desc");
   const [sel,setSel]=useState(null);
   const [view,setView]=useState("grid");
@@ -1534,6 +2270,7 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
   // Use Set loop instead of flatMap to avoid 80K+ intermediate array; skip if metadata available
   const exs=useMemo(()=>{if(meta.exemptionNames)return meta.exemptionNames;const s=new Set();for(const p of parcels)for(const e of p.exemptions)s.add(e.name);return[...s].sort();},[meta,parcels]);
   const nbrs=useMemo(()=>[...new Set(parcels.map(p=>p.neighborhood).filter(Boolean))].sort(),[parcels]);
+  const inventoryStyles=useMemo(()=>[...new Set(parcels.map(p=>(p._invStyle||"").trim()).filter(Boolean))].sort(),[parcels]);
   const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,fontFamily:"var(--fb)",cursor:"pointer"};
 
   // Auto-fill search from My Home
@@ -1553,6 +2290,22 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
     if(fEq==="fair")r=r.filter(p=>p._eqBand==="fair");
     if(fEq==="over")r=r.filter(p=>p._eqBand==="over");
     if(fEq==="absentee")r=r.filter(p=>p._absentee===true);
+    if(fBeds==="0-1")r=r.filter(p=>(p._invBedrooms??-1)>=0&&(p._invBedrooms??-1)<=1);
+    if(fBeds==="2")r=r.filter(p=>(p._invBedrooms??-1)===2);
+    if(fBeds==="3")r=r.filter(p=>(p._invBedrooms??-1)===3);
+    if(fBeds==="4")r=r.filter(p=>(p._invBedrooms??-1)===4);
+    if(fBeds==="5+")r=r.filter(p=>(p._invBedrooms??-1)>=5);
+    if(fSqft==="<1000")r=r.filter(p=>(p._invSqft??-1)>0&&(p._invSqft??-1)<1000);
+    if(fSqft==="1000-1499")r=r.filter(p=>(p._invSqft??-1)>=1000&&(p._invSqft??-1)<=1499);
+    if(fSqft==="1500-1999")r=r.filter(p=>(p._invSqft??-1)>=1500&&(p._invSqft??-1)<=1999);
+    if(fSqft==="2000-2499")r=r.filter(p=>(p._invSqft??-1)>=2000&&(p._invSqft??-1)<=2499);
+    if(fSqft==="2500+")r=r.filter(p=>(p._invSqft??-1)>=2500);
+    if(fYear==="<1900")r=r.filter(p=>(p._invYearBuilt??0)>0&&(p._invYearBuilt??0)<1900);
+    if(fYear==="1900-1939")r=r.filter(p=>(p._invYearBuilt??0)>=1900&&(p._invYearBuilt??0)<=1939);
+    if(fYear==="1940-1969")r=r.filter(p=>(p._invYearBuilt??0)>=1940&&(p._invYearBuilt??0)<=1969);
+    if(fYear==="1970-1999")r=r.filter(p=>(p._invYearBuilt??0)>=1970&&(p._invYearBuilt??0)<=1999);
+    if(fYear==="2000+")r=r.filter(p=>(p._invYearBuilt??0)>=2000);
+    if(fStyle)r=r.filter(p=>((p._invStyle||"").trim()===fStyle));
     r.sort((a,b)=>{
       if(sort==="fmv-desc")return b.fullMarketValue-a.fullMarketValue;
       if(sort==="fmv-asc")return a.fullMarketValue-b.fullMarketValue;
@@ -1563,15 +2316,15 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
       return 0;
     });
     return r;
-  },[parcels,dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,sort]);
+  },[parcels,dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,fBeds,fSqft,fYear,fStyle,sort]);
   // Reset to page 1 whenever debounced filters or sort change
-  useEffect(()=>{setPage(0);},[dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,sort]);
+  useEffect(()=>{setPage(0);},[dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,fBeds,fSqft,fYear,fStyle,sort]);
   const pageCount=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
   const pageSlice=filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
-  const clearAll=()=>{setSearch("");setOwnerSearch("");setFZip("");setFCls("");setFTyp("");setFEx("");setFEq("");setFNbr("");};
-  const hasFilters=search||ownerSearch||fZip||fCls||fTyp||fEx||fEq||fNbr;
+  const clearAll=()=>{setSearch("");setOwnerSearch("");setFZip("");setFCls("");setFTyp("");setFEx("");setFEq("");setFNbr("");setFBeds("");setFSqft("");setFYear("");setFStyle("");};
+  const hasFilters=search||ownerSearch||fZip||fCls||fTyp||fEx||fEq||fNbr||fBeds||fSqft||fYear||fStyle;
   return (
-    <div style={{display:"grid",gridTemplateColumns:sel?"1fr 360px":"1fr",gap:18}}>
+    <div className={sel?"panel-split":undefined} style={!sel?{display:"grid",gridTemplateColumns:"1fr",gap:18}:undefined}>
       <div>
         {!myHome&&<div style={{background:"linear-gradient(135deg,rgba(37,99,235,.12) 0%,rgba(13,148,136,.08) 100%)",border:"1px solid rgba(37,99,235,.3)",borderRadius:12,padding:"18px 20px",marginBottom:16,display:"flex",gap:16,alignItems:"flex-start"}}>
           <span style={{fontSize:28,flexShrink:0}}>Start</span>
@@ -1593,10 +2346,14 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
           <input placeholder="Owner name (last, first or company)..." value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)} style={{...SI,flex:"1 1 200px",minWidth:200,borderColor:ownerSearch?"rgba(59,130,246,.6)":"var(--border)",background:ownerSearch?"rgba(37,99,235,.12)":"var(--bg3)"}}/>
           <select value={fNbr} onChange={e=>setFNbr(e.target.value)} style={SI}><option value="">All Neighborhoods</option>{nbrs.map(n=><option key={n}>{n}</option>)}</select>
           <select value={fZip} onChange={e=>setFZip(e.target.value)} style={SI}><option value="">All ZIPs</option>{zips.map(z=><option key={z}>{z}</option>)}</select>
-          <select value={fCls} onChange={e=>setFCls(e.target.value)} style={SI}><option value="">All Classes</option>{clss.map(c=><option key={c} value={c}>{formatPropClassLabel(c, clssDescs?.[c])}</option>)}</select>
+          <select value={fCls} onChange={e=>setFCls(e.target.value)} style={SI}><option value="">All Classes</option>{clss.map(c=><option key={c} value={c}>{formatPropClassOfficialLabel(c, clssDescs?.[c])}</option>)}</select>
           <select value={fTyp} onChange={e=>setFTyp(e.target.value)} style={SI}><option value="">All Types</option><option value="HOMESTEAD">Homestead</option><option value="NON-HOMESTEAD">Non-Homestead</option></select>
           {exs.length>0&&<select value={fEx} onChange={e=>setFEx(e.target.value)} style={SI}><option value="">All Exemptions</option>{exs.map(e=><option key={e}>{e}</option>)}</select>}
           <select value={fEq} onChange={e=>setFEq(e.target.value)} style={SI}><option value="">All Equity</option><option value="under">Under-Assessed</option><option value="fair">Fair Value</option><option value="over">Over-Assessed</option><option value="absentee">Absentee Owner</option></select>
+          <select value={fBeds} onChange={e=>setFBeds(e.target.value)} style={SI}><option value="">Any Beds</option><option value="0-1">0-1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5+">5+</option></select>
+          <select value={fSqft} onChange={e=>setFSqft(e.target.value)} style={SI}><option value="">Any Sq Ft</option><option value="<1000">&lt; 1000</option><option value="1000-1499">1000-1499</option><option value="1500-1999">1500-1999</option><option value="2000-2499">2000-2499</option><option value="2500+">2500+</option></select>
+          <select value={fYear} onChange={e=>setFYear(e.target.value)} style={SI}><option value="">Any Year Built</option><option value="<1900">&lt; 1900</option><option value="1900-1939">1900-1939</option><option value="1940-1969">1940-1969</option><option value="1970-1999">1970-1999</option><option value="2000+">2000+</option></select>
+          {inventoryStyles.length>0&&<select value={fStyle} onChange={e=>setFStyle(e.target.value)} style={SI}><option value="">Any Building Style</option>{inventoryStyles.map(style=><option key={style} value={style}>{style}</option>)}</select>}
           <select value={sort} onChange={e=>setSort(e.target.value)} style={SI}><option value="fmv-desc">FMV high to low</option><option value="fmv-asc">FMV low to high</option><option value="assessed">Assessed high to low</option><option value="address">Address A to Z</option><option value="equity">Equity %</option><option value="land">Land value high to low</option></select>
           {hasFilters&&<button onClick={clearAll} style={{...SI,color:"#f87171",borderColor:"rgba(220,38,38,.3)",cursor:"pointer"}}>Clear</button>}
           <div style={{display:"flex",gap:3,marginLeft:"auto"}}>
@@ -1621,11 +2378,16 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
             </tr></thead>
             <tbody>{pageSlice.map((p,i)=><tr key={p.parcelId} onClick={()=>setSel(p)} style={{background:i%2?"transparent":"var(--card)",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--card2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"transparent":"var(--card)"}>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",color:"var(--gray)",fontSize:10}}>{p.parcelId}</td>
-              <td style={{padding:"7px 11px",fontWeight:500}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></td>
+              <td style={{padding:"7px 11px",fontWeight:500}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></td>
               <td style={{padding:"7px 11px",color:"var(--gray2)"}}>{p.neighborhood}</td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",fontSize:11}}>{p.zip}</td>
-              <td style={{padding:"7px 11px",color:"var(--gray2)"}}>{p.owner1}</td>
-              <td style={{padding:"7px 11px"}}><span title={propClassLabel(p)}><Badge color="#6366f1" small>{propClassDescLabel(p)}</Badge></span></td>
+              <td style={{padding:"7px 11px",color:"var(--gray2)"}}>
+                <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:5,minWidth:0}}>
+                  <span style={{overflowWrap:"anywhere",wordBreak:"break-word"}}>{p.owner1}</span>
+                  {getOwnerPortfolioCountFast(p)>1&&<Badge color="#0f766e" small>{ownerPortfolioBadgeLabel(p)}</Badge>}
+                </div>
+              </td>
+              <td style={{padding:"7px 11px"}}><span title={propClassTooltip(p)}><Badge color="#6366f1" small>{propClassDescLabel(p)}</Badge></span></td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",color:"var(--amber)"}}>{$f(p.fullMarketValue)}</td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)"}}>{$f(p.assessedValue)}</td>
               <td style={{padding:"7px 11px"}}><span style={{color:FC[eqFlagFast(p)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(p)}%</span></td>
@@ -1635,12 +2397,12 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
           </table>
         </div>}
       </div>
-      {sel&&<div style={{position:"sticky",top:20,maxHeight:"90vh",overflowY:"auto"}}><DetailPanel p={sel} onClose={()=>setSel(null)} myHome={myHome} onSaveHome={onSaveHome}/></div>}
+      {sel&&<div style={{position:"sticky",top:20,maxHeight:"90vh",overflowY:"auto"}}><DetailPanel p={sel} onClose={()=>setSel(null)} myHome={myHome} onSaveHome={onSaveHome} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={setSel}/></div>}
     </div>
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 2. ANALYTICS Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 2. ANALYTICS ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const Analytics = ({parcels}) => {
   const fmvBkts=useMemo(()=>{
     const b={"<100k":0,"100-200k":0,"200-300k":0,"300-400k":0,"400-500k":0,"500-750k":0,"750k+":0};
@@ -1690,7 +2452,7 @@ const Analytics = ({parcels}) => {
       <InfoBox icon="Charts" title="Understanding These Charts" color="#3b82f6">
         This tab gives you a bird's-eye view of Albany's entire property landscape. Each chart is built directly from the assessment roll data - no estimates or projections. Together they reveal how property values are distributed across the city, whether the assessment roll is fair, what types of properties dominate each area, and how active the real estate market has been over time. Hover over any bar or dot for exact numbers.
       </InfoBox>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      <div className="cols-2" style={{display:"grid",gap:14}}>
         <C title="Full Market Value Distribution"
            desc="How many properties fall into each price range. A city with healthy housing diversity shows spread across multiple buckets. Heavy concentration in one range can signal affordability pressure or lack of housing variety.">
           <ResponsiveContainer width="100%" height={200}><BarChart data={fmvBkts}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis dataKey="range" tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis tick={{fontSize:10,fill:"#94a3b8"}} allowDecimals={false}/><Tooltip {...TT}/><Bar dataKey="count" fill="#3b82f6" radius={[4,4,0,0]} name="Parcels"/></BarChart></ResponsiveContainer>
@@ -1743,135 +2505,62 @@ const Analytics = ({parcels}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 3. OWNERSHIP INTELLIGENCE Ã¢â€â‚¬Ã¢â€â‚¬ */
-const Ownership = ({parcels, onDrill}) => {
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 3. OWNERSHIP INTELLIGENCE ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[]}) => {
   const [view,setView]=useState("portfolio");
   const [selOwner,setSelOwner]=useState(null);
   const [showAllAbs,setShowAllAbs]=useState(false);
   const [showAllDupes,setShowAllDupes]=useState(false);
-  const [dupes,setDupes]=useState([]);
-  const [dupesStatus,setDupesStatus]=useState("idle");
-  const [dupesError,setDupesError]=useState("");
+  const [openDupes,setOpenDupes]=useState({});
   const LIST_LIMIT=50;
 
-  // Portfolio: group by owner name
-  const portfolio=useMemo(()=>{
-    const m={};
-    parcels.forEach(p=>{
-      const key=p.owner1.trim().toLowerCase();
-      if(!m[key])m[key]={name:p.owner1,parcels:[],totalFMV:0,totalAssessed:0,totalLand:0,zips:new Set()};
-      m[key].parcels.push(p);m[key].totalFMV+=p.fullMarketValue;m[key].totalAssessed+=p.assessedValue;m[key].totalLand+=p.landValue;m[key].zips.add(p.zip);
-    });
-    return Object.values(m).sort((a,b)=>b.totalFMV-a.totalFMV);
-  },[parcels]);
+  const ownerGroups=useMemo(()=>ownerPortfolioGroups.length?ownerPortfolioGroups:buildOwnerPortfolioGroups(parcels),[ownerPortfolioGroups,parcels]);
+  const portfolio=useMemo(()=>[...ownerGroups].sort((a,b)=>b.totalFMV-a.totalFMV || b.propertyCount-a.propertyCount || a.displayOwner.localeCompare(b.displayOwner)),[ownerGroups]);
 
-  // Absentee owners
   const absentees=useMemo(()=>parcels.filter(p=>isAbsenteeFast(p)).sort((a,b)=>(b._absenteeScore||0)-(a._absenteeScore||0) || b.fullMarketValue-a.fullMarketValue),[parcels]);
 
-  // Deed timeline
   const deedData=useMemo(()=>{
     const m={};
     parcels.forEach(p=>{if(p.deedYear){if(!m[p.deedYear])m[p.deedYear]={year:p.deedYear,count:0,totalFMV:0,parcels:[]};m[p.deedYear].count++;m[p.deedYear].totalFMV+=p.fullMarketValue;m[p.deedYear].parcels.push(p);}});
     return Object.values(m).sort((a,b)=>a.year-b.year);
   },[parcels]);
 
-  useEffect(()=>{
-    setDupes([]);
-    setDupesStatus("idle");
-    setDupesError("");
-    setShowAllDupes(false);
-  },[parcels]);
+  const duplicateOwnerGroups=useMemo(()=>ownerGroups.filter(g=>g.propertyCount>1),[ownerGroups]);
 
-  const runDuplicateScan=useCallback(()=>{
-    if(dupesStatus==="running") return;
-    setDupesStatus("running");
-    setDupesError("");
-    const worker=createDuplicateScanWorker();
-    if(worker){
-      const cleanup=()=>{ try{worker.terminate();}catch{} try{if(worker.__blobUrl)URL.revokeObjectURL(worker.__blobUrl);}catch{} };
-      worker.onmessage=(ev)=>{
-        const msg=ev.data||{};
-        if(!msg.ok){
-          setDupesStatus("error");
-          setDupesError(msg.error||"Duplicate scan failed.");
-          cleanup();
-          return;
-        }
-        const groups=(msg.groups||[]).map(g=>({
-          base: parcels[g.baseIndex],
-          similar: (g.similarIndices||[]).map(i=>parcels[i]).filter(Boolean)
-        })).filter(g=>g.base&&g.similar.length);
-        setDupes(groups);
-        setDupesStatus("done");
-        cleanup();
-      };
-      worker.onerror=()=>{
-        setDupesStatus("error");
-        setDupesError("Duplicate scan worker crashed.");
-        cleanup();
-      };
-      worker.postMessage({parcels:parcels.map(p=>({owner1:p.owner1||""})), threshold:0.75});
-      return;
-    }
-    // Fallback (still on-demand)
-    try{
-      const groups=[];
-      const used=new Set();
-      const names=parcels.map(p=>(p.owner1||"").trim().toLowerCase());
-      for(let i=0;i<parcels.length;i++){
-        if(used.has(i)) continue;
-        const baseName=names[i];
-        if(!baseName || baseName.length<4) continue;
-        const matches=[];
-        for(let j=i+1;j<parcels.length;j++){
-          if(used.has(j)) continue;
-          const other=names[j];
-          if(!other || Math.abs(baseName.length-other.length)>4) continue;
-          if(baseName[0]!==other[0]) continue;
-          if(levenSim(baseName,other)>0.75) matches.push(j);
-        }
-        if(matches.length){
-          groups.push({base:parcels[i],similar:matches.map(j=>parcels[j])});
-          used.add(i); matches.forEach(j=>used.add(j));
-        }
-      }
-      setDupes(groups);
-      setDupesStatus("done");
-    }catch(err){
-      setDupesStatus("error");
-      setDupesError(err?.message||String(err));
-    }
-  },[dupesStatus,parcels]);
+  useEffect(()=>{
+    setShowAllDupes(false);
+    setOpenDupes(duplicateOwnerGroups.length?{[duplicateOwnerGroups[0].id]:true}:{});
+  },[duplicateOwnerGroups]);
 
   const BtnTab=({id,label})=><button onClick={()=>setView(id)} style={{background:view===id?"var(--blue)":"transparent",color:view===id?"white":"var(--gray)",border:"none",borderRadius:7,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{label}</button>;
 
   return (
     <div className="fi">
       <SectionTitle>Ownership Intelligence</SectionTitle>
-      <Sub>Portfolio mapper, absentee owner detection, deed book timeline, duplicate owner analysis</Sub>
+      <Sub>Portfolio mapper, absentee owner detection, deed book timeline, and precomputed owner groups</Sub>
       <InfoBox icon="Owners" title="What Is This Tab For?" color="#3b82f6">
-        This tab looks at who owns Albany properties - not just what the properties are worth. You can discover which individuals or companies own multiple parcels across the city, identify properties where the owner doesn't live on-site (absentee owners), trace the history of when properties changed hands, and flag cases where slightly different owner name spellings may represent the same person - a common data quality issue in public records.
+        This tab looks at who owns Albany properties - not just what the properties are worth. You can discover which individuals or companies own multiple parcels across the city, identify properties where the owner does not live on-site (absentee owners), trace when parcels changed hands, and review owner groups that load automatically from normalized owner names instead of waiting on a manual scan.
       </InfoBox>
       <div style={{display:"flex",gap:4,background:"var(--card)",borderRadius:9,padding:4,border:"1px solid var(--border)",width:"fit-content",marginBottom:18}}>
         <BtnTab id="portfolio" label="Portfolio Mapper"/>
         <BtnTab id="absentee" label="Absentee Owners"/>
         <BtnTab id="deed" label="Deed Timeline"/>
-        <BtnTab id="dupes" label="Duplicate Owners"/>
+        <BtnTab id="dupes" label="Owner Groups"/>
       </div>
 
       {view==="portfolio"&&<div>
         <InfoBox icon="Portfolio" title="Portfolio Mapper - Who Owns the Most?" color="#3b82f6">
-          This list ranks every owner in the dataset by their total property portfolio value. A person or company appearing once is typical. Finding the same owner across many parcels - especially LLCs or holding companies - can reveal large-scale landlords, institutional investors, or development interests in the city. Click any owner to expand and see every parcel they own.
+          This list ranks every owner in the dataset by total property portfolio value using the same normalized owner grouping that powers the parcel inspector. Click any owner to expand and see every parcel in that portfolio.
         </InfoBox>
         <div style={{display:"grid",gap:10}}>
           {portfolio.slice(0,15).map((own,i)=>(
-            <div key={own.name} onClick={()=>setSelOwner(selOwner===own.name?null:own.name)} style={{background:"var(--card2)",border:`1px solid ${selOwner===own.name?"var(--blue)":"var(--border)"}`,borderRadius:11,padding:"14px 18px",cursor:"pointer"}}>
+            <div key={own.id} onClick={()=>setSelOwner(selOwner===own.ownerKey?null:own.ownerKey)} style={{background:"var(--card2)",border:`1px solid ${selOwner===own.ownerKey?"var(--blue)":"var(--border)"}`,borderRadius:11,padding:"14px 18px",cursor:"pointer"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
                   <div style={{width:36,height:36,borderRadius:8,background:`${COLORS[i%COLORS.length]}22`,border:`1px solid ${COLORS[i%COLORS.length]}44`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--fm)",fontSize:14,fontWeight:700,color:COLORS[i%COLORS.length],flexShrink:0}}>{i+1}</div>
                   <div>
-                    <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{own.name}</div>
-                    <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{own.parcels.length} parcel{own.parcels.length>1?"s":""} | ZIPs: {[...own.zips].join(", ")}</div>
+                    <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{own.displayOwner}</div>
+                    <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{own.propertyCount} parcel{own.propertyCount>1?"s":""} | ZIPs: {own.zips.join(", ")}</div>
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
@@ -1879,9 +2568,9 @@ const Ownership = ({parcels, onDrill}) => {
                   <div style={{fontSize:10,color:"var(--gray)",marginTop:2}}>total FMV</div>
                 </div>
               </div>
-              {selOwner===own.name&&<div style={{marginTop:14,paddingTop:14,borderTop:"1px solid var(--border)",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:8}}>
+              {selOwner===own.ownerKey&&<div style={{marginTop:14,paddingTop:14,borderTop:"1px solid var(--border)",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:8}}>
                 {own.parcels.map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
-                  <div style={{fontWeight:600,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                  <div style={{fontWeight:600,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                   <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{p.parcelId} | {p.propClassDesc}</div>
                   <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
                     <span style={{fontSize:12,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</span>
@@ -1904,7 +2593,7 @@ const Ownership = ({parcels, onDrill}) => {
         <InfoBox icon="Mail" title="What Is an Absentee Owner?" color="#f97316">
           This flag is now a scored signal, not a simple mailing-address mismatch. The model combines mailing-address differences with stronger parcel-level evidence such as LLC or trust ownership, repeated ownership across multiple Albany parcels, and owner-occupancy exemptions like STAR or senior exemptions. A parcel is only flagged when multiple signals point toward off-site ownership.
         </InfoBox>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:18}}>
+        <div className="cols-2" style={{display:"grid",gap:12,marginBottom:18}}>
           <StatCard label="Absentee-Owned Parcels" value={absentees.length} icon="Home" color="#f97316" sub={`${Math.round(absentees.length/parcels.length*100)}% of all parcels`} onClick={()=>onDrill&&onDrill({title:`All Absentee-Owned Parcels (${absentees.length})`,parcels:absentees})}/>
           <StatCard label="Total Absentee FMV" value={"$"+(absentees.reduce((s,p)=>s+p.fullMarketValue,0)/1000000).toFixed(1)+"M"} icon="Tax" color="#f59e0b"/>
         </div>
@@ -1917,10 +2606,10 @@ const Ownership = ({parcels, onDrill}) => {
               <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(249,115,22,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div>
-                    <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                    <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                     <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} | {p.zip} | {getAbsenteeLabelFast(p)} | score {getAbsenteeModelFast(p).score}</div>
                     <div style={{marginTop:8}}>
-                      <div style={{fontSize:11,color:"var(--gray)"}}>Property at: <span style={{color:"var(--white)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink>, Albany NY {p.zip}</span></div>
+                      <div style={{fontSize:11,color:"var(--gray)"}}>Property at: <span style={{color:"var(--white)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink>, Albany NY {p.zip}</span></div>
                       <div style={{fontSize:11,color:"#f97316",marginTop:3}}>Mail to: {p.mailAddress}</div>
                       <div style={{fontSize:11,color:"var(--gray2)",marginTop:4}}>{getAbsenteeModelFast(p).signals.join(" | ")}</div>
                     </div>
@@ -1955,7 +2644,7 @@ const Ownership = ({parcels, onDrill}) => {
                 </div>
               </div>
               <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:6}}>
-                {yr.parcels.slice(0,10).map(p=><Badge key={p.parcelId} color="#0d9488" small><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></Badge>)}
+                {yr.parcels.slice(0,10).map(p=><Badge key={p.parcelId} color="#0d9488" small><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></Badge>)}
                 {yr.parcels.length>10&&<Badge color="#475569" small>+{yr.parcels.length-10} more</Badge>}
               </div>
             </div>
@@ -1964,48 +2653,58 @@ const Ownership = ({parcels, onDrill}) => {
       </div>}
 
       {view==="dupes"&&<div>
-        <InfoBox icon="Search" title="Duplicate Owner Detection - Why This Matters" color="#a78bfa">
-          Public property records are entered by hand and are often inconsistent. The same person might appear as "Robert Smith", "Bob Smith", "R. Smith", and "Smith Robert" across different parcels - making it impossible to see their full portfolio at a glance. This tool uses fuzzy name matching (similarity scoring) to flag owner names that look like they might belong to the same person or entity. Always verify manually before drawing conclusions - similar names can also be coincidental.
+        <InfoBox icon="Search" title="Owner Groups - Loaded Automatically" color="#a78bfa">
+          These groups are precomputed as soon as the Albany roll loads, so you do not need to run a separate scan. Parcels are grouped by normalized owner name to surface likely common ownership quickly. Treat these as potential matches until you manually verify trusts, family members, and related LLC structures.
         </InfoBox>
         <div>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
-            <button onClick={runDuplicateScan} disabled={dupesStatus==="running"} style={{background:dupesStatus==="running"?"var(--gray2)":"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,cursor:dupesStatus==="running"?"default":"pointer"}}>{dupesStatus==="running"?"Scanning owners...":"Run Duplicate Scan"}</button>
-            <span style={{fontSize:11,color:"var(--gray2)"}}>Fuzzy matching runs on-demand in a background worker to avoid freezing the tab.</span>
-            {dupesStatus==="done"&&<span style={{fontSize:11,color:"var(--gray2)"}}>{dupes.length.toLocaleString()} group{dupes.length===1?"":"s"} found</span>}
+            <span style={{fontSize:11,color:"var(--gray2)"}}>{duplicateOwnerGroups.length.toLocaleString()} owner group{duplicateOwnerGroups.length===1?"":"s"} with more than one parcel</span>
+            <span style={{fontSize:11,color:"var(--gray2)"}}>Sorted by parcel count, then total portfolio market value.</span>
           </div>
-          {dupesStatus==="idle"&&<div style={{textAlign:"center",padding:34,color:"var(--gray2)"}}>
-            <div style={{fontSize:28,marginBottom:8}}>Search</div>
-            <div>Duplicate owner scanning is disabled by default for performance.</div>
-            <div style={{fontSize:11,marginTop:8}}>Click <b style={{color:"var(--white)"}}>Run Duplicate Scan</b> to analyze owner names in the current dataset.</div>
-          </div>}
-          {dupesStatus==="running"&&<div style={{textAlign:"center",padding:34,color:"var(--gray2)"}}>
-            <div className="pulse" style={{fontSize:26,marginBottom:8}}>...</div>
-            <div>Scanning owner names in background...</div>
-          </div>}
-          {dupesStatus==="error"&&<div style={{textAlign:"center",padding:34,color:"#fca5a5"}}>
-            <div style={{fontSize:24,marginBottom:8}}>!</div>
-            <div>Duplicate scan failed.</div>
-            {dupesError&&<div style={{fontSize:11,marginTop:8,color:"var(--gray2)"}}>{dupesError}</div>}
-          </div>}
-          {dupesStatus==="done"&&dupes.length>0&&<div>
-            {dupes.slice(0,showAllDupes?dupes.length:LIST_LIMIT).map((g,i)=>(
-              <div key={i} style={{background:"var(--card2)",border:"1px solid rgba(220,38,38,.2)",borderRadius:11,padding:"14px 16px",marginBottom:10}}>
-                <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><Badge color="#dc2626">Possible Duplicate</Badge><span style={{fontSize:12,color:"var(--gray)"}}>Similar owner names detected</span></div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
-                  {[g.base,...g.similar].map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
-                    <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13}}>{p.owner1}</div>
-                    <div style={{fontSize:11,color:"var(--gray)",marginTop:3}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
-                    <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)",marginTop:4}}>{$f(p.fullMarketValue)}</div>
-                  </div>)}
-                </div>
+          {duplicateOwnerGroups.length>0&&<div>
+            {duplicateOwnerGroups.slice(0,showAllDupes?duplicateOwnerGroups.length:LIST_LIMIT).map(g=>(
+              <div key={g.id} style={{background:"var(--card2)",border:"1px solid rgba(220,38,38,.2)",borderRadius:11,marginBottom:10,overflow:"hidden"}}>
+                <button
+                  type="button"
+                  onClick={()=>setOpenDupes(prev=>({...prev,[g.id]:!prev[g.id]}))}
+                  style={{width:"100%",background:"transparent",border:"none",padding:"14px 16px",cursor:"pointer",textAlign:"left",color:"inherit"}}
+                >
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}>{`Owner with multiple properties: ${g.displayOwner}: ${g.propertyCount}`}</div>
+                      <div style={{display:"flex",gap:8,marginTop:6,alignItems:"center",flexWrap:"wrap"}}>
+                        <Badge color="#dc2626">Potential common owner</Badge>
+                        <span style={{fontSize:12,color:"var(--gray)"}}>Normalized owner name appears across {g.propertyCount} Albany parcels</span>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)"}}>{$f(g.totalFMV)}</div>
+                      <div style={{fontSize:18,color:"var(--gray2)",fontFamily:"monospace",marginTop:6}}>{openDupes[g.id]?"v":">"}</div>
+                    </div>
+                  </div>
+                </button>
+                {openDupes[g.id]&&<div style={{padding:"0 16px 16px"}}>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Use the parcel list below to jump into each record. The Application Map link on each address opens that parcel in the map workspace.</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
+                    {g.parcels.map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)",minWidth:0}}>
+                      <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13,overflowWrap:"anywhere",wordBreak:"break-word"}}>{p.owner1}</div>
+                      <div style={{fontSize:11,color:"var(--gray)",marginTop:3,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
+                      <div style={{fontSize:11,color:"var(--gray2)",marginTop:4}}>{p.parcelId} | {p.propClassDesc}</div>
+                      <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:6,alignItems:"center",flexWrap:"wrap"}}>
+                        <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                        <Badge color={FC[eqFlagFast(p)]} small>{eqRFast(p)}%</Badge>
+                      </div>
+                    </div>)}
+                  </div>
+                </div>}
               </div>
             ))}
-            {dupes.length>LIST_LIMIT&&<button onClick={()=>setShowAllDupes(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllDupes?`Show top ${LIST_LIMIT} ^`:`Show all ${dupes.length.toLocaleString()} duplicate groups v`}</button>}
+            {duplicateOwnerGroups.length>LIST_LIMIT&&<button onClick={()=>setShowAllDupes(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllDupes?`Show top ${LIST_LIMIT} groups`:`Show all ${duplicateOwnerGroups.length.toLocaleString()} owner groups`}</button>}
           </div>}
-          {dupesStatus==="done"&&dupes.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
+          {duplicateOwnerGroups.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>
             <div style={{fontSize:32,marginBottom:10}}>OK</div>
-            <div>No near-duplicate owner names detected in current dataset.</div>
-            <div style={{fontSize:11,marginTop:8}}>Upload the full roll to run a complete fuzzy-match analysis across all owners.</div>
+            <div>No multi-parcel owner groups were found in the current dataset.</div>
+            <div style={{fontSize:11,marginTop:8}}>Load the full Albany roll to surface larger owner portfolios.</div>
           </div>}
         </div>
       </div>}
@@ -2023,7 +2722,7 @@ function levenSim(a,b){
   return 1-dp[la][lb]/Math.max(la,lb);
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 4. EQUITY & JUSTICE Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 4. EQUITY & JUSTICE ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const Equity = ({parcels, onDrill}) => {
   const [view,setView]=useState("desert");
 
@@ -2096,7 +2795,7 @@ const Equity = ({parcels, onDrill}) => {
                 <div style={{height:"100%",width:`${z.pct}%`,background:z.pct>60?"var(--amber)":z.pct>30?"#f97316":"var(--green2)",borderRadius:3}}></div>
               </div>
               {z.pct>50&&<div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:5}}>
-                {z.parcels.slice(0,3).map(p=><div key={p.parcelId} style={{background:"rgba(245,158,11,.08)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"var(--amber2)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink> - {p.owner1}</div>)}
+                {z.parcels.slice(0,3).map(p=><div key={p.parcelId} style={{background:"rgba(245,158,11,.08)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"var(--amber2)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink> - {p.owner1}</div>)}
                 {z.parcels.length>3&&onDrill&&<button onClick={e=>{e.stopPropagation();onDrill({title:`ZIP ${z.zip} - Homesteads Without Exemptions (${z.noExempt})`,parcels:z.parcels});}} style={{background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.3)",color:"var(--amber2)",borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",fontWeight:600}}>View all {z.parcels.length} properties -&gt;</button>}
               </div>}
             </div>
@@ -2139,7 +2838,7 @@ const Equity = ({parcels, onDrill}) => {
         <InfoBox icon="Revenue" title="What Is Revenue Impact - And Why Does It Matter to the City?" color="#22c55e">
           Every property tax exemption reduces the amount of assessed value that can be taxed - meaning the city, county, and school district collect less revenue. The numbers here show exactly how much taxable value has been removed from the base by each exemption type. This is not waste - exemptions like STAR and Senior Citizen exemptions are deliberate policy choices to reduce the burden on homeowners and veterans. But understanding the scale of these reductions helps explain why tax rates must remain high enough to fund services: fewer dollars in the taxable base means each remaining dollar is taxed more heavily.
         </InfoBox>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:18}}>
+        <div className="cols-3" style={{display:"grid",gap:12,marginBottom:18}}>
           <StatCard label="Total County Exemptions" value={"$"+(revenueImpact.reduce((s,e)=>s+e.totalCounty,0)/1000).toFixed(0)+"K"} icon="County" color="#3b82f6" sub="Removed from county tax base"/>
           <StatCard label="Total City Exemptions" value={"$"+(revenueImpact.reduce((s,e)=>s+e.totalCity,0)/1000).toFixed(0)+"K"} icon="City" color="#0d9488" sub="Removed from city tax base"/>
           <StatCard label="Total School Exemptions" value={"$"+(revenueImpact.reduce((s,e)=>s+e.totalSchool,0)/1000).toFixed(0)+"K"} icon="School" color="#a78bfa" sub="Removed from school tax base"/>
@@ -2156,7 +2855,7 @@ const Equity = ({parcels, onDrill}) => {
                   </div>
                   <div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)"}}>{$f(ex.totalCounty+ex.totalCity+ex.totalSchool)} total</div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <div className="cols-3" style={{display:"grid",gap:8}}>
                   {[["County",ex.totalCounty,"#3b82f6"],["City",ex.totalCity,"#0d9488"],["School",ex.totalSchool,"#a78bfa"]].map(([jx,amt,color])=>(
                     <div key={jx} style={{background:`${color}11`,border:`1px solid ${color}22`,borderRadius:7,padding:"8px 10px",textAlign:"center"}}>
                       <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color}}>{$f(amt)}</div>
@@ -2173,7 +2872,7 @@ const Equity = ({parcels, onDrill}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 5. OPPORTUNITY FINDER Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 5. OPPORTUNITY FINDER ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const Opportunity = ({parcels, onDrill}) => {
   const [view,setView]=useState("lots");
   const [showAllArb,setShowAllArb]=useState(false);
@@ -2230,7 +2929,7 @@ const Opportunity = ({parcels, onDrill}) => {
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:11,padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                   <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} | {p.zip} | Lot: {p.frontage}x{p.depth} ft</div>
                   <div style={{display:"flex",gap:8,marginTop:8}}>
                     <div style={{background:"rgba(13,148,136,.12)",borderRadius:7,padding:"6px 10px",textAlign:"center"}}>
@@ -2277,7 +2976,7 @@ const Opportunity = ({parcels, onDrill}) => {
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
           {gentriParcels.slice(0,10).map(p=>{const color=p.gIdx>60?"var(--red2)":p.gIdx>40?"var(--amber)":"var(--green2)";return(
             <div key={p.parcelId} style={{background:"var(--card2)",border:`1px solid ${color}33`,borderRadius:11,padding:"14px 16px"}}>
-              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
               <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.neighborhood} | {p.zip}</div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
                 <div>
@@ -2307,7 +3006,7 @@ const Opportunity = ({parcels, onDrill}) => {
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(34,197,94,.2)",borderRadius:11,padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                   <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} | {p.zip} | Owner: {p.owner1}</div>
                   <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
                     <div style={{background:"rgba(34,197,94,.1)",borderRadius:7,padding:"6px 10px"}}>
@@ -2342,7 +3041,7 @@ const Opportunity = ({parcels, onDrill}) => {
             <div key={p.parcelId} style={{background:"var(--card2)",border:"1px solid rgba(167,139,250,.25)",borderRadius:11,padding:"14px 18px",marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                   <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>on {p.street} | {p.zip}</div>
                   <div style={{display:"flex",gap:8,marginTop:8}}>
                     <div><span style={{fontSize:11,color:"var(--gray)"}}>This parcel: </span><Badge color="#a78bfa">{propClassLabel(p)}</Badge></div>
@@ -2363,13 +3062,19 @@ const Opportunity = ({parcels, onDrill}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 6. TAX TOOLS Ã¢â€â‚¬Ã¢â€â‚¬ */
-const TaxTools = ({parcels, myHome}) => {
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 6. TAX TOOLS ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
   const [view,setView]=useState("estimator");
   const [query,setQuery]=useState("");
   const [found,setFound]=useState(null);
   const [neighborAddr,setNeighborAddr]=useState("");
   const [neighborResult,setNeighborResult]=useState(null);
+  const [compareSnapshotMessage,setCompareSnapshotMessage]=useState("");
+  const [copiedShareLink,setCopiedShareLink]=useState(false);
+  const [compareScrollTick,setCompareScrollTick]=useState(0);
+  const requestedSnapshotRef = useRef(parseComparableSnapshotSearch(typeof window!=="undefined" ? window.location.search : ""));
+  const hydratedSnapshotRef = useRef(false);
+  const compareResultRef = useRef(null);
   const streetNameKey = useCallback((addr)=>{
     const k = normalizeStreetKeyForCompare(addr||"");
     if(!k) return "";
@@ -2377,47 +3082,151 @@ const TaxTools = ({parcels, myHome}) => {
     return (t.length>1 && /^\d+[a-z]?$/i.test(t[0])) ? t.slice(1).join(" ") : t.join(" ");
   },[]);
   const isGenericNbr = useCallback((n)=>/^(albany|city of albany)$/i.test((n||"").toString().trim()),[]);
+  const datasetKey = useMemo(()=>buildComparableDatasetKey(meta, parcels), [meta, parcels]);
 
-  // Auto-populate from myHome when switching sub-tabs
+  const matchedHomeDetailsLabel = useCallback(parcel=>{
+    const possible = Number(parcel?._compPhysicalFieldCountPossible || 0);
+    const used = Array.isArray(parcel?._compPhysicalFieldsUsed) ? parcel._compPhysicalFieldsUsed.length : 0;
+    if(!possible) return "Matched by class and location";
+    return `Matched ${used} of ${possible} home details`;
+  },[]);
+
   const fillMyHome = useCallback((setter) => {
     if(myHome) setter(myHome.address.split(" ").slice(0,3).join(" "));
   },[myHome]);
 
   const lookupParcel = useCallback(value => findBestAddressMatch(parcels, value), [parcels]);
-  const buildNeighborResult = useCallback(p => {
-    if(!p) return null;
-    const streetKey = streetNameKey(p.address);
-    const nbr = (p.neighborhood||"").toString().trim();
-    const allSameStreet = parcels.filter(x=>streetNameKey(x.address)===streetKey && x.parcelId!==p.parcelId);
-    let neighbors = allSameStreet.filter(x=>(x.neighborhood||"").toString().trim()===nbr);
-    const genericScopeTightenedByZip = isGenericNbr(nbr);
-    if(genericScopeTightenedByZip) neighbors = neighbors.filter(x=>(x.zip||"")===p.zip);
-    const avgFMV=neighbors.length>0?Math.round(neighbors.reduce((s,x)=>s+x.fullMarketValue,0)/neighbors.length):null;
-    const avgAssessed=neighbors.length>0?Math.round(neighbors.reduce((s,x)=>s+x.assessedValue,0)/neighbors.length):null;
-    const sameClassCount = neighbors.filter(x=>x.propClass===p.propClass).length;
-    const deltaFMV = avgFMV!=null ? p.fullMarketValue-avgFMV : null;
-    const deltaFMVPct = (avgFMV && avgFMV>0 && deltaFMV!=null) ? (deltaFMV/avgFMV)*100 : null;
-    const deltaAssessed = avgAssessed!=null ? p.assessedValue-avgAssessed : null;
-    return {
-      p,neighbors,avgFMV,avgAssessed,
-      streetKey,
-      scopeNeighborhood:nbr||null,
-      genericScopeTightenedByZip,
-      allSameStreetCount:allSameStreet.length,
-      excludedCrossNeighborhoodCount:Math.max(0, allSameStreet.length-neighbors.length),
-      sameClassCount,
-      deltaFMV,
-      deltaFMVPct,
-      deltaAssessed,
-    };
-  }, [isGenericNbr, parcels, streetNameKey]);
+  const buildNeighborResult = useCallback((parcel, options={}) => buildComparableResult(parcel, parcels, {
+    ...options,
+    currentDatasetKey: datasetKey,
+  }), [datasetKey, parcels]);
+  const focusNeighborParcel = useCallback((parcel, options={}) => {
+    if(!parcel) return null;
+    const nextResult = buildNeighborResult(parcel, options);
+    setNeighborAddr(parcel.address || "");
+    setNeighborResult(nextResult);
+    setCopiedShareLink(false);
+    setView("neighbor");
+    const warnings = [];
+    if(nextResult?.snapshot?.datasetMismatch){
+      warnings.push(`This share link was created for ${nextResult.snapshot.requestedDatasetKey || "another dataset"} but this app is using ${nextResult.snapshot.currentDatasetKey || "the current dataset"}.`);
+    }
+    if(nextResult?.snapshot?.missingCompIds?.length){
+      const count = nextResult.snapshot.missingCompIds.length;
+      warnings.push(`${count} shared comparable ${count===1?"parcel was":"parcels were"} not found in the current dataset.`);
+    }
+    if(options?.message) warnings.unshift(options.message);
+    setCompareSnapshotMessage(warnings.join(" "));
+    setCompareScrollTick(t=>t+1);
+    return nextResult;
+  }, [buildNeighborResult]);
   const lookup = useCallback(() => {
     setFound(lookupParcel(query) || null);
   }, [lookupParcel, query]);
   const lookupNeighbor = useCallback(() => {
-    const p = lookupParcel(neighborAddr);
-    setNeighborResult(p ? buildNeighborResult(p) : null);
-  }, [buildNeighborResult, lookupParcel, neighborAddr]);
+    const parcel = lookupParcel(neighborAddr);
+    if(!parcel){
+      setNeighborResult(null);
+      setCompareSnapshotMessage("");
+      return;
+    }
+    focusNeighborParcel(parcel);
+  }, [focusNeighborParcel, lookupParcel, neighborAddr]);
+  const shareLink = useMemo(()=>{
+    if(!neighborResult?.p) return "";
+    return buildComparableSnapshotUrl({
+      subjectId: neighborResult.p.parcelId,
+      compIds: (neighborResult.neighbors||[]).map(parcel=>parcel.parcelId),
+      datasetKey,
+      label: neighborResult.p.address,
+    });
+  }, [datasetKey, neighborResult]);
+  const copyShareLink = useCallback(async () => {
+    if(!shareLink) return;
+    const ok = await copyTextToClipboard(shareLink);
+    setCopiedShareLink(!!ok);
+  }, [shareLink]);
+
+  useEffect(()=>{
+    const requestedSnapshot = requestedSnapshotRef.current;
+    if(requestedSnapshot?.tool==="neighbor") setView("neighbor");
+    if(hydratedSnapshotRef.current) return;
+    if(!requestedSnapshot?.hasSnapshot){
+      hydratedSnapshotRef.current = true;
+      return;
+    }
+    if(!parcels.length) return;
+    hydratedSnapshotRef.current = true;
+    if(!requestedSnapshot.subjectId){
+      setCompareSnapshotMessage("This shared comparable snapshot could not be opened because the subject parcel is missing.");
+      return;
+    }
+    const subjectParcel = parcels.find(parcel=>normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)===requestedSnapshot.subjectId) || null;
+    if(!subjectParcel){
+      setCompareSnapshotMessage("This shared comparable snapshot could not be opened because the subject parcel was not found in the current dataset.");
+      return;
+    }
+    focusNeighborParcel(subjectParcel, {
+      exactCompIds: requestedSnapshot.compIds,
+      snapshotDatasetKey: requestedSnapshot.datasetKey,
+    });
+  }, [focusNeighborParcel, parcels]);
+
+  useEffect(()=>{
+    if(view!=="neighbor" || !neighborResult?.p) return;
+    replaceComparableSnapshotUrl({
+      subjectId: neighborResult.p.parcelId,
+      compIds: (neighborResult.neighbors||[]).map(parcel=>parcel.parcelId),
+      datasetKey,
+      label: neighborResult.p.address,
+    });
+  }, [datasetKey, neighborResult, view]);
+
+  useEffect(()=>{
+    if(!copiedShareLink) return;
+    const id = setTimeout(()=>setCopiedShareLink(false), 1800);
+    return ()=>clearTimeout(id);
+  }, [copiedShareLink]);
+
+  useEffect(()=>{
+    if(!compareScrollTick || !neighborResult) return;
+    const runner = ()=>compareResultRef.current?.scrollIntoView({behavior:"smooth", block:"start"});
+    const id = typeof window!=="undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner,0);
+    return ()=>{
+      if(typeof id==="number" && typeof window!=="undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
+      else clearTimeout(id);
+    };
+  }, [compareScrollTick, neighborResult]);
+
+  const CompareMetricCard = ({label, youValue, compValue, deltaValue, deltaTone="var(--gray2)"}) => (
+    <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:6,minWidth:0}}>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6}}>{label}</div>
+      <div style={{display:"grid",gap:4,minWidth:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>You</span><span style={{fontWeight:700,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{youValue}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>Comp</span><span style={{fontWeight:700,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{compValue}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>Delta</span><span style={{fontWeight:700,textAlign:"right",color:deltaTone,minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{deltaValue}</span></div>
+      </div>
+    </div>
+  );
+  const CompareProfileRow = ({label, youValue, compValue}) => (
+    <div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",display:"grid",gap:4,minWidth:0}}>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.6}}>{label}</div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>You</span><span style={{fontWeight:700,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{youValue}</span></div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>Comp</span><span style={{fontWeight:700,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{compValue}</span></div>
+    </div>
+  );
+  const ComparableOwnershipBadges = ({parcel, small=false}) => {
+    if(!parcel) return null;
+    const absentee = isAbsenteeFast(parcel);
+    const portfolioCount = getOwnerPortfolioCountFast(parcel);
+    if(!absentee && portfolioCount<=1) return null;
+    return (
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {absentee&&<Badge color="#f97316" small={small}>Absentee</Badge>}
+        {portfolioCount>1&&<Badge color="#0f766e" small={small}>{ownerPortfolioBadgeLabel(parcel)}</Badge>}
+      </div>
+    );
+  };
 
   const schoolBurden=useMemo(()=>[...parcels].map(p=>({...p,schoolBurden:p.fullMarketValue>0?(p.schoolTaxable/p.fullMarketValue*100).toFixed(1):"-",schoolGap:p.assessedValue-p.schoolTaxable})).sort((a,b)=>parseFloat(b.schoolBurden||0)-parseFloat(a.schoolBurden||0)),[parcels]);
 
@@ -2449,8 +3258,8 @@ const TaxTools = ({parcels, myHome}) => {
             <button onClick={lookup} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Look Up</button>
           </div>
           {found&&<div className="fi">
-            <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:10}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood}>{found.address}</AddrLink></div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:10}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood} parcelId={found.parcelId}>{found.address}</AddrLink></div>
+            <div className="cols-2" style={{display:"grid",gap:10,marginBottom:14}}>
               <div style={{background:"var(--card)",borderRadius:9,padding:"12px 14px",border:"1px solid var(--border)"}}>
                 <div style={{fontSize:11,color:"var(--gray)",marginBottom:4}}>Current Exemptions on Record</div>
                 {found.exemptions.length>0?found.exemptions.map(e=><div key={e.code} style={{fontSize:12,marginBottom:3}}><Badge color="#f59e0b" small>{e.name}</Badge> - saves up to {$f(e.schoolAmt||e.countyAmt||e.cityAmt)}</div>):<div style={{fontSize:12,color:"var(--gray2)"}}>None on file</div>}
@@ -2480,66 +3289,202 @@ const TaxTools = ({parcels, myHome}) => {
       </div>}
 
       {view==="neighbor"&&<div>
-        <InfoBox icon="Compare" title="What's My Neighbor Worth? - Street-Level Comparison" color="#a78bfa">
-          New York State law requires that comparable properties be assessed at a similar ratio of market value. This tool compares your parcel to other parcels on the <b style={{color:"var(--white)"}}>same normalized street name and in the same neighborhood</b> (and, when the neighborhood label is a generic "Albany", also the same ZIP) within the currently loaded dataset. The averages shown are <b style={{color:"var(--white)"}}>simple arithmetic averages</b> of those included parcels - they are not adjusted for square footage, lot size, condition, or renovations, so treat large gaps as a starting point for investigation, not proof by themselves.
+        <InfoBox icon="Compare" title="Comparable Homes for an Assessment Grievance" color="#a78bfa">
+          This tool ranks <b style={{color:"var(--white)"}}>physically similar homes</b> and now creates a <b style={{color:"var(--white)"}}>shareable snapshot link</b> that opens the same parcel and the same comparable set on GitHub Pages or locally. Each comparable card shows value, home details, absentee context, and owner-portfolio context so residents can evaluate the evidence without leaving this view.
         </InfoBox>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Enter Your Address to Compare</div>
-          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);}}} label="Load My Home"/>
-          <div style={{display:"flex",gap:10,marginBottom:14}}>
-            <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={p=>{setNeighborAddr(p.address);setNeighborResult(buildNeighborResult(p));}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:1}}/>
+          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");}}} label="Load My Home"/>
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
             <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Compare</button>
           </div>
-          {neighborResult&&<div className="fi">
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-              <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px"}}>
-                <div style={{fontSize:11,color:"var(--blue3)",marginBottom:4,fontWeight:600}}>Your Property</div>
-                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16}}><AddrLink address={neighborResult.p.address} zip={neighborResult.p.zip} neighborhood={neighborResult.p.neighborhood}>{neighborResult.p.address}</AddrLink></div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--amber)"}}>{$f(neighborResult.p.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your FMV</div></div>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16}}>{$f(neighborResult.p.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Assessed</div></div>
-                  <div><div style={{fontFamily:"var(--fm)",fontSize:16,color:FC[eqFlagFast(neighborResult.p)]}}>{eqRFast(neighborResult.p)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Equity %</div></div>
+          {neighborResult&&(()=>{
+            const subject = neighborResult.p;
+            const subjectProfile = neighborResult.subjectProfile || buildComparableProfile(subject);
+            const grievanceComparisons = [{kind:"subject", parcel:subject, label:"Your parcel"}].concat(
+              (((neighborResult.grievanceCandidates||[]).length ? neighborResult.grievanceCandidates : neighborResult.neighbors.slice(0,4))).map((parcel, idx)=>({kind:"comp", parcel, label:"Comp " + (idx+1)}))
+            );
+            return <div ref={compareResultRef} className="fi">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:11,color:"var(--gray2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Shareable comparable snapshot</div>
+                  <div style={{fontSize:11,color:"var(--gray3)",marginTop:4,maxWidth:760}}>Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  {copiedShareLink&&<span style={{fontSize:11,color:"var(--green2)",fontWeight:700}}>Link copied</span>}
+                  <button onClick={copyShareLink} disabled={!shareLink} style={{background:shareLink?"var(--blue)":"rgba(148,163,184,.18)",color:shareLink?"white":"var(--gray3)",border:"none",borderRadius:8,padding:"8px 14px",cursor:shareLink?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Copy share link</button>
                 </div>
               </div>
-              <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px"}}>
-                <div style={{fontSize:11,color:"var(--gray2)",marginBottom:4,fontWeight:600}} title="Simple arithmetic averages for parcels on the same normalized street name and same neighborhood scope, excluding your parcel.">
-                  Street Average ({neighborResult.neighbors.length} neighbors)
-                </div>
-                <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5,marginBottom:8}}>
-                  Includes parcels on <b style={{color:"var(--gray2)"}}>{neighborResult.streetKey||"this street"}</b>{neighborResult.scopeNeighborhood?<> in <b style={{color:"var(--gray2)"}}>{neighborResult.scopeNeighborhood}</b></>:""}{neighborResult.genericScopeTightenedByZip?<> (ZIP <b style={{color:"var(--gray2)"}}>{neighborResult.p.zip}</b> filter applied)</>:""}, excluding your parcel.
-                  {neighborResult.excludedCrossNeighborhoodCount>0&&<> Excluded {neighborResult.excludedCrossNeighborhoodCount} same-street parcel{neighborResult.excludedCrossNeighborhoodCount===1?"":"s"} outside this neighborhood scope.</>}
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
-                  <div title="Average Full Market Value across included neighbor parcels."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Avg FMV</div></div>
-                  <div title="Average assessed value across included neighbor parcels."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgAssessed)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Avg Assessed</div></div>
-                  <div title="Compares your FMV to the included-neighbor average FMV (not a significance test)."><div style={{fontFamily:"var(--fm)",fontSize:16,color:(neighborResult.deltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{(neighborResult.deltaFMV??0)>=0?"Above":"Below"} avg FMV</div></div>
-                </div>
-                {neighborResult.avgFMV!=null&&<div style={{fontSize:10,color:"var(--gray3)",marginTop:8,lineHeight:1.5}}>
-                  Your FMV is <b style={{color:(neighborResult.deltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{neighborResult.deltaFMV!=null?`${neighborResult.deltaFMV>=0?"+":"-"}${$f(Math.abs(neighborResult.deltaFMV))}`:"-"}</b>
-                  {neighborResult.deltaFMVPct!=null&&<> ({neighborResult.deltaFMVPct>=0?"+":""}{neighborResult.deltaFMVPct.toFixed(1)}%)</>} versus the included-neighbor average.
-                  {neighborResult.sameClassCount>0&&<> Of these {neighborResult.neighbors.length} neighbors, <b style={{color:"var(--gray2)"}}>{neighborResult.sameClassCount}</b> share your property class ({propClassDescLabel(neighborResult.p)}).</>}
-                </div>}
-              </div>
-            </div>
-            <div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:600,color:"var(--gray2)",marginBottom:6}}>How To Read These Numbers</div>
-              <div style={{fontSize:11,color:"var(--gray3)",lineHeight:1.65}}>
-                <b style={{color:"var(--gray2)"}}>Neighbors</b> = parcels in the current dataset with the same normalized street name and neighborhood scope (excluding your parcel). <b style={{color:"var(--gray2)"}}>FMV</b> = assessor's estimate of market value. <b style={{color:"var(--gray2)"}}>Assessed</b> = value used to calculate taxes. <b style={{color:"var(--gray2)"}}>Equity %</b> = Assessed / FMV x 100. Lower/higher than average is a directional flag only - it does not adjust for home size, condition, or improvements.
-              </div>
-            </div>
-            {neighborResult.neighbors.length>0?<div style={{display:"grid",gap:8}}>
-              <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These are the parcels included in the comparison averages shown above.">Included Parcels In Comparison Scope ({neighborResult.neighbors.length})</div>
-              {neighborResult.neighbors.map(n=>(
-                <div key={n.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div><div style={{fontSize:13,fontWeight:600}}><AddrLink address={n.address} zip={n.zip} neighborhood={n.neighborhood}>{n.address}</AddrLink></div><div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{n.owner1}</div></div>
-                  <div style={{display:"flex",gap:16,textAlign:"right"}}>
-                    <div title="Assessor's estimated Full Market Value (FMV)."><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)"}}>{$f(n.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>FMV</div></div>
-                    <div title="Equity % = Assessed / FMV x 100."><div style={{fontFamily:"var(--fm)",fontSize:13,color:FC[eqFlagFast(n)]}}>{eqRFast(n)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Equity</div></div>
+
+              {compareSnapshotMessage&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12}}>{compareSnapshotMessage}</div>}
+
+              <div className="cols-2" style={{display:"grid",gap:14,marginBottom:14}}>
+                <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px",minWidth:0}}>
+                  <div style={{fontSize:11,color:"var(--blue3)",marginBottom:4,fontWeight:600}}>Your Property</div>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={subject.address} zip={subject.zip} neighborhood={subject.neighborhood} parcelId={subject.parcelId}>{subject.address}</AddrLink></div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+                    <Badge color="#2563eb" small>{propClassLabel(subject)}</Badge>
+                    {comparableProfileBadgeItems(subject).map(item=><Badge key={subject.parcelId + item} color="#64748b" small>{item}</Badge>)}
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                    <ComparableOwnershipBadges parcel={subject} small />
+                  </div>
+                  {isAbsenteeFast(subject)&&<AbsenteeExplain parcel={subject} compact />}
+                  <OwnerPortfolioSection parcel={subject} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={focusNeighborParcel} />
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginTop:12}}>
+                    <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,color:"var(--amber)",fontWeight:700}}>{$f(subject.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your FMV</div></div>
+                    <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:700}}>{$f(subject.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Assessed</div></div>
+                    <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.18)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:700,color:FC[eqFlagFast(subject)]}}>{eqRFast(subject)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Equity %</div></div>
+                  </div>
+                  <div style={{fontSize:10,color:"var(--gray3)",marginTop:10,lineHeight:1.55}}>
+                    {subjectProfile.availablePhysicalFields.length
+                      ? <>Available home details for matching: <b style={{color:"var(--gray2)"}}>{subjectProfile.availablePhysicalFields.join(", ")}</b>.</>
+                      : <>Residential inventory detail was not available on your parcel, so the comparison relied on class and nearby location signals.</>}
                   </div>
                 </div>
-              ))}
-            </div>:<div style={{fontSize:12,color:"var(--gray2)",textAlign:"center",padding:20}}>No other parcels found on this street in the current dataset. Upload the full roll for a complete street comparison.</div>}
-          </div>}
+                <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px",minWidth:0}}>
+                  <div style={{fontSize:11,color:"var(--gray2)",marginBottom:4,fontWeight:600}} title="Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available.">
+                    Best Comparable Homes ({neighborResult.neighbors.length} matches)
+                  </div>
+                  <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5,marginBottom:8}}>
+                    {neighborResult.comparableMode==="snapshot"
+                      ? <>These homes were loaded from a <b style={{color:"var(--gray2)"}}>shared comparable snapshot</b>. The order is frozen from the saved link.</>
+                      : neighborResult.comparableMode==="physical"
+                        ? <>These homes were ranked for <b style={{color:"var(--gray2)"}}>physical similarity</b> to your parcel, with <b style={{color:"var(--gray2)"}}>{neighborResult.scopeNeighborhood||"Albany"}</b> preferred first.</>
+                        : <>Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class.</>}
+                    {neighborResult.usedInventory&&<><br/>Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.</>}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+                    <div title="Average Full Market Value across the best comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV avg</div></div>
+                    <div title="Average assessed value across the best comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:"var(--gray)"}}>{$f(neighborResult.avgAssessed)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp assessed avg</div></div>
+                    <div title="Average equity ratio across the best comparable homes."><div style={{fontFamily:"var(--fm)",fontSize:16,color:(neighborResult.deltaEquity??0)>8?"var(--red2)":(neighborResult.deltaEquity??0)<-8?"var(--green2)":"var(--gray)"}}>{neighborResult.avgEquity!=null?neighborResult.avgEquity + "%":"-"}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp equity avg</div></div>
+                  </div>
+                  {(neighborResult.avgFMV!=null || neighborResult.avgEquity!=null)&&<div style={{fontSize:10,color:"var(--gray3)",marginTop:8,lineHeight:1.55}}>
+                    {neighborResult.deltaFMV!=null&&<>Your FMV is <b style={{color:(neighborResult.deltaFMV??0)>=0?"var(--green2)":"var(--red2)"}}>{(neighborResult.deltaFMV>=0?"+":"-") + $f(Math.abs(neighborResult.deltaFMV))}</b>{neighborResult.deltaFMVPct!=null&&<> ({neighborResult.deltaFMVPct>=0?"+":""}{neighborResult.deltaFMVPct.toFixed(1)}%)</>} versus the comparable-home average. </>}
+                    {neighborResult.deltaAssessed!=null&&<>Your assessed value is <b style={{color:neighborResult.deltaAssessed>=0?"var(--red2)":"var(--green2)"}}>{(neighborResult.deltaAssessed>=0?"+":"-") + $f(Math.abs(neighborResult.deltaAssessed))}</b> relative to the comparable-home assessed average. </>}
+                    {neighborResult.deltaEquity!=null&&<>Your equity ratio is <b style={{color:neighborResult.deltaEquity>8?"var(--red2)":neighborResult.deltaEquity<-8?"var(--green2)":"var(--gray2)"}}>{neighborResult.deltaEquity>=0?"+":""}{neighborResult.deltaEquity}%</b> relative to the comparable-home average. {neighborResult.fairnessSignal}.</>}
+                  </div>}
+                </div>
+              </div>
+
+              <div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--gray2)",marginBottom:6}}>How To Read These Numbers</div>
+                <div style={{fontSize:11,color:"var(--gray3)",lineHeight:1.65}}>
+                  <b style={{color:"var(--gray2)"}}>Comparable homes</b> are the strongest matches in the current dataset for your parcel's residential class and home details. Each card now shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> together so you can judge whether a lower-assessed home is truly similar to yours. <b style={{color:"var(--gray2)"}}>Equity %</b> = Assessed / FMV x 100.
+                </div>
+              </div>
+
+              {neighborResult.neighbors.length>0&&<>
+                <div style={{background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--purple)",marginBottom:5}}>Side-by-Side Grievance Table</div>
+                  <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.55}}>Subject parcel plus the top {Math.min(4, neighborResult.neighbors.length)} strongest comparable homes. This is the fast screening view. The full cards below include absentee explanations and expandable owner portfolios.</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:14}}>
+                  {grievanceComparisons.map(entry=>{
+                    const parcel = entry.parcel;
+                    const isSubject = entry.kind==="subject";
+                    const profileRows = comparableProfileTableRows(parcel);
+                    const delta = parcel._compDelta || null;
+                    return <div key={parcel.parcelId} style={{background:isSubject?"rgba(37,99,235,.08)":"var(--card)",border:isSubject?"1px solid rgba(37,99,235,.26)":"1px solid var(--border)",borderRadius:10,padding:"12px 14px",minWidth:0}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
+                        <div style={{minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                            <Badge color={isSubject?"#2563eb":"#8b5cf6"} small>{entry.label}</Badge>
+                            {!isSubject&&<Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge>}
+                          </div>
+                          <div style={{fontSize:13,fontWeight:700,marginTop:8,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} parcelId={parcel.parcelId}>{parcel.address}</AddrLink></div>
+                          <div style={{fontSize:10,color:"var(--gray2)",marginTop:3,overflowWrap:"anywhere",wordBreak:"break-word"}}>{parcel.owner1}</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                            <ComparableOwnershipBadges parcel={parcel} small />
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gap:6}}>
+                        {profileRows.map(([label, value])=><div key={label} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>{label}</span><span style={{fontWeight:600,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{value}</span></div>)}
+                        {!isSubject&&<div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Assessed vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.assessed, true)}}>{formatSignedComparableMoney(delta?.assessed)}</span></div>}
+                        {!isSubject&&<div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Equity vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.equity, true)}}>{formatSignedComparableCount(delta?.equity, "%")}</span></div>}
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </>}
+
+              {neighborResult.neighbors.length>0?<div style={{display:"grid",gap:12}}>
+                <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These parcels drive the comparable-home summary above.">Best Comparable Parcels ({neighborResult.neighbors.length})</div>
+                {neighborResult.neighbors.map((parcel, idx)=>{
+                  const compProfile = parcel._compProfile || buildComparableProfile(parcel);
+                  const delta = parcel._compDelta || {};
+                  return <div key={parcel.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px",display:"grid",gap:12,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+                      <div style={{minWidth:0,flex:"1 1 320px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                          <div style={{fontSize:15,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} parcelId={parcel.parcelId}>{parcel.address}</AddrLink></div>
+                          <Badge color="#8b5cf6" small>{"Match " + (idx+1)}</Badge>
+                          <Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge>
+                          <ComparableOwnershipBadges parcel={parcel} small />
+                        </div>
+                        <div style={{fontSize:11,color:"var(--gray2)",marginTop:4,overflowWrap:"anywhere",wordBreak:"break-word"}}>{parcel.owner1} | {parcel.parcelId} | {parcelNeighborhoodName(parcel)||"Neighborhood unknown"}</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                          <Badge color="#6366f1" small>{propClassLabel(parcel)}</Badge>
+                          {comparableProfileBadgeItems(parcel).map(item=><Badge key={parcel.parcelId + item} color="#64748b" small>{item}</Badge>)}
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8,flex:"1 1 320px",minWidth:260}}>
+                        <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)",fontWeight:700}}>{$f(parcel.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV</div></div>
+                        <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700}}>{$f(parcel.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp assessed</div></div>
+                        <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:FC[eqFlagFast(parcel)]}}>{eqRFast(parcel)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp equity</div></div>
+                      </div>
+                    </div>
+
+                    {isAbsenteeFast(parcel)&&<AbsenteeExplain parcel={parcel} compact />}
+                    <OwnerPortfolioSection parcel={parcel} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={focusNeighborParcel} />
+
+                    <div style={{display:"grid",gap:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Value comparison</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
+                        <CompareMetricCard label="FMV" youValue={$f(subject.fullMarketValue)} compValue={$f(parcel.fullMarketValue)} deltaValue={formatSignedComparableMoney(delta.fmv)} deltaTone="var(--gray2)" />
+                        <CompareMetricCard label="Assessed" youValue={$f(subject.assessedValue)} compValue={$f(parcel.assessedValue)} deltaValue={formatSignedComparableMoney(delta.assessed)} deltaTone={comparableDeltaTone(delta.assessed, true)} />
+                        <CompareMetricCard label="Equity %" youValue={subjectProfile.equity != null ? subjectProfile.equity + "%" : "-"} compValue={compProfile.equity != null ? compProfile.equity + "%" : "-"} deltaValue={formatSignedComparableCount(delta.equity, "%")} deltaTone={comparableDeltaTone(delta.equity, true)} />
+                      </div>
+                    </div>
+
+                    <div style={{display:"grid",gap:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Physical comparison</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
+                        <CompareMetricCard label="Living area" youValue={subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-"} compValue={compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-"} deltaValue={delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-"} />
+                        <CompareMetricCard label="Year built" youValue={subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-"} compValue={compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-"} deltaValue={delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-"} />
+                        <CompareMetricCard label="Bedrooms" youValue={subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-"} compValue={compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-"} deltaValue={delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-"} />
+                        <CompareMetricCard label="Baths" youValue={subjectProfile.bathText || "-"} compValue={compProfile.bathText || "-"} deltaValue={delta.baths != null ? formatSignedComparableCount(delta.baths) : "-"} />
+                      </div>
+                    </div>
+
+                    <div style={{display:"grid",gap:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Profile match</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
+                        <CompareProfileRow label="Neighborhood" youValue={subjectProfile.neighborhood || "-"} compValue={compProfile.neighborhood || "-"} />
+                        <CompareProfileRow label="Class" youValue={subjectProfile.classLabel || "-"} compValue={compProfile.classLabel || "-"} />
+                        <CompareProfileRow label="Style" youValue={subjectProfile.style || "-"} compValue={compProfile.style || "-"} />
+                      </div>
+                    </div>
+
+                    <div style={{background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.14)",borderRadius:8,padding:"10px 12px",minWidth:0}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--blue3)",marginBottom:6}}>Why this home was selected</div>
+                      <div style={{display:"grid",gap:4}}>
+                        {(parcel._compReasons||[]).map((reason, reasonIdx)=><div key={parcel.parcelId + "-reason-" + reasonIdx} style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5,overflowWrap:"anywhere"}}>- {reason}</div>)}
+                      </div>
+                      <div style={{fontSize:10,color:"var(--gray3)",marginTop:8,lineHeight:1.55}}>
+                        {(parcel._compPhysicalFieldsUsed||[]).length
+                          ? <>Matched using: <b style={{color:"var(--gray2)"}}>{parcel._compPhysicalFieldsUsed.join(", ")}</b>{(parcel._compUnusedPhysicalFields||[]).length?<> | Not used: <b style={{color:"var(--gray2)"}}>{parcel._compUnusedPhysicalFields.join(", ")}</b></>:null}.</>
+                          : <>This match relied on residential class and nearby location because detailed home characteristics were not available on both parcels.</>}
+                      </div>
+                    </div>
+                  </div>;
+                })}
+              </div>:<div style={{fontSize:12,color:"var(--gray2)",textAlign:"center",padding:20}}>No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set.</div>}
+            </div>;
+          })()}
+          {neighborAddr&&!neighborResult&&<div style={{fontSize:12,color:"var(--gray2)",marginTop:8}}>No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".</div>}
         </Card>
       </div>}
 
@@ -2568,7 +3513,7 @@ const TaxTools = ({parcels, myHome}) => {
             <div key={p.parcelId} style={{background:myHome?.parcelId===p.parcelId?"rgba(34,197,94,.06)":"var(--card2)",border:`1px solid ${myHome?.parcelId===p.parcelId?"rgba(34,197,94,.3)":"var(--border)"}`,borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <div style={{fontWeight:600,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                  <div style={{fontWeight:600,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                   {myHome?.parcelId===p.parcelId&&<Badge color="#22c55e" small>My Home</Badge>}
                 </div>
                 <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.owner1} | School taxable: {$f(p.schoolTaxable)}</div>
@@ -2592,7 +3537,7 @@ const TaxTools = ({parcels, myHome}) => {
     </div>
   );
 };
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 7. COORDINATE MAP (Canvas renderer Ã¢â‚¬â€ smooth 60fps pan/zoom) Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 7. COORDINATE MAP (Canvas renderer ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â smooth 60fps pan/zoom) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDrill, advanced=true}) => {
   const canvasRef=useRef();
   const msRef=useRef({zoom:1,pan:{x:0,y:0},drag:null,justDragged:false});
@@ -3098,16 +4043,16 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
 
   return (
     <div className="fi">
-      <SectionTitle>{advanced?"Research Map":"Neighborhood Map"}</SectionTitle>
+      <SectionTitle>Application Map</SectionTitle>
       <Sub>{advanced
         ? (hasParcelGeometry
-          ? "Parcel boundaries and centroids for the loaded Albany assessment roll. Use this mode for detailed spatial inspection, parcel selection, and data-quality checks."
+          ? "Parcel boundaries and centroids for the loaded Albany assessment roll. Use the application map for detailed spatial inspection, parcel selection, and data-quality checks."
           : "Parcel points are plotted from EAST/NRTH coordinates because parcel boundary geometry is not loaded yet.")
-        : "Start with a resident question, then inspect parcels directly on the map. Search an address or owner, click a parcel, and use the side panel for details."}</Sub>
-      <InfoBox icon={advanced?"DATA":"MAP"} title={advanced?"Map controls":"How to use the map"} color={advanced?"#0d9488":"#2563eb"}>
+        : "Search an address or owner, click a parcel, and use the side panel for details in the unified application map."}</Sub>
+      <InfoBox icon={advanced?"DATA":"MAP"} title="How to use the application map" color={advanced?"#0d9488":"#2563eb"}>
         {advanced
-          ? <>Research Mode keeps the full parcel attribute palette. <b style={{color:"var(--white)"}}>Scroll to zoom, drag to pan, click to inspect, double-click to center.</b> Parcel boundaries are used when geometry is loaded; otherwise the map falls back to point locations.</>
-          : <>Resident Mode simplifies the map into a few public-interest views. <b style={{color:"var(--white)"}}>Choose Fairness, Tax Relief, Ownership, or Market Value.</b> Click any parcel to inspect it, then open the full record from the side panel.</>}
+          ? <>The unified application map keeps the full parcel attribute palette in one place. <b style={{color:"var(--white)"}}>Scroll to zoom, drag to pan, click to inspect, double-click to center.</b> Parcel boundaries are used when geometry is loaded; otherwise the map falls back to point locations.</>
+          : <>Use the application map to move between Fairness, Tax Relief, Ownership, Market Value, and parcel inspection without switching modes. <b style={{color:"var(--white)"}}>Click any parcel to inspect it.</b></>}
       </InfoBox>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10,marginBottom:14}}>
@@ -3196,7 +4141,7 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
 
           {!advanced&&(
             <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>
-              Resident Mode keeps the map focused on public questions. Switch to Research Mode if you need the full attribute palette, uploaded street centerlines, and diagnostic map controls.
+              The application map keeps public-interest views and deeper parcel controls together so you can inspect parcels, ownership, and boundaries without switching modes.
             </div>
           )}
         </div>
@@ -3229,7 +4174,7 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
                   <div style={{fontSize:12}}>Equity: <span style={{color:FC[eqFlagFast(tooltip)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(tooltip)}%</span></div>
                   <div style={{fontSize:12}}>Owner: <span style={{color:"var(--gray2)"}}>{tooltip.owner1||"Unknown"}</span></div>
                   {tooltip.exemptions?.length>0&&<div style={{fontSize:11,color:"var(--amber2)"}}>{tooltip.exemptions.length} exemption{tooltip.exemptions.length>1?"s":""}</div>}
-                  {isAbsenteeFast(tooltip)&&<Badge color="#f97316" small>Absentee</Badge>}
+                  {isAbsenteeFast(tooltip)&&<div style={{fontSize:11,color:"#f97316",lineHeight:1.45}}>Absentee: {getAbsenteeReasonFast(tooltip)}</div>}
                 </div>
                 <div style={{fontSize:10,color:"var(--gray3)",marginTop:7}}>Click to inspect. Double-click to center.</div>
               </div>
@@ -3265,12 +4210,12 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
                   <Badge color="#6366f1">{propClassLabel(selectedParcel)}</Badge>
                   <Badge color={selectedItem?.geom?"#0d9488":"#f59e0b"}>{selectedItem?.geom?"Parcel boundary loaded":"Point location only"}</Badge>
                   <Badge color={FC[eqFlagFast(selectedParcel)]}>{FL[eqFlagFast(selectedParcel)]}</Badge>
-                  {isAbsenteeFast(selectedParcel)&&<Badge color="#f97316">Absentee</Badge>}
+                  {isAbsenteeFast(selectedParcel)&&<><Badge color="#f97316">Absentee</Badge><AbsenteeExplain parcel={selectedParcel} compact /></>}
                   {selectedParcel.exemptions.length>0&&<Badge color="#f59e0b">{selectedParcel.exemptions.length} exemption{selectedParcel.exemptions.length===1?"":"s"}</Badge>}
                 </div>
               </div>
 
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div className="metric-grid-2" style={{display:"grid",gap:10}}>
                 <div style={{background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px"}}>
                   <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Full market value</div>
                   <div style={{fontFamily:"var(--fd)",fontSize:21,fontWeight:800,marginTop:5}}>{$f(selectedParcel.fullMarketValue)}</div>
@@ -3328,7 +4273,7 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
                     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
                       <Badge color={FC[eqFlagFast(p)]} small>{eqRFast(p)}%</Badge>
                       {p.exemptions.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} exemption{p.exemptions.length===1?"":"s"}</Badge>}
-                      {isAbsenteeFast(p)&&<Badge color="#f97316" small>Absentee</Badge>}
+                      {isAbsenteeFast(p)&&<><Badge color="#f97316" small>Absentee</Badge><AbsenteeExplain parcel={p} compact /></>}
                     </div>
                   </button>
                 )) : <div style={{fontSize:13,color:"var(--gray2)",lineHeight:1.7}}>No mapped parcels match that search. If you expected a result, check whether the full Albany roll finished loading and whether the parcel is missing geometry or coordinates.</div>}
@@ -3363,27 +4308,42 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
     </div>
   );
 };
-const MapView = props => (
-  <LeafletMapView
-    {...props}
-    utils={{
-      normalizeParcelId,
-      FC,
-      FL,
-      eqFlagFast,
-      eqRFast,
-      propClassLabel,
-      isAbsenteeFast,
-      getParcelWarnings,
-      $f,
-      SectionTitle,
-      Sub,
-      Card,
-      Badge,
-    }}
-  />
-);
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 8. DATA QUALITY Ã¢â€â‚¬Ã¢â€â‚¬ */
+const MapView = ({ownerPortfolioIndex=null, ...props}) => {
+  const getOwnerPortfolioGroup = useCallback(parcel=>{
+    if(!parcel || !ownerPortfolioIndex) return null;
+    const ownerKey = normalizeOwnerPortfolioKey(parcel.owner1 || "");
+    return ownerKey ? (ownerPortfolioIndex.get(ownerKey) || null) : null;
+  },[ownerPortfolioIndex]);
+  return (
+    <LeafletMapView
+      {...props}
+      utils={{
+        normalizeParcelId,
+        FC,
+        FL,
+        eqFlagFast,
+        eqRFast,
+        propClassLabel,
+        isAbsenteeFast,
+        getAbsenteeModelFast,
+        getParcelWarnings,
+        inventoryStyle,
+        inventoryYearBuilt,
+        inventorySqft,
+        inventoryBedrooms,
+        inventoryBathText,
+        hasInventoryProfile,
+        getOwnerPortfolioGroup,
+        $f,
+        SectionTitle,
+        Sub,
+        Card,
+        Badge,
+      }}
+    />
+  );
+};
+/* 8. DATA QUALITY */
 const DataQuality = ({parcels, meta, onDrill}) => {
   const [showAllInconsist,setShowAllInconsist]=useState(false);
   const [showAllNoCoords,setShowAllNoCoords]=useState(false);
@@ -3476,7 +4436,7 @@ const DataQuality = ({parcels, meta, onDrill}) => {
           <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Parcels carrying at least one join, geometry, or value warning</div>
         </Card>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
+      <div className="cols-2" style={{display:"grid",gap:18}}>
         <div>
           <Card style={{marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -3528,7 +4488,7 @@ const DataQuality = ({parcels, meta, onDrill}) => {
                 <div key={p.parcelId} style={{background:"rgba(220,38,38,.07)",border:"1px solid rgba(220,38,38,.2)",borderRadius:9,padding:"11px 14px",marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                      <div style={{fontWeight:600,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                       <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} | Parcel {p.parcelId}</div>
                       <div style={{fontSize:11,marginTop:6}}>Street avg: <span style={{fontFamily:"var(--fm)",color:"var(--gray)"}}>{$f(p.streetAvg)}</span> | Deviation: <span style={{fontFamily:"var(--fm)",color:p.deviation>0?"var(--red2)":"var(--amber)"}}>{p.deviation>0?"+":""}{$f(p.deviation)}</span></div>
                     </div>
@@ -3549,7 +4509,7 @@ const DataQuality = ({parcels, meta, onDrill}) => {
               {mappingGaps.slice(0,showAllNoCoords?mappingGaps.length:DQ_LIMIT).map(p=>(
                 <div key={p.parcelId} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"8px 12px",marginBottom:6,display:"flex",justifyContent:"space-between",gap:10}}>
                   <div>
-                    <div style={{fontSize:12,fontWeight:600}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                    <div style={{fontSize:12,fontWeight:600}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                     <div style={{fontSize:10,color:"var(--gray2)"}}>{p.parcelId}</div>
                   </div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -3580,6 +4540,11 @@ const Compare = ({parcels,compareList,onRemove,onAdd}) => {
     {label:"Address",v:p=>p.address},{label:"Parcel ID",v:p=>p.parcelId,mono:true},
     {label:"Owner",v:p=>p.owner1},{label:"Class",v:p=>propClassLabel(p)},
     {label:"Neighborhood",v:p=>p.neighborhood||"-"},
+    {label:"Building Style",v:p=>inventoryStyle(p)||"-"},
+    {label:"Year Built",v:p=>inventoryYearBuilt(p)||"-",mono:true},
+    {label:"Living Area",v:p=>inventorySqft(p)!=null?`${inventorySqft(p).toLocaleString()} sq ft`:"-",num:p=>inventorySqft(p)||0},
+    {label:"Bedrooms",v:p=>inventoryBedrooms(p)!=null?inventoryBedrooms(p):"-",mono:true},
+    {label:"Baths",v:p=>inventoryBathText(p),mono:true},
     {label:"Full Market Value",v:p=>$f(p.fullMarketValue),hi:true,num:p=>p.fullMarketValue},
     {label:"Assessed Value",v:p=>$f(p.assessedValue),num:p=>p.assessedValue},
     {label:"Land Value",v:p=>$f(p.landValue),num:p=>p.landValue},
@@ -3611,7 +4576,7 @@ const Compare = ({parcels,compareList,onRemove,onAdd}) => {
             <th style={{padding:"10px 14px",textAlign:"left",color:"var(--gray2)",fontSize:11,textTransform:"uppercase",letterSpacing:.5,width:160,background:"var(--bg2)"}}>Field</th>
             {compareList.map(p=>(
               <th key={p.parcelId} style={{padding:"10px 14px",textAlign:"left",borderLeft:"1px solid var(--border)",background:"var(--bg2)"}}>
-                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood}>{p.address}</AddrLink></div>
+                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
                 <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{p.parcelId}</div>
                 <button onClick={()=>onRemove(p)} style={{marginTop:6,background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.3)",color:"#f87171",borderRadius:4,padding:"2px 8px",fontSize:10,cursor:"pointer"}}>Remove</button>
               </th>
@@ -3626,7 +4591,7 @@ const Compare = ({parcels,compareList,onRemove,onAdd}) => {
                 const myNum=f.num?f.num(p):null;
                 const isMax=f.hi&&myNum!==null&&myNum===Math.max(...nums);
                 return <td key={p.parcelId} style={{padding:"9px 14px",borderLeft:"1px solid var(--border)",fontFamily:f.mono?"var(--fm)":"inherit",color:isMax?"var(--amber)":"var(--white)",fontWeight:isMax?600:400}}>
-                  {f.label==="Address" ? <AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} stopPropagation={false}>{val}</AddrLink> : val}
+                  {f.label==="Address" ? <AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId} stopPropagation={false}>{val}</AddrLink> : val}
                 </td>;
               })}
             </tr>
@@ -3637,7 +4602,7 @@ const Compare = ({parcels,compareList,onRemove,onAdd}) => {
   );
 };
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ 10. HOMEBUYER GUIDE Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 10. HOMEBUYER GUIDE ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 const HomebuyerGuide = ({parcels, myHome}) => {
   const [address,setAddress]=useState("");
   const [found,setFound]=useState(null);
@@ -3681,7 +4646,7 @@ const HomebuyerGuide = ({parcels, myHome}) => {
           <button onClick={lookup} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Look Up</button>
         </div>
         {found&&<div className="fi" style={{marginTop:16}}>
-          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:14}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood}>{found.address}</AddrLink> - Here's What It All Means</div>
+          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:14}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood} parcelId={found.parcelId}>{found.address}</AddrLink> - Here's What It All Means</div>
           {[
             ["What is the Full Market Value?",`The city assessor estimates this property is worth ${$f(found.fullMarketValue)} on the open market. This is their professional opinion of what a willing buyer and seller would agree on today.`],
             ["What is the Assessed Value?",`The city uses ${$f(found.assessedValue)} to calculate the property tax bill - not the full market value. Albany uses a specific percentage of market value for assessments.`],
@@ -3712,9 +4677,9 @@ const HomebuyerGuide = ({parcels, myHome}) => {
   );
 };
 
-/* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
    ROOT APP
-Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
 export default function App() {
   const SUPPORTED_UPLOAD_EXTENSIONS = [".csv", ".txt", ".json", ".geojson"];
   const AUTOLOAD_FILES = {
@@ -3733,32 +4698,36 @@ export default function App() {
   const [neighborhoodAssociations,setNeighborhoodAssociations]=useState(null);
   const [dataSource,setDataSource]=useState("sample");
   const [autoloadState,setAutoloadState]=useState({phase:"idle",entries:[]});
-  const [mode,setMode]=useState(()=>{
-    try{
-      const savedVersion = localStorage.getItem("albany_app_ui_version");
-      if(savedVersion!==APP_UI_VERSION) return "resident";
-      return localStorage.getItem("albany_app_mode")||"resident";
-    }catch{
-      return "resident";
-    }
-  });
+  const mode="app";
+  const initialUrlSnapshotRef = useRef(parseComparableSnapshotSearch(typeof window!=="undefined" ? window.location.search : ""));
+  const requestedUrlTab = initialUrlSnapshotRef.current?.tab || "";
   const [tab,setTab]=useState(()=>{
+    if(APP_TAB_IDS.has(requestedUrlTab)) return requestedUrlTab;
     try{
       const savedVersion = localStorage.getItem("albany_app_ui_version");
-      if(savedVersion!==APP_UI_VERSION) return "resident-home";
-      const savedMode=localStorage.getItem("albany_app_mode")||"resident";
-      return localStorage.getItem(`albany_app_tab_${savedMode}`) || (savedMode==="research"?"research-home":"resident-home");
+      if(savedVersion!==APP_UI_VERSION) return "home";
+      return localStorage.getItem("albany_app_tab") || "home";
     }catch{
-      return "resident-home";
+      return "home";
     }
   });
   const [compareList,setCompareList]=useState([]);
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
+  const [pendingScrollTab,setPendingScrollTab]=useState("");
+  const contentTopRef=useRef(null);
+  const navigateToTab = useCallback((nextTab, options={})=>{
+    const shouldScroll = options.scroll !== false;
+    setTab(nextTab);
+    setMobileNavOpen(false);
+    if(shouldScroll) setPendingScrollTab(nextTab);
+  },[]);
   const [uploading,setUploading]=useState(false);
   const [myHome,setMyHome]=useState(()=>{try{const s=localStorage.getItem("albany_my_home");return s?JSON.parse(s):null;}catch{return null;}});
   const [showHomeSetup,setShowHomeSetup]=useState(false);
   const [homeSetupAddr,setHomeSetupAddr]=useState("");
   const [drillList,setDrillList]=useState(null);
   const [showWhatsNew,setShowWhatsNew]=useState(false);
+  const [mapJumpRequest,setMapJumpRequest]=useState(null);
   const fileRef=useRef();
   const geomCoverage=useMemo(()=>{
     const gp = parcelGeometry?.parcels;
@@ -3777,6 +4746,8 @@ export default function App() {
       coordSystem: parcelGeometry.coordSystem || null,
     };
   },[parcelGeometry,parcels]);
+  const ownerPortfolioGroups=useMemo(()=>buildOwnerPortfolioGroups(parcels),[parcels]);
+  const ownerPortfolioIndex=useMemo(()=>new Map(ownerPortfolioGroups.map(group=>[group.ownerKey,group])),[ownerPortfolioGroups]);
 
   const loadDataFromText=useCallback((raw,fname,opts={})=>new Promise(resolve=>{
   const silent = !!opts.silent;
@@ -3998,6 +4969,36 @@ const handleFile=useCallback(e=>{
     if(!myHome?.parcelId) return null;
     return parcels.find(p=>p.parcelId===myHome.parcelId) || myHome.parcel || null;
   },[myHome,parcels]);
+  const openApplicationMapForParcel=useCallback(detail=>{
+    const rawAddress=(detail?.address||detail?.parcel?.address||"").toString().trim();
+    const directParcelId=(detail?.parcelId||detail?.parcel?.parcelId||"").toString().trim();
+    const matchedParcel=directParcelId
+      ? parcels.find(p=>p.parcelId===directParcelId) || null
+      : (rawAddress ? findBestAddressMatch(parcels, rawAddress) : null);
+    const nextParcel=matchedParcel || detail?.parcel || null;
+    const nextAddress=nextParcel?.address || rawAddress;
+    if(!nextAddress && !directParcelId) return;
+    navigateToTab("mapview");
+    try{
+      localStorage.setItem("albany_app_tab","mapview");
+      localStorage.setItem("albany_app_ui_version", APP_UI_VERSION);
+    }catch{}
+    setMapJumpRequest({
+      token:Date.now(),
+      address:nextAddress || "",
+      parcelId:nextParcel?.parcelId || directParcelId || "",
+    });
+  },[APP_UI_VERSION,navigateToTab,parcels]);
+
+  useEffect(()=>{
+    const handler=ev=>openApplicationMapForParcel(ev?.detail||{});
+    window.addEventListener("albany:jump-to-app-map", handler);
+    window.addEventListener("albany:jump-to-research-map", handler);
+    return ()=>{
+      window.removeEventListener("albany:jump-to-app-map", handler);
+      window.removeEventListener("albany:jump-to-research-map", handler);
+    };
+  },[openApplicationMapForParcel]);
 
   const stats=useMemo(()=>(
     {
@@ -4055,108 +5056,97 @@ const handleFile=useCallback(e=>{
     fetch_error:"Fetch failed",
     parse_failed:"Parse failed",
   }[status]||status);
-
-  const residentTabs=[
-    {id:"resident-home",label:"Start Here"},
-    {id:"browse",label:"Check My Property"},
-    {id:"equity",label:"Assessment Fairness"},
-    {id:"taxtools",label:"Lower My Tax Bill"},
-    {id:"ownership",label:"Who Owns It"},
-    {id:"mapview",label:"Neighborhood Map"},
-    {id:"compare",label:`Compare Homes${compareList.length>0?` (${compareList.length})`:""}`},
-    {id:"guide",label:"Understand My Bill"},
-  ];
-  const researchTabs=[
-    {id:"research-home",label:"Workbench"},
-    {id:"browse",label:"Parcel Browser"},
-    {id:"analytics",label:"Analytics"},
-    {id:"ownership",label:"Ownership"},
-    {id:"equity",label:"Tax Fairness"},
-    {id:"opportunity",label:"Change Signals"},
-    {id:"taxtools",label:"Tax Tools"},
-    {id:"mapview",label:"Research Map"},
-    {id:"dataquality",label:"Data Quality"},
+  const tabs=[
+    {id:"home",label:"Home"},
+    {id:"browse",label:"Property Search"},
+    {id:"mapview",label:"Application Map"},
+    {id:"equity",label:"Fairness"},
+    {id:"taxtools",label:"Tax Relief"},
     {id:"compare",label:`Compare${compareList.length>0?` (${compareList.length})`:""}`},
+    {id:"ownership",label:"Ownership"},
+    {id:"analytics",label:"Analytics"},
+    {id:"opportunity",label:"Change Signals"},
+    {id:"dataquality",label:"Data Quality"},
     {id:"guide",label:"Guide"},
   ];
-  const tabs = mode==="resident" ? residentTabs : researchTabs;
-
+  const currentTabMeta = tabs.find(t=>t.id===tab) || tabs[0];
   useEffect(()=>{
     try{
       const savedVersion = localStorage.getItem("albany_app_ui_version");
       if(savedVersion!==APP_UI_VERSION){
         localStorage.setItem("albany_app_ui_version", APP_UI_VERSION);
-        localStorage.setItem("albany_app_mode","resident");
-        localStorage.setItem("albany_app_tab_resident","resident-home");
-        localStorage.setItem("albany_app_tab_research","research-home");
-        setMode("resident");
-        setTab("resident-home");
+        if(APP_TAB_IDS.has(requestedUrlTab)){
+          localStorage.setItem("albany_app_tab", requestedUrlTab);
+          setTab(requestedUrlTab);
+        }else{
+          localStorage.setItem("albany_app_tab","home");
+          setTab("home");
+        }
+      }else if(APP_TAB_IDS.has(requestedUrlTab)){
+        localStorage.setItem("albany_app_tab", requestedUrlTab);
+        setTab(requestedUrlTab);
       }
     }catch{}
     setShowWhatsNew(false);
-  },[]);
+  },[APP_UI_VERSION,requestedUrlTab]);
 
-  useEffect(()=>{ try{localStorage.setItem("albany_app_mode",mode);}catch{} },[mode]);
-  useEffect(()=>{ try{localStorage.setItem(`albany_app_tab_${mode}`,tab);}catch{} },[mode,tab]);
+  useEffect(()=>{ try{localStorage.setItem("albany_app_tab",tab);}catch{} },[tab]);
   useEffect(()=>{
     const allowed = new Set(tabs.map(t=>t.id));
-    if(!allowed.has(tab)) setTab(mode==="resident"?"resident-home":"research-home");
-  },[mode,tab,tabs]);
-
-  const switchMode = next => {
-    if(next===mode) return;
-    setMode(next);
-    try{
-      const savedTab = localStorage.getItem(`albany_app_tab_${next}`);
-      setTab(savedTab || (next==="resident"?"resident-home":"research-home"));
-    }catch{
-      setTab(next==="resident"?"resident-home":"research-home");
-    }
-  };
+    if(!allowed.has(tab)) setTab("home");
+  },[tab,tabs]);
+  useEffect(()=>{
+    if(!pendingScrollTab || pendingScrollTab!==tab) return;
+    const runner = ()=>contentTopRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+    const id = typeof window!=="undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner,0);
+    setPendingScrollTab("");
+    return ()=>{
+      if(typeof id==="number" && typeof window!=="undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
+      else clearTimeout(id);
+    };
+  },[pendingScrollTab,tab]);
 
   const dismissWhatsNew = () => {
     setShowWhatsNew(false);
     try{localStorage.setItem("albany_app_ui_whats_new_dismissed", APP_UI_VERSION);}catch{}
   };
 
-  const residentQuickActions = [
-    {id:"browse", title:"Check my property", icon:"", body:"Search your address, see who owns it, and understand the numbers on the roll."},
-    {id:"equity", title:"Is my assessment fair?", icon:"", body:"See whether your assessment looks high compared with market value and similar parcels."},
-    {id:"taxtools", title:"Lower my tax bill", icon:"", body:"Find exemptions, estimate missing savings, and look for relief you may have missed."},
-    {id:"ownership", title:"Who owns that building?", icon:"", body:"Identify absentee owners and mailing addresses for problem properties or nearby rentals."},
+  const appQuickActions = [
+    {id:"browse", title:"Search a property", body:"Look up an address, parcel ID, or owner and open the full parcel record."},
+    {id:"mapview", title:"Open the application map", body:"Inspect parcel boundaries, neighborhoods, ownership patterns, and thematic layers in one map."},
+    {id:"equity", title:"Check tax fairness", body:"Review equity ratios, over-assessment signals, and comparable parcels."},
+    {id:"taxtools", title:"Find tax relief", body:"Check exemptions, missed savings, and homeowner tax-relief opportunities."},
+    {id:"ownership", title:"Study ownership", body:"Find absentee owners, duplicate owners, and larger property portfolios."},
+    {id:"analytics", title:"See citywide patterns", body:"Review class mix, market values, and trend summaries across Albany."},
+    {id:"dataquality", title:"Check data quality", body:"Review joins, missing geometry, and record issues before drawing conclusions."},
+    {id:"guide", title:"Understand the roll", body:"Use the glossary and parcel explainer to make sense of assessment fields."},
   ];
-  const researchQuickActions = [
-    {id:"analytics", title:"Pattern finder", icon:"", body:"See class mix, value distributions, and citywide trends without losing the parcel-level detail."},
-    {id:"mapview", title:"Research map", icon:"", body:"Inspect parcel boundaries, point fallback coverage, and spatial patterns with the full map controls."},
-    {id:"dataquality", title:"Trust the data", icon:"", body:"Audit completeness, outliers, and field integrity before drawing public conclusions."},
-    {id:"opportunity", title:"Change signals", icon:"", body:"Track underused land, neighborhood pressure, and assessments that lag the market."},
-  ];
-  const renderResidentHome = () => (
+  const renderHome = () => (
     <div className="fi">
       <div className="summary-grid" style={{marginBottom:18}}>
         <Card>
           <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Likely Over-Assessed</div>
           <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--red2)"}}>{nf(stats.overAssessedCount)}</div>
           <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Parcels above the fair 120% threshold</div>
-          <button onClick={()=>setTab("equity")} style={{marginTop:10,background:"rgba(220,38,38,.12)",border:"1px solid rgba(220,38,38,.25)",color:"var(--red2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Review fairness -&gt;</button>
+          <button onClick={()=>navigateToTab("equity")} style={{marginTop:10,background:"rgba(220,38,38,.12)",border:"1px solid rgba(220,38,38,.25)",color:"var(--red2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Review fairness -&gt;</button>
         </Card>
         <Card>
           <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Missing Exemptions</div>
           <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--amber2)"}}>{nf(stats.missingExemptionCount)}</div>
           <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Homestead parcels with no exemption on record</div>
-          <button onClick={()=>setTab("taxtools")} style={{marginTop:10,background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.25)",color:"var(--amber2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Find savings -&gt;</button>
+          <button onClick={()=>navigateToTab("taxtools")} style={{marginTop:10,background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.25)",color:"var(--amber2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Find savings -&gt;</button>
         </Card>
         <Card>
           <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Absentee Owners</div>
           <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"#f97316"}}>{nf(stats.absenteeCount)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Parcels with a mailing address that differs from the property</div>
-          <button onClick={()=>setTab("ownership")} style={{marginTop:10,background:"rgba(249,115,22,.12)",border:"1px solid rgba(249,115,22,.25)",color:"#c2410c",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>See owners -&gt;</button>
+          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Parcels flagged for likely off-site ownership</div>
+          <button onClick={()=>navigateToTab("ownership")} style={{marginTop:10,background:"rgba(249,115,22,.12)",border:"1px solid rgba(249,115,22,.25)",color:"#c2410c",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>See owners -&gt;</button>
         </Card>
         <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Citywide Market Value</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--blue3)"}}>{moneyCompact(stats.totalFMV)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Assessor-estimated market value in the loaded dataset</div>
-          <button onClick={()=>setTab("mapview")} style={{marginTop:10,background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.25)",color:"var(--blue3)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Open map -&gt;</button>
+          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Parcel Geometry</div>
+          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--teal2)"}}>{geomCoverage?`${geomCoverage.pct}%`:"None"}</div>
+          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>{geomCoverage?`${geomCoverage.matched.toLocaleString()} parcels linked to boundaries`:"Parcel boundaries are not loaded yet"}</div>
+          <button onClick={()=>navigateToTab("mapview")} style={{marginTop:10,background:"rgba(13,148,136,.12)",border:"1px solid rgba(13,148,136,.25)",color:"var(--teal2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Open map -&gt;</button>
         </Card>
       </div>
 
@@ -4164,20 +5154,20 @@ const handleFile=useCallback(e=>{
         <Card style={{marginBottom:18,background:"linear-gradient(135deg,rgba(34,197,94,.08) 0%,rgba(37,99,235,.06) 100%)",border:"1px solid rgba(34,197,94,.22)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
             <div>
-              <div style={{fontSize:11,color:"var(--green2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>My Home Snapshot</div>
+              <div style={{fontSize:11,color:"var(--green2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Saved property snapshot</div>
               <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:800,marginTop:6}}>{currentHome.address}</div>
               <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>{parcelAreaSummary(currentHome)} | Parcel {currentHome.parcelId}</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
                 <Badge color={eqFlagFast(currentHome)==="over"?"#dc2626":eqFlagFast(currentHome)==="under"?"#f59e0b":"#22c55e"}>{FL[eqFlagFast(currentHome)]}</Badge>
                 <Badge color="#3b82f6">FMV {$f(currentHome.fullMarketValue)}</Badge>
                 <Badge color="#a78bfa">{currentHome.exemptions.length} exemption{currentHome.exemptions.length===1?"":"s"}</Badge>
-                {isAbsenteeFast(currentHome)&&<Badge color="#f97316">Absentee flag</Badge>}
+                {isAbsenteeFast(currentHome)&&<><Badge color="#f97316">Absentee flag</Badge><AbsenteeExplain parcel={currentHome} compact /></>}
               </div>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>setTab("browse")} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Open my property</button>
-              <button onClick={()=>setTab("equity")} style={{background:"var(--card2)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Check fairness</button>
-              <button onClick={()=>saveHome(null)} style={{background:"rgba(220,38,38,.12)",color:"var(--red2)",border:"1px solid rgba(220,38,38,.22)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear my home</button>
+              <button onClick={()=>navigateToTab("browse")} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Open saved property</button>
+              <button onClick={()=>openApplicationMapForParcel({ parcel: currentHome })} style={{background:"var(--card2)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Open on map</button>
+              <button onClick={()=>saveHome(null)} style={{background:"rgba(220,38,38,.12)",color:"var(--red2)",border:"1px solid rgba(220,38,38,.22)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear saved property</button>
             </div>
           </div>
         </Card>
@@ -4185,89 +5175,42 @@ const handleFile=useCallback(e=>{
         <Card style={{marginBottom:18,border:"1px solid rgba(37,99,235,.22)",background:"linear-gradient(135deg,rgba(37,99,235,.08) 0%,rgba(13,148,136,.05) 100%)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
             <div>
-              <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:800}}>Save your home once</div>
-              <div style={{fontSize:12,color:"var(--gray2)",marginTop:6,maxWidth:620}}>Your address can drive the entire resident experience: fairness checks, exemption lookup, neighbor comparison, and tax-bill guidance without retyping it everywhere.</div>
+              <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:800}}>Save a property once</div>
+              <div style={{fontSize:12,color:"var(--gray2)",marginTop:6,maxWidth:620}}>Save a home or target property once, then reuse it across search, fairness checks, tax tools, comparison, and the map.</div>
             </div>
-            <button onClick={()=>setShowHomeSetup(true)} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:10,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Set My Home</button>
+            <button onClick={()=>setShowHomeSetup(true)} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:10,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Save a Property</button>
           </div>
         </Card>
       )}
 
       <div className="quick-grid" style={{marginBottom:18}}>
-        {residentQuickActions.map(card=>(
+        {appQuickActions.map(card=>(
           <Card key={card.id} style={{display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
             <div>
-              {card.icon&&<div style={{fontSize:24,marginBottom:8}}>{card.icon}</div>}
               <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:6}}>{card.title}</div>
               <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>{card.body}</div>
             </div>
-            <button onClick={()=>setTab(card.id)} style={{marginTop:14,alignSelf:"flex-start",background:"var(--card2)",border:"1px solid var(--border)",color:"var(--blue3)",borderRadius:9,padding:"8px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>Open -&gt;</button>
+            <button onClick={()=>navigateToTab(card.id)} style={{marginTop:14,alignSelf:"flex-start",background:"var(--card2)",border:"1px solid var(--border)",color:"var(--blue3)",borderRadius:9,padding:"8px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>Open -&gt;</button>
           </Card>
         ))}
       </div>
 
-      <InfoBox icon="Use Cases" title="What this can do for Albany residents" color="#22c55e">
-        Use this site to answer practical public questions: <b style={{color:"var(--white)"}}>Am I paying more than my fair share?</b> <b style={{color:"var(--white)"}}>Did I miss STAR or another exemption?</b> <b style={{color:"var(--white)"}}>Who owns the neglected house on my block?</b> <b style={{color:"var(--white)"}}>Is my neighborhood heavy on absentee ownership?</b> The goal is not just data access. The goal is clearer civic action.
+      <InfoBox icon="Guide" title="How to use this application" color="#2563eb">
+        Start with <b style={{color:"var(--white)"}}>Property Search</b> if you know an address. Use <b style={{color:"var(--white)"}}>Application Map</b> when you want to inspect parcels, neighborhoods, and ownership spatially. Use <b style={{color:"var(--white)"}}>Fairness</b> and <b style={{color:"var(--white)"}}>Tax Relief</b> for homeowner questions, then move to <b style={{color:"var(--white)"}}>Analytics</b>, <b style={{color:"var(--white)"}}>Change Signals</b>, and <b style={{color:"var(--white)"}}>Data Quality</b> when you need deeper citywide analysis.
       </InfoBox>
     </div>
   );
-
-  const renderResearchHome = () => (
-    <div className="fi">
-      <div className="summary-grid" style={{marginBottom:18}}>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Loaded Parcels</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--blue3)"}}>{nf(stats.total)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Current working dataset for analysis and drill-down</div>
-        </Card>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Parcel Geometry</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--teal2)"}}>{geomCoverage?`${geomCoverage.pct}%`:"None"}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>{geomCoverage?`${geomCoverage.matched.toLocaleString()} matched parcels with geometry`:"Upload parcel boundaries to unlock polygon rendering"}</div>
-        </Card>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Absentee Ownership</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"#f97316"}}>{nf(stats.absenteeCount)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Useful for block groups, tenant advocates, and policy research</div>
-        </Card>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Underused Lots</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--amber2)"}}>{nf(stats.underusedLotCount)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Small improvements on valuable land, a proxy for change pressure</div>
-        </Card>
-      </div>
-
-      <div className="quick-grid" style={{marginBottom:18}}>
-        {researchQuickActions.map(card=>(
-          <Card key={card.id} style={{display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
-            <div>
-              {card.icon&&<div style={{fontSize:24,marginBottom:8}}>{card.icon}</div>}
-              <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:6}}>{card.title}</div>
-              <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>{card.body}</div>
-            </div>
-            <button onClick={()=>setTab(card.id)} style={{marginTop:14,alignSelf:"flex-start",background:"var(--card2)",border:"1px solid var(--border)",color:"var(--blue3)",borderRadius:9,padding:"8px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>Open -&gt;</button>
-          </Card>
-        ))}
-      </div>
-
-      <InfoBox icon="Research" title="Why a separate research mode exists" color="#2563eb">
-        Researchers, journalists, organizers, and policy staff need more control than a typical resident. Research Mode keeps the deeper toolkit intact: uploads, data quality, advanced map layers, citywide analytics, and parcel anomaly hunting. The resident mode stays simple because that simplicity is what makes the public use it.
-      </InfoBox>
-    </div>
-  );
-
   const renderTab = () => {
-    if(tab==="resident-home") return renderResidentHome();
-    if(tab==="research-home") return renderResearchHome();
-    if(tab==="browse") return <Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)}/>;
-    if(tab==="analytics") return <Analytics parcels={parcels} onDrill={setDrillList}/>;
-    if(tab==="ownership") return <Ownership parcels={parcels} onDrill={setDrillList}/>;
+    if(tab==="home") return renderHome();
+    if(tab==="browse") return <Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)} ownerPortfolioIndex={ownerPortfolioIndex}/>;
+    if(tab==="mapview") return <MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} neighborhoodBoundaries={neighborhoodBoundaries} neighborhoodAssociations={neighborhoodAssociations} compareList={compareList} onCompare={toggleCompare} onDrill={setDrillList} jumpRequest={mapJumpRequest} advanced={true} ownerPortfolioIndex={ownerPortfolioIndex}/>;
     if(tab==="equity") return <Equity parcels={parcels} onDrill={setDrillList}/>;
-    if(tab==="opportunity") return <Opportunity parcels={parcels} onDrill={setDrillList}/>;
-    if(tab==="taxtools") return <TaxTools parcels={parcels} myHome={myHome}/>;
-    if(tab==="mapview") return <MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} neighborhoodBoundaries={neighborhoodBoundaries} neighborhoodAssociations={neighborhoodAssociations} compareList={compareList} onCompare={toggleCompare} onDrill={setDrillList} advanced={mode==="research"}/>;
-    if(tab==="dataquality") return <DataQuality parcels={parcels} meta={meta} onDrill={setDrillList}/>;
+    if(tab==="taxtools") return <TaxTools parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex}/>;
     if(tab==="compare") return <Compare parcels={parcels} compareList={compareList} onRemove={removeCompare} onAdd={addToCompare}/>;
+    if(tab==="ownership") return <Ownership parcels={parcels} onDrill={setDrillList} ownerPortfolioGroups={ownerPortfolioGroups}/>;
+    if(tab==="analytics") return <Analytics parcels={parcels} onDrill={setDrillList}/>;
+    if(tab==="opportunity") return <Opportunity parcels={parcels} onDrill={setDrillList}/>;
+    if(tab==="dataquality") return <DataQuality parcels={parcels} meta={meta} onDrill={setDrillList}/>;
     if(tab==="guide") return <HomebuyerGuide parcels={parcels} myHome={myHome}/>;
     return null;
   };
@@ -4277,21 +5220,21 @@ const handleFile=useCallback(e=>{
       <div style={{minHeight:"100vh",background:"linear-gradient(180deg,var(--bg) 0%,#edf3f9 38%,var(--bg) 100%)"}}>
         <div style={{background:"linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 55%,#d8e3f0 100%)",borderBottom:"1px solid var(--border)",padding:"0 0 24px"}}>
           <div className="app-shell" style={{paddingTop:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-              <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div className="app-header-row">
+              <div className="app-brand">
                 <div style={{width:48,height:48,background:"linear-gradient(135deg,var(--blue) 0%,var(--teal) 100%)",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,boxShadow:"0 12px 24px rgba(37,99,235,.18)"}}>ALB</div>
                 <div>
-                  <div style={{fontFamily:"var(--fd)",fontWeight:800,fontSize:24,letterSpacing:-.6}}>Albany Property Tax Explorer</div>
+                  <div className="app-title">Albany Property Tax Explorer</div>
                   <div style={{fontSize:12,color:"var(--gray)",marginTop:2}}>{heroSubtitle}</div>
                 </div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <div className="app-toolbar">
                 <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.7)",border:"1px solid var(--border)",borderRadius:999,padding:"6px 12px"}}>
                   <span className="pulse" style={{width:7,height:7,borderRadius:"50%",background:dataStatusColor,display:"inline-block"}}></span>
                   <span style={{fontSize:11,color:"var(--gray)",fontFamily:"var(--fm)"}}>{dataStatusLabel}</span>
                 </div>
                 {currentHome&&(
-                  <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(34,197,94,.1)",border:"1px solid rgba(34,197,94,.25)",borderRadius:999,padding:"6px 12px",cursor:"pointer"}} onClick={()=>setTab("browse")} title="Open my property">
+                  <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(34,197,94,.1)",border:"1px solid rgba(34,197,94,.25)",borderRadius:999,padding:"6px 12px",cursor:"pointer"}} onClick={()=>navigateToTab("browse")} title="Open my property">
                     <span style={{fontSize:12}}>Home</span>
                     <span style={{fontSize:11,color:"var(--green2)",fontWeight:700,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentHome.address}</span>
                     <button onClick={e=>{e.stopPropagation();saveHome(null);}} style={{background:"none",border:"none",color:"var(--gray3)",cursor:"pointer",fontSize:12,padding:0}}>X</button>
@@ -4300,8 +5243,8 @@ const handleFile=useCallback(e=>{
                 <button onClick={()=>setShowHomeSetup(true)} style={{background:currentHome?"rgba(34,197,94,.15)":"rgba(255,255,255,.8)",color:currentHome?"var(--green2)":"var(--gray)",border:`1px solid ${currentHome?"rgba(34,197,94,.35)":"var(--border)"}`,borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
                   {currentHome?"My Home":"Set My Home"}
                 </button>
-                <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{background:mode==="research"?"var(--blue)":"rgba(37,99,235,.92)",color:"white",border:"none",borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}} title="Load a roll CSV/TXT/JSON or map geometry JSON/GeoJSON">
-                  {uploading?"Parsing...":(mode==="research"?"Upload Data":"Load Data Files")}
+                <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}} title="Load a roll CSV/TXT/JSON or map geometry JSON/GeoJSON">
+                  {uploading?"Parsing...":"Load Data Files"}
                 </button>
                 <input ref={fileRef} type="file" accept=".json,.geojson,.txt,.csv" style={{display:"none"}} onChange={handleFile}/>
               </div>
@@ -4310,19 +5253,13 @@ const handleFile=useCallback(e=>{
 
             <div className="hero-grid" style={{marginTop:18}}>
               <Card style={{background:"linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(248,250,252,.92) 100%)",border:"1px solid rgba(37,99,235,.16)",boxShadow:"0 18px 40px rgba(15,23,42,.06)"}}>
-                <div className="mode-nav" style={{marginBottom:14}}>
-                  <button onClick={()=>switchMode("resident")} style={{background:mode==="resident"?"var(--blue)":"rgba(255,255,255,.75)",color:mode==="resident"?"white":"var(--gray)",border:`1px solid ${mode==="resident"?"var(--blue)":"var(--border)"}`,borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Resident Mode</button>
-                  <button onClick={()=>switchMode("research")} style={{background:mode==="research"?"var(--teal)":"rgba(255,255,255,.75)",color:mode==="research"?"white":"var(--gray)",border:`1px solid ${mode==="research"?"var(--teal)":"var(--border)"}`,borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Research Mode</button>
-                </div>
-                <div style={{fontSize:11,color:mode==="resident"?"var(--blue3)":"var(--teal2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1.1}}>{mode==="resident"?"Made for Albany residents":"Made for analysts, advocates, and journalists"}</div>
-                <div style={{fontFamily:"var(--fd)",fontSize:36,lineHeight:1.05,fontWeight:800,marginTop:10,maxWidth:720}}>{mode==="resident"?"Find out whether your property taxes look fair and what you can do next.":"Audit Albany's assessment roll with full analytics, uploads, and spatial controls."}</div>
-                <div style={{fontSize:14,color:"var(--gray2)",lineHeight:1.8,marginTop:12,maxWidth:760}}>{mode==="resident"
-                  ? "Start with an address, not a dataset. Look up your property, compare nearby homes, find exemptions you may have missed, and understand who owns buildings in your neighborhood."
-                  : "Research Mode keeps the full intelligence toolkit available: parcel browser, advanced map layers, data quality scoring, neighborhood change signals, and upload support for roll and geometry files."}</div>
+                <div style={{fontSize:11,color:"var(--blue3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1.1}}>One application for Albany property intelligence</div>
+                <div className="hero-title">Search, map, and analyze the 2025 Albany assessment roll in one place.</div>
+                <div style={{fontSize:14,color:"var(--gray2)",lineHeight:1.8,marginTop:12,maxWidth:760}}>This version merges resident and research workflows into one interface. You can move from address lookup to parcel mapping, fairness checks, ownership review, analytics, and data-quality review without switching modes.</div>
                 {dataSource==="sample"&&<div style={{fontSize:12,color:"#7c2d12",lineHeight:1.7,marginTop:10,maxWidth:760,background:"rgba(245,158,11,.14)",border:"1px solid rgba(245,158,11,.28)",borderRadius:12,padding:"10px 12px"}}>Sample data is still active. The full Albany roll did not load at startup. Check the <b style={{color:"#431407"}}>Startup autoload</b> panel for the exact file-by-file result, or use <b style={{color:"#431407"}}>Load Data Files</b> to load the Albany files manually.</div>}
-                <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:18}}>
-                  <button onClick={()=>setTab(mode==="resident"?"browse":"analytics")} style={{background:mode==="resident"?"var(--blue)":"var(--teal)",color:"white",border:"none",borderRadius:10,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>{mode==="resident"?"Check My Property":"Open Workbench"}</button>
-                  <button onClick={()=>setTab(mode==="resident"?"taxtools":"mapview")} style={{background:"rgba(255,255,255,.78)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:10,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>{mode==="resident"?"Find Tax Savings":"Open Research Map"}</button>
+                <div className="hero-actions">
+                  <button onClick={()=>navigateToTab("browse")} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:10,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Search a parcel</button>
+                  <button onClick={()=>navigateToTab("mapview")} style={{background:"rgba(255,255,255,.78)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:10,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Open Application Map</button>
                 </div>
               </Card>
 
@@ -4354,7 +5291,7 @@ const handleFile=useCallback(e=>{
                   </div>
                   <div style={{background:"rgba(255,255,255,.75)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
                     <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:800}}>Next step</div>
-                    <div style={{fontSize:12,color:"var(--gray2)",marginTop:4,lineHeight:1.7}}>{dataSource==="sample"?"Load the Albany roll and geometry files to unlock the full parcel inventory and parcel-boundary mapping.":(mode==="resident"?"Search an address or open Neighborhood Map to inspect parcels and ownership.":"Open Research Map or Data Quality to inspect joins, geometry coverage, and parcel-level patterns.")}</div>
+                    <div style={{fontSize:12,color:"var(--gray2)",marginTop:4,lineHeight:1.7}}>{dataSource==="sample"?"Load the Albany roll and geometry files to unlock the full parcel inventory and parcel-boundary mapping.":"Start with Property Search or open the Application Map, then move into Ownership, Fairness, Analytics, and Data Quality as needed."}</div>
                   </div>
                 </div>
               </Card>
@@ -4362,33 +5299,47 @@ const handleFile=useCallback(e=>{
           </div>
         </div>
 
-        <div style={{background:"rgba(255,255,255,.55)",borderBottom:"1px solid var(--border)",backdropFilter:"blur(8px)",overflowX:"auto"}}>
-          <div className="app-shell" style={{display:"flex",gap:6,paddingTop:8,paddingBottom:0}}>
-            {tabs.map(t=>(
-              <button key={t.id} onClick={()=>setTab(t.id)} style={{
-                background:tab===t.id?(mode==="resident"?"var(--blue)":"var(--teal)"):"transparent",
-                color:tab===t.id?"white":"var(--gray2)",
-                border:"none",
-                borderRadius:"10px 10px 0 0",
-                padding:"11px 16px",
-                fontSize:12,
-                fontWeight:700,
-                cursor:"pointer",
-                whiteSpace:"nowrap",
-                borderBottom:tab===t.id?`2px solid ${mode==="resident"?"var(--blue2)":"var(--teal2)"}`:"2px solid transparent"
-              }}>{t.icon?<span style={{marginRight:6}}>{t.icon}</span>:null}{t.label}</button>
-            ))}
+        <div style={{background:"rgba(255,255,255,.55)",borderBottom:"1px solid var(--border)",backdropFilter:"blur(8px)"}}>
+          <div className="app-shell desktop-tab-rail">
+            <div className="tab-rail">
+              {tabs.map(t=>(
+                <button key={t.id} onClick={()=>navigateToTab(t.id)} style={{
+                  background:tab===t.id?"var(--blue)":"transparent",
+                  color:tab===t.id?"white":"var(--gray2)",
+                  border:"none",
+                  borderRadius:"10px 10px 0 0",
+                  padding:"11px 16px",
+                  fontSize:12,
+                  fontWeight:700,
+                  cursor:"pointer",
+                  whiteSpace:"nowrap",
+                  borderBottom:tab===t.id?"2px solid var(--blue2)":"2px solid transparent"
+                }} className="tab-chip">{t.icon?<span style={{marginRight:6}}>{t.icon}</span>:null}{t.label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="app-shell mobile-tab-shell" style={{paddingTop:10,paddingBottom:10}}>
+            <button type="button" className="mobile-tab-trigger" onClick={()=>setMobileNavOpen(v=>!v)} aria-expanded={mobileNavOpen}>
+              <span>{currentTabMeta?.label || "Menu"}</span>
+              <span style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--gray2)"}}>{mobileNavOpen?"Close":"Menu"}</span>
+            </button>
+            {mobileNavOpen&&<div className="mobile-tab-list">
+              {tabs.map(t=>(
+                <button key={t.id} type="button" onClick={()=>navigateToTab(t.id)} className="mobile-tab-item" style={{background:tab===t.id?"rgba(37,99,235,.12)":"rgba(255,255,255,.92)",borderColor:tab===t.id?"rgba(37,99,235,.28)":"var(--border)",color:tab===t.id?"var(--blue3)":"var(--gray)"}}>{t.label}</button>
+              ))}
+            </div>}
           </div>
         </div>
 
-        <div className="app-shell" style={{paddingTop:22,paddingBottom:40}}>
+        <div ref={contentTopRef} className="app-shell" style={{paddingTop:22,paddingBottom:40}}>
           {renderTab()}
         </div>
 
+
         <div style={{borderTop:"1px solid var(--border)",padding:"14px 24px",textAlign:"center",color:"var(--gray3)",fontSize:11}}>
-          Albany Property Tax Explorer | 2025 Final Assessment Roll | City of Albany, NY | Resident mode for public questions | Research mode for deeper analysis
+          Albany Property Tax Explorer | 2025 Final Assessment Roll | City of Albany, NY | Unified property search, mapping, fairness, ownership, and analytics
         </div>
-      </div>
+        </div>
 
       {drillList&&<PropListModal data={drillList} onClose={()=>setDrillList(null)}/>}
       {showHomeSetup&&(
@@ -4432,6 +5383,32 @@ const handleFile=useCallback(e=>{
     </>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

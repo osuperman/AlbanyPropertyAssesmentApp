@@ -1,0 +1,1397 @@
+﻿[
+    {
+        "Code":  "100",
+        "Title":  "AGRICULTURAL",
+        "Description":  ""
+    },
+    {
+        "Code":  "105",
+        "Title":  "Agricultural Vacant Land (Productive)",
+        "Description":  "Land used as part of an operating farm. It does not have living accommodations and cannot be specifically related to any of the other divisions in the agricultural category. Usually found when an operating farm is made up of a number of contiguous parcels."
+    },
+    {
+        "Code":  "110",
+        "Title":  "Livestock and Products",
+        "Description":  ""
+    },
+    {
+        "Code":  "111",
+        "Title":  "Poultry and Poultry Products: eggs, chickens, turkeys, ducks and geese",
+        "Description":  ""
+    },
+    {
+        "Code":  "112",
+        "Title":  "Dairy Products: milk, butter and cheese",
+        "Description":  ""
+    },
+    {
+        "Code":  "113",
+        "Title":  "Cattle, Calves, Hogs",
+        "Description":  ""
+    },
+    {
+        "Code":  "114",
+        "Title":  "Sheep and Wool",
+        "Description":  ""
+    },
+    {
+        "Code":  "115",
+        "Title":  "Honey and Beeswax",
+        "Description":  ""
+    },
+    {
+        "Code":  "116",
+        "Title":  "Other Livestock: donkeys, goats",
+        "Description":  ""
+    },
+    {
+        "Code":  "117",
+        "Title":  "Horse Farms",
+        "Description":  ""
+    },
+    {
+        "Code":  "120",
+        "Title":  "Field Crops",
+        "Description":  "Potatoes, wheat, hay, dry beans, corn, oats, and other field crops."
+    },
+    {
+        "Code":  "129",
+        "Title":  "Acquired Development Rights",
+        "Description":  "Land for which development rights have been acquired by a governmental agency (e.g., certain agricultural lands in Suffolk County)."
+    },
+    {
+        "Code":  "130",
+        "Title":  "Truck Crops - Mucklands",
+        "Description":  "Muckland used to grow potatoes, sugar beets, onions, snap beans, tomatoes, cabbage, lettuce, cauliflower, sweet corn, celery, etc."
+    },
+    {
+        "Code":  "140",
+        "Title":  "Truck Crops - Not Mucklands",
+        "Description":  "Nonmuckland used to grow onions, snap beans, tomatoes, cabbage, lettuce, cauliflower, sweet corn, celery, carrots, beets, peas, etc."
+    },
+    {
+        "Code":  "150",
+        "Title":  "Orchard Crops",
+        "Description":  ""
+    },
+    {
+        "Code":  "151",
+        "Title":  "Apples, Pears, Peaches, Cherries, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "152",
+        "Title":  "Vineyards",
+        "Description":  ""
+    },
+    {
+        "Code":  "160",
+        "Title":  "Other Fruits",
+        "Description":  "Strawberries, raspberries, dewberries, currants, etc."
+    },
+    {
+        "Code":  "170",
+        "Title":  "Nursery and Greenhouse",
+        "Description":  "Buildings, greenhouses and land used for growing nursery stock, trees, flowers, hothouse plants, mushrooms, etc."
+    },
+    {
+        "Code":  "180",
+        "Title":  "Specialty Farms",
+        "Description":  ""
+    },
+    {
+        "Code":  "181",
+        "Title":  "Fur Products: mink, chinchilla, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "182",
+        "Title":  "Pheasant, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "183",
+        "Title":  "Aquatic: oysterlands, fish and aquatic plants",
+        "Description":  ""
+    },
+    {
+        "Code":  "184",
+        "Title":  "Livestock: deer, moose, llamas, buffalo, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "190",
+        "Title":  "Fish, Game and Wildlife Preserves",
+        "Description":  ""
+    },
+    {
+        "Code":  "200",
+        "Title":  "RESIDENTIAL",
+        "Description":  ""
+    },
+    {
+        "Code":  "210",
+        "Title":  "One Family Year-Round Residence",
+        "Description":  "A one family dwelling constructed for year-round occupancy (adequate insulation, heating, etc.). NOTE: If not constructed for year-round occupancy, see code 260."
+    },
+    {
+        "Code":  "215",
+        "Title":  "One Family Year-Round Residence with Accessory Apartment",
+        "Description":  "A one family, year round residence with a secondary self contained dwelling unit. Accessory apartments are usually contained within or added to the principle residence and are often occupied by immediate family members."
+    },
+    {
+        "Code":  "220",
+        "Title":  "Two Family Year-Round Residence",
+        "Description":  "A two family dwelling constructed for year-round occupancy."
+    },
+    {
+        "Code":  "230",
+        "Title":  "Three Family Year-Round Residence",
+        "Description":  "A three family dwelling constructed for year-round occupancy."
+    },
+    {
+        "Code":  "240",
+        "Title":  "Rural Residence with Acreage",
+        "Description":  "A year-round residence with 10 or more acres of land; it may have up to three year-round dwelling units."
+    },
+    {
+        "Code":  "241",
+        "Title":  "Primarily residential, also used in agricultural production",
+        "Description":  ""
+    },
+    {
+        "Code":  "242",
+        "Title":  "Recreational use",
+        "Description":  ""
+    },
+    {
+        "Code":  "250",
+        "Title":  "Estate",
+        "Description":  "A residential property of not less than 5 acres with a luxurious residence and auxiliary buildings."
+    },
+    {
+        "Code":  "260",
+        "Title":  "Seasonal Residences",
+        "Description":  "Dwelling units generally used for seasonal occupancy; not constructed for year-round occupancy (inadequate insulation, heating, etc.). If the value of the land and timber exceeds the value of the seasonal dwelling, the property should be listed as forest land (see category 900). NOTE: If constructed for year-round occupancy, see code 210."
+    },
+    {
+        "Code":  "270",
+        "Title":  "Mobile Home",
+        "Description":  "A portable structure built on a chassis and used as a permanent dwelling unit."
+    },
+    {
+        "Code":  "271",
+        "Title":  "Multiple Mobile Homes",
+        "Description":  "More than one mobile home on one parcel of land; not a commercial enterprise."
+    },
+    {
+        "Code":  "280",
+        "Title":  "Residential - Multi-Purpose / Multi-Structure",
+        "Description":  ""
+    },
+    {
+        "Code":  "281",
+        "Title":  "Multiple Residences",
+        "Description":  "More than one residential dwelling on one parcel of land. May be a mixture of codes 210\u0027s, 220\u0027s and 230\u0027s, or all one type"
+    },
+    {
+        "Code":  "283",
+        "Title":  "Residence with Incidental Commercial Use",
+        "Description":  "A residence which has been partially converted or adapted for commercial use (e.g. residence with small office in basement). Primary use is residential"
+    },
+    {
+        "Code":  "300",
+        "Title":  "VACANT LAND",
+        "Description":  ""
+    },
+    {
+        "Code":  "310",
+        "Title":  "Residential",
+        "Description":  ""
+    },
+    {
+        "Code":  "311",
+        "Title":  "Residential Vacant Land",
+        "Description":  "Vacant lots or acreage located in residential areas"
+    },
+    {
+        "Code":  "312",
+        "Title":  "Residential Land",
+        "Description":  "Including a Small Improvement (not used for living accommodations) Includes a private garage on a parcel of land separate from the residence. Does not include a small garage where space is being rented out (see code 439)."
+    },
+    {
+        "Code":  "314",
+        "Title":  "Rural Vacant Lots of 10 Acres or Less",
+        "Description":  "Located in rural residential areas."
+    },
+    {
+        "Code":  "315",
+        "Title":  "Underwater Vacant Land",
+        "Description":  "Underwater land, in a seasonal residential area, not owned by a governmental jurisdiction"
+    },
+    {
+        "Code":  "320",
+        "Title":  "Rural",
+        "Description":  ""
+    },
+    {
+        "Code":  "321",
+        "Title":  "Abandoned Agricultural Land",
+        "Description":  "Nonproductive; not part of an operating farm."
+    },
+    {
+        "Code":  "322",
+        "Title":  "Residential Vacant Land Over 10 Acres",
+        "Description":  "Located in rural areas."
+    },
+    {
+        "Code":  "323",
+        "Title":  "Other Rural Vacant Lands",
+        "Description":  "Waste lands, sand dunes, salt marshes, swamps, rocky areas, and woods and brush of noncommercial tree species not associated with forest lands."
+    },
+    {
+        "Code":  "330",
+        "Title":  "Vacant Land Located in Commercial Areas",
+        "Description":  ""
+    },
+    {
+        "Code":  "331",
+        "Title":  "Commercial Vacant with minor improvements",
+        "Description":  ""
+    },
+    {
+        "Code":  "340",
+        "Title":  "Vacant Land Located in Industrial Areas",
+        "Description":  ""
+    },
+    {
+        "Code":  "341",
+        "Title":  "Industrial Vacant with minor improvements",
+        "Description":  ""
+    },
+    {
+        "Code":  "350",
+        "Title":  "Urban Renewal or Slum Clearance",
+        "Description":  "Vacant lots or acreage undergoing urban renewal or slum clearance; improvements must be abandoned."
+    },
+    {
+        "Code":  "380",
+        "Title":  "Public Utility Vacant Land",
+        "Description":  "Public utility company vacant lands."
+    },
+    {
+        "Code":  "400",
+        "Title":  "COMMERCIAL",
+        "Description":  ""
+    },
+    {
+        "Code":  "410",
+        "Title":  "Living Accommodations",
+        "Description":  ""
+    },
+    {
+        "Code":  "411",
+        "Title":  "Apartments",
+        "Description":  ""
+    },
+    {
+        "Code":  "414",
+        "Title":  "Hotel",
+        "Description":  ""
+    },
+    {
+        "Code":  "415",
+        "Title":  "Motel",
+        "Description":  ""
+    },
+    {
+        "Code":  "416",
+        "Title":  "Mobile Home Parks (trailer parks, trailer courts)",
+        "Description":  "The mobile homes are usually owner occupied but the land and facilities are rented or leased. (See code 270 for individual mobile homes.)"
+    },
+    {
+        "Code":  "417",
+        "Title":  "Camps, Cottages, Bungalows",
+        "Description":  "Usually rented on a seasonal basis"
+    },
+    {
+        "Code":  "418",
+        "Title":  "Inns, Lodges, Boarding and Rooming Houses, Tourist Homes, Fraternity and Sorority Houses",
+        "Description":  "Sleeping accommodations with or without meals or kitchen privileges."
+    },
+    {
+        "Code":  "420",
+        "Title":  "Dining Establishments",
+        "Description":  ""
+    },
+    {
+        "Code":  "421",
+        "Title":  "Restaurants",
+        "Description":  "Facilities which serve full course meals with or without legal beverages"
+    },
+    {
+        "Code":  "422",
+        "Title":  "Diners and Luncheonettes",
+        "Description":  "Usually year-round facilities with counter service and limited seating"
+    },
+    {
+        "Code":  "423",
+        "Title":  "Snack Bars, Drive-Ins, Ice Cream Bars",
+        "Description":  "Usually seasonal, with window and/or car service, possibly limited counter service (e.g., A \u0026 W Root Beer, Tastee Freeze Ice Cream, etc.)"
+    },
+    {
+        "Code":  "424",
+        "Title":  "Night Clubs",
+        "Description":  "Facilities which feature an extensive menu, legal beverages and live entertainment"
+    },
+    {
+        "Code":  "425",
+        "Title":  "Bar",
+        "Description":  "Facilities which serve only legal beverages, not food."
+    },
+    {
+        "Code":  "426",
+        "Title":  "Fast Food Franchises",
+        "Description":  "Year-round, with counter service, limited menus and a drive-up window (e.g., McDonald\u0027s, Burger King, etc.)"
+    },
+    {
+        "Code":  "430",
+        "Title":  "Motor Vehicle Services",
+        "Description":  ""
+    },
+    {
+        "Code":  "431",
+        "Title":  "Auto Dealers - Sales and Service",
+        "Description":  "Includes truck or farm machinery dealerships, auto or truck rental agencies, motor home sales and service facilities, etc"
+    },
+    {
+        "Code":  "432",
+        "Title":  "Service and Gas Stations",
+        "Description":  "Sell gasoline and/or provide minor repairs and services"
+    },
+    {
+        "Code":  "433",
+        "Title":  "Auto Body, Tire Shops, Other Related Auto Sales",
+        "Description":  "Specialized auto equipment and repair (e.g., Goodyear Tire Center, Firestone Stores, etc.)"
+    },
+    {
+        "Code":  "434",
+        "Title":  "Automatic Car Wash",
+        "Description":  "Car is pulled through a series of cleaning processes"
+    },
+    {
+        "Code":  "435",
+        "Title":  "Manual Car Wash",
+        "Description":  "Car is driven into a stall; revolving brushes rotate around the car (semiautomatic)"
+    },
+    {
+        "Code":  "436",
+        "Title":  "Self-Service Car Wash",
+        "Description":  "Usually a multi stall structure featuring a car owner operated coin system with spray type hoses for washing and rinsing a car"
+    },
+    {
+        "Code":  "437",
+        "Title":  "Parking Garage",
+        "Description":  "Usually a multistory structure with elevators and/or ramps, used mainly for car storage"
+    },
+    {
+        "Code":  "438",
+        "Title":  "Parking Lot",
+        "Description":  "A commercial open parking lot for motor vehicles"
+    },
+    {
+        "Code":  "439",
+        "Title":  "Small Parking Garage",
+        "Description":  "A garage with two or more stalls, usually found in a residential area, being rented for parking"
+    },
+    {
+        "Code":  "440",
+        "Title":  "Storage, Warehouse and Distribution Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "441",
+        "Title":  "Fuel Storage and Distribution",
+        "Description":  "Facilities Facility for fuel storage and distribution including gasoline, oil, liquid petroleum bottled gas, natural gas, and coal"
+    },
+    {
+        "Code":  "442",
+        "Title":  "Mini Warehouse (Self Service Storage)",
+        "Description":  "This use reflects the partitioned warehouse space used for multiple tenant self service storage"
+    },
+    {
+        "Code":  "443",
+        "Title":  "Grain and Feed Elevators, Mixers, Sales Outlets",
+        "Description":  ""
+    },
+    {
+        "Code":  "444",
+        "Title":  "Lumber Yards, Sawmills",
+        "Description":  ""
+    },
+    {
+        "Code":  "446",
+        "Title":  "Cold Storage Facilities",
+        "Description":  "Used for perishables, produce or other items."
+    },
+    {
+        "Code":  "447",
+        "Title":  "Trucking Terminals",
+        "Description":  ""
+    },
+    {
+        "Code":  "448",
+        "Title":  "Piers, Wharves, Docks and Related Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "449",
+        "Title":  "Other Storage, Warehouse and Distribution",
+        "Description":  "Facilities."
+    },
+    {
+        "Code":  "450",
+        "Title":  "Retail Services",
+        "Description":  ""
+    },
+    {
+        "Code":  "451",
+        "Title":  "Regional Shopping Centers",
+        "Description":  "Multi occupant facilities with ten or more stores, usually featuring a large department store or two, and ample paved parking"
+    },
+    {
+        "Code":  "452",
+        "Title":  "Area or Neighborhood Shopping Centers",
+        "Description":  "Smaller shopping facilities which usually feature a junior department store, several other stores, and ample parking; may include a supermarket."
+    },
+    {
+        "Code":  "453",
+        "Title":  "Large Retail Outlets",
+        "Description":  "These facilities are usually complemented by a large supermarket and have ample parking (e.g., Ames, Wal-mart, etc.)."
+    },
+    {
+        "Code":  "454",
+        "Title":  "Large Retail Food Stores",
+        "Description":  "These facilities usually belong to a chain and sell food and sundry items (e.g., Price Chopper, Hannaford, Topps, Wegmans, P\u0026C, Big M, etc.)."
+    },
+    {
+        "Code":  "455",
+        "Title":  "Dealerships - Sales and Service (other than auto with large sales operation) Boats (also refer to code 570), snowmobiles, garden equipment, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "460",
+        "Title":  "Banks and Office Buildings",
+        "Description":  ""
+    },
+    {
+        "Code":  "461",
+        "Title":  "Standard Bank/Single Occupant",
+        "Description":  ""
+    },
+    {
+        "Code":  "462",
+        "Title":  "Drive-In Branch Bank",
+        "Description":  ""
+    },
+    {
+        "Code":  "463",
+        "Title":  "Bank Complex with Office Building",
+        "Description":  ""
+    },
+    {
+        "Code":  "464",
+        "Title":  "Office Building",
+        "Description":  ""
+    },
+    {
+        "Code":  "465",
+        "Title":  "Professional Building",
+        "Description":  ""
+    },
+    {
+        "Code":  "470",
+        "Title":  "Miscellaneous Services",
+        "Description":  ""
+    },
+    {
+        "Code":  "471",
+        "Title":  "Funeral Homes",
+        "Description":  ""
+    },
+    {
+        "Code":  "472",
+        "Title":  "Dog Kennels, Veterinary Clinics",
+        "Description":  ""
+    },
+    {
+        "Code":  "473",
+        "Title":  "Greenhouses",
+        "Description":  ""
+    },
+    {
+        "Code":  "474",
+        "Title":  "Billboards",
+        "Description":  ""
+    },
+    {
+        "Code":  "475",
+        "Title":  "Junkyards",
+        "Description":  ""
+    },
+    {
+        "Code":  "480",
+        "Title":  "Multiple Use or Multipurpose",
+        "Description":  "A building readily adaptable, with little physical change, for more than one use or purpose."
+    },
+    {
+        "Code":  "481",
+        "Title":  "Downtown Row Type (with common wall)",
+        "Description":  "Usually a two or three story older structure with retail sales/services on the first floor and offices and/or apartments on the upper floors; little or no on-site parking."
+    },
+    {
+        "Code":  "482",
+        "Title":  "Downtown Row Type (detached)",
+        "Description":  "The same type of use as in code 481, above, but this is a separate structure without party walls"
+    },
+    {
+        "Code":  "483",
+        "Title":  "Converted Residence",
+        "Description":  "A building usually located in a residential area, which has been partially converted or adapted for office space (e.g., a doctor\u0027s or dentist\u0027s office with an apartment upstairs)."
+    },
+    {
+        "Code":  "484",
+        "Title":  "One Story Small Structure",
+        "Description":  "Usually a modern, one occupant, building adaptable for several uses (e.g., retail clothing store, small office, warehouse, pet shop, etc.)"
+    },
+    {
+        "Code":  "485",
+        "Title":  "One Story Small Structure - Multi occupant",
+        "Description":  "Usually partitioned for two or more occupants, such as a liquor store, drug store, and a laundromat; limited parking on site"
+    },
+    {
+        "Code":  "486",
+        "Title":  "Minimart",
+        "Description":  "Combination snack bar, market and gas station."
+    },
+    {
+        "Code":  "500",
+        "Title":  "RECREATION AND ENTERTAINMENT",
+        "Description":  ""
+    },
+    {
+        "Code":  "510",
+        "Title":  "Entertainment Assembly",
+        "Description":  ""
+    },
+    {
+        "Code":  "511",
+        "Title":  "Legitimate Theaters",
+        "Description":  "Used primarily for live presentations of the performing arts (opera, drama, musicals, symphonies, ballet, etc.)."
+    },
+    {
+        "Code":  "512",
+        "Title":  "Motion Picture Theaters (excludes drive-in theaters)",
+        "Description":  ""
+    },
+    {
+        "Code":  "513",
+        "Title":  "Drive-In Theaters",
+        "Description":  ""
+    },
+    {
+        "Code":  "514",
+        "Title":  "Auditoriums, Exhibition and Exposition Halls",
+        "Description":  ""
+    },
+    {
+        "Code":  "515",
+        "Title":  "Radio, T.V. and Motion Picture Studios",
+        "Description":  ""
+    },
+    {
+        "Code":  "520",
+        "Title":  "Sports Assembly",
+        "Description":  ""
+    },
+    {
+        "Code":  "521",
+        "Title":  "Stadiums, Arenas, Armories, Field Houses",
+        "Description":  ""
+    },
+    {
+        "Code":  "522",
+        "Title":  "Racetracks",
+        "Description":  "Used for auto, horse, motorcycle, go-cart, or drag racing."
+    },
+    {
+        "Code":  "530",
+        "Title":  "Amusement Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "531",
+        "Title":  "Fairgrounds",
+        "Description":  ""
+    },
+    {
+        "Code":  "532",
+        "Title":  "Amusement Parks",
+        "Description":  ""
+    },
+    {
+        "Code":  "533",
+        "Title":  "Game Farms",
+        "Description":  ""
+    },
+    {
+        "Code":  "534",
+        "Title":  "Social Organizations",
+        "Description":  "Elks, Moose, Eagles, and Veterans\u0027 Posts, etc., whose primary purpose is social activities for members"
+    },
+    {
+        "Code":  "540",
+        "Title":  "Indoor Sports Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "541",
+        "Title":  "Bowling Centers",
+        "Description":  ""
+    },
+    {
+        "Code":  "542",
+        "Title":  "Ice or Roller Skating Rinks",
+        "Description":  ""
+    },
+    {
+        "Code":  "543",
+        "Title":  "YMCA\u0027s, YWCA\u0027s, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "544",
+        "Title":  "Health Spas",
+        "Description":  ""
+    },
+    {
+        "Code":  "545",
+        "Title":  "Indoor Swimming Pools",
+        "Description":  ""
+    },
+    {
+        "Code":  "546",
+        "Title":  "Other Indoor Sports",
+        "Description":  "Tennis courts, archery ranges, billiard centers, etc."
+    },
+    {
+        "Code":  "550",
+        "Title":  "Outdoor Sports Activities",
+        "Description":  ""
+    },
+    {
+        "Code":  "551",
+        "Title":  "Skiing Centers",
+        "Description":  "May include sleeping and dining facilities; not ski facilities of resort complexes."
+    },
+    {
+        "Code":  "552",
+        "Title":  "Public Golf Courses",
+        "Description":  "May include other associated sports facilities and/or dining facilities."
+    },
+    {
+        "Code":  "553",
+        "Title":  "Private Golf Country Clubs",
+        "Description":  "Includes those with other sports and dining facilities"
+    },
+    {
+        "Code":  "554",
+        "Title":  "Outdoor Swimming Pools",
+        "Description":  ""
+    },
+    {
+        "Code":  "555",
+        "Title":  "Riding Stables",
+        "Description":  ""
+    },
+    {
+        "Code":  "556",
+        "Title":  "Ice or Roller Skating Rinks (may be covered)",
+        "Description":  ""
+    },
+    {
+        "Code":  "557",
+        "Title":  "Other Outdoor Sports",
+        "Description":  "Driving ranges, miniature golf, tennis, baseball, batting ranges, polo fields, etc."
+    },
+    {
+        "Code":  "560",
+        "Title":  "Improved Beaches",
+        "Description":  "Improvements include bath houses, parking facilities, etc."
+    },
+    {
+        "Code":  "570",
+        "Title":  "Marinas",
+        "Description":  "Improvements include docks and piers, boat storage facilities, repair shops, etc."
+    },
+    {
+        "Code":  "580",
+        "Title":  "Camps, Camping Facilities and Resorts",
+        "Description":  ""
+    },
+    {
+        "Code":  "581",
+        "Title":  "Camps",
+        "Description":  "Used by groups of children and/or adults."
+    },
+    {
+        "Code":  "582",
+        "Title":  "Camping Facilities",
+        "Description":  "Improved areas/parks with accommodations for tents, campers or travel trailers or RV\u0027s."
+    },
+    {
+        "Code":  "583",
+        "Title":  "Resort Complexes",
+        "Description":  "Dude ranches, resort hotels with sports facilities, etc"
+    },
+    {
+        "Code":  "590",
+        "Title":  "Parks",
+        "Description":  ""
+    },
+    {
+        "Code":  "591",
+        "Title":  "Playgrounds",
+        "Description":  ""
+    },
+    {
+        "Code":  "592",
+        "Title":  "Athletic Fields",
+        "Description":  ""
+    },
+    {
+        "Code":  "593",
+        "Title":  "Picnic Grounds",
+        "Description":  ""
+    },
+    {
+        "Code":  "600",
+        "Title":  "COMMUNITY SERVICES",
+        "Description":  ""
+    },
+    {
+        "Code":  "610",
+        "Title":  "Education",
+        "Description":  ""
+    },
+    {
+        "Code":  "611",
+        "Title":  "Libraries",
+        "Description":  ""
+    },
+    {
+        "Code":  "612",
+        "Title":  "Schools",
+        "Description":  "General, elementary and secondary."
+    },
+    {
+        "Code":  "613",
+        "Title":  "Colleges and Universities",
+        "Description":  ""
+    },
+    {
+        "Code":  "614",
+        "Title":  "Special Schools and Institutions",
+        "Description":  "Used for the physically or mentally impaired."
+    },
+    {
+        "Code":  "615",
+        "Title":  "Other Educational Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "620",
+        "Title":  "Religious",
+        "Description":  ""
+    },
+    {
+        "Code":  "630",
+        "Title":  "Welfare",
+        "Description":  ""
+    },
+    {
+        "Code":  "631",
+        "Title":  "Orphanages",
+        "Description":  ""
+    },
+    {
+        "Code":  "632",
+        "Title":  "Benevolent and Moral Associations",
+        "Description":  ""
+    },
+    {
+        "Code":  "633",
+        "Title":  "Homes for the Aged",
+        "Description":  ""
+    },
+    {
+        "Code":  "640",
+        "Title":  "Health",
+        "Description":  ""
+    },
+    {
+        "Code":  "641",
+        "Title":  "Hospitals",
+        "Description":  ""
+    },
+    {
+        "Code":  "642",
+        "Title":  "All Other Health Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "650",
+        "Title":  "Government",
+        "Description":  ""
+    },
+    {
+        "Code":  "651",
+        "Title":  "Highway Garage",
+        "Description":  "Used for the storage and maintenance of highway equipment by any governmental jurisdiction; includes associated land."
+    },
+    {
+        "Code":  "652",
+        "Title":  "Office Building Owned by any governmental jurisdiction",
+        "Description":  "includes associated land"
+    },
+    {
+        "Code":  "653",
+        "Title":  "Parking Lots Owned by any governmental jurisdiction",
+        "Description":  "includes land and appurtenant structures such as open single level lots as well as multilevel parking garages"
+    },
+    {
+        "Code":  "660",
+        "Title":  "Protection",
+        "Description":  ""
+    },
+    {
+        "Code":  "661",
+        "Title":  "Army, Navy, Air Force, Marine and Coast Guard, Installations, Radar, etc",
+        "Description":  ""
+    },
+    {
+        "Code":  "662",
+        "Title":  "Police and Fire Protection, Electrical Signal",
+        "Description":  "Equipment and Other Facilities for Fire, Police, Civil Defense, etc."
+    },
+    {
+        "Code":  "670",
+        "Title":  "Correctional",
+        "Description":  "Used by any governmental jurisdiction for housing within the criminal justice system."
+    },
+    {
+        "Code":  "680",
+        "Title":  "Cultural and Recreational",
+        "Description":  ""
+    },
+    {
+        "Code":  "681",
+        "Title":  "Cultural Facilities",
+        "Description":  "Museums, art galleries, etc."
+    },
+    {
+        "Code":  "682",
+        "Title":  "Recreational Facilities",
+        "Description":  "Nature trails, bike paths, etc."
+    },
+    {
+        "Code":  "690",
+        "Title":  "Miscellaneous",
+        "Description":  ""
+    },
+    {
+        "Code":  "691",
+        "Title":  "Professional Associations",
+        "Description":  ""
+    },
+    {
+        "Code":  "692",
+        "Title":  "Roads, Streets, Highways and Parkways, Express or Otherwise (if listed)",
+        "Description":  "Including Adjoining Land"
+    },
+    {
+        "Code":  "693",
+        "Title":  "Indian Reservations",
+        "Description":  ""
+    },
+    {
+        "Code":  "694",
+        "Title":  "Animal Welfare Shelters",
+        "Description":  ""
+    },
+    {
+        "Code":  "695",
+        "Title":  "Cemeteries",
+        "Description":  ""
+    },
+    {
+        "Code":  "700",
+        "Title":  "INDUSTRIAL",
+        "Description":  "A parcel including an office building on land located adjacent to or near an automobile assembly plant and used principally by the automobile manufacturer for its own offices should be coded as industrial under the appropriate division below. However, if such building is used principally by tenants leasing space therein, the parcel should be coded as commercial. Also, an office building used principally by an industrial concern but located remote from its manufacturing plant should be coded as commercial rather than industrial (e.g., office buildings in Manhattan occupied principally by industrial companies whose manufacturing activities are located elsewhere throughout the country). Parcels used for research aimed primarily at improving products should be coded as industrial, while parcels used for marketing research should be coded as commercial. High Tech Manufacturing 712 NA and Processing Light Industrial 714 NA Manufacturing and Processing Heavy Manufacturing and 715 NA Processing Mining and Quarrying 720 721 Sand and Gravel “ 720 722 Limestone “ 720 723 Trap Rock “ 720 724 Salt “ 720 725 Iron and Titanium “ 720 726 Talc “ 720 727 Lead and Zinc “ 720 728 Gypsum “ 720 729 Other"
+    },
+    {
+        "Code":  "710",
+        "Title":  "Manufacturing and Processing",
+        "Description":  ""
+    },
+    {
+        "Code":  "712",
+        "Title":  "High Tech. Manufacturing and Processing",
+        "Description":  "These buildings are used as research laboratories with a high percentage of office/laboratory space. The construction costs of these facilities are higher than other warehouse/manufacturing facilities reflecting their architectural design, super adequate upgrades, and more comprehensive finish"
+    },
+    {
+        "Code":  "714",
+        "Title":  "Light Industrial Manufacturing and Processing",
+        "Description":  "These structures may have been built for a specific manufacturing process. They feature high ceilings and open construction which allows for good workflow"
+    },
+    {
+        "Code":  "715",
+        "Title":  "Heavy Manufacturing and Processing",
+        "Description":  "These are large area structures design and built for production. They will have extensive concrete foundations for industrial equipment and a high voltage electrical system"
+    },
+    {
+        "Code":  "720",
+        "Title":  "Mining and Quarrying",
+        "Description":  "This category includes parcels used in or necessary adjunct to the provision of mining and quarrying, i.e., sand and gravel, limestone, trap rock, salt, iron and titanium, talc, lead and zinc, gypsum, and other mining and quarrying."
+    },
+    {
+        "Code":  "730",
+        "Title":  "Wells",
+        "Description":  ""
+    },
+    {
+        "Code":  "731",
+        "Title":  "Oil - Natural Flow (for production)",
+        "Description":  ""
+    },
+    {
+        "Code":  "732",
+        "Title":  "Oil - Forced Flow (for production)",
+        "Description":  ""
+    },
+    {
+        "Code":  "733",
+        "Title":  "Gas (for production)",
+        "Description":  ""
+    },
+    {
+        "Code":  "734",
+        "Title":  "Junk",
+        "Description":  ""
+    },
+    {
+        "Code":  "735",
+        "Title":  "Water",
+        "Description":  "used for Oil Production"
+    },
+    {
+        "Code":  "736",
+        "Title":  "Gas or Oil Storage Wells",
+        "Description":  ""
+    },
+    {
+        "Code":  "740",
+        "Title":  "Industrial Product Pipelines",
+        "Description":  "Pipelines used by nonutility companies, and not in Special Franchise."
+    },
+    {
+        "Code":  "741",
+        "Title":  "Gas",
+        "Description":  ""
+    },
+    {
+        "Code":  "742",
+        "Title":  "Water",
+        "Description":  ""
+    },
+    {
+        "Code":  "743",
+        "Title":  "Brine",
+        "Description":  ""
+    },
+    {
+        "Code":  "744",
+        "Title":  "Petroleum Products",
+        "Description":  ""
+    },
+    {
+        "Code":  "749",
+        "Title":  "Other",
+        "Description":  ""
+    },
+    {
+        "Code":  "800",
+        "Title":  "PUBLIC SERVICES",
+        "Description":  "This category includes, but is not limited to, parcels used in or as a necessary adjunct to the provision of public services. Therefore, a parcel which includ a building used principally by a telephone company for accounting or customer billing should be coded in this category. Similarly, parcels which are used to store, garage or repair motor vehicles and/or equipment used in providing these public utility services should be coded in the appropriate division below."
+    },
+    {
+        "Code":  "820",
+        "Title":  "Water",
+        "Description":  ""
+    },
+    {
+        "Code":  "821",
+        "Title":  "Flood Control",
+        "Description":  "Land used for the accumulation, storage or diversion of water for flood control purposes only."
+    },
+    {
+        "Code":  "822",
+        "Title":  "Water Supply",
+        "Description":  "Land used for the accumulation, storage, transmission or distribution of water for purposes other than flood control or production of electricity (e.g., aqueducts and pipelines)"
+    },
+    {
+        "Code":  "823",
+        "Title":  "Water Treatment Facilities",
+        "Description":  ""
+    },
+    {
+        "Code":  "826",
+        "Title":  "Water Transmission - Improvements",
+        "Description":  ""
+    },
+    {
+        "Code":  "827",
+        "Title":  "Water Transmission - Outside Plant",
+        "Description":  ""
+    },
+    {
+        "Code":  "830",
+        "Title":  "Communication",
+        "Description":  "Includes all telephones, telecommunications, telegraph, radio, television and CATV property."
+    },
+    {
+        "Code":  "831",
+        "Title":  "Telephone",
+        "Description":  "Telephone and telecommunications land, buildings, towers, antennae, etc., except cellular telephone towers - see 837"
+    },
+    {
+        "Code":  "832",
+        "Title":  "Telegraph",
+        "Description":  ""
+    },
+    {
+        "Code":  "833",
+        "Title":  "Radio",
+        "Description":  ""
+    },
+    {
+        "Code":  "834",
+        "Title":  "Television other than Community Antenna Television",
+        "Description":  ""
+    },
+    {
+        "Code":  "835",
+        "Title":  "Community Antenna Television CATV",
+        "Description":  "Facility CATV land, buildings, antennae, towers, etc."
+    },
+    {
+        "Code":  "836",
+        "Title":  "Telephone Outside Plant",
+        "Description":  "Poles, wires, cable, etc"
+    },
+    {
+        "Code":  "837",
+        "Title":  "Cellular Telephone Towers",
+        "Description":  ""
+    },
+    {
+        "Code":  "840",
+        "Title":  "Transportation",
+        "Description":  ""
+    },
+    {
+        "Code":  "841",
+        "Title":  "Motor Vehicle",
+        "Description":  "Land used in the provision of transportation services by motor vehicles (e.g., bus terminals, taxicab garages, truck terminals and warehouses, etc.). Does not include public highways, bridges, tunnels, subways and property used in the maintenance (except by persons providing transportation services), manufacture and sale of motor vehicles."
+    },
+    {
+        "Code":  "842",
+        "Title":  "Ceiling Railroad",
+        "Description":  "Real property for which the State Board establishes the maximum taxable assessed value."
+    },
+    {
+        "Code":  "843",
+        "Title":  "Nonceiling Railroad",
+        "Description":  ""
+    },
+    {
+        "Code":  "844",
+        "Title":  "Air",
+        "Description":  ""
+    },
+    {
+        "Code":  "845",
+        "Title":  "Water",
+        "Description":  "Land used for water transportation (e.g., canal)."
+    },
+    {
+        "Code":  "846",
+        "Title":  "Bridges, Tunnels and Subways",
+        "Description":  ""
+    },
+    {
+        "Code":  "847",
+        "Title":  "Pipelines",
+        "Description":  "Pipelines used by utility companies for the transportation of petroleum products. NOTE : This code will be deleted once the Utility Company Assessment Roll Standards (UCARS) have been adopted. After that the appropriate Pipeline designation should be chosen from the 740 series."
+    },
+    {
+        "Code":  "850",
+        "Title":  "Waste Disposal",
+        "Description":  "Does not include facilities used exclusively for the disposal of waste from an industrial process, which should be coded as industrial property."
+    },
+    {
+        "Code":  "851",
+        "Title":  "Solid Wastes",
+        "Description":  "Incinerators and waste compacting facilities. Does not include landfills and dumps (see code 852)."
+    },
+    {
+        "Code":  "852",
+        "Title":  "Landfills and Dumps",
+        "Description":  ""
+    },
+    {
+        "Code":  "853",
+        "Title":  "Sewage Treatment and Water Pollution Control",
+        "Description":  ""
+    },
+    {
+        "Code":  "854",
+        "Title":  "Air Pollution Control",
+        "Description":  ""
+    },
+    {
+        "Code":  "860",
+        "Title":  "Special Franchise Property",
+        "Description":  "Real property for which the State Board establishes assessments."
+    },
+    {
+        "Code":  "861",
+        "Title":  "Electric and Gas",
+        "Description":  ""
+    },
+    {
+        "Code":  "862",
+        "Title":  "Water",
+        "Description":  ""
+    },
+    {
+        "Code":  "866",
+        "Title":  "Telephone",
+        "Description":  ""
+    },
+    {
+        "Code":  "867",
+        "Title":  "Miscellaneous",
+        "Description":  ""
+    },
+    {
+        "Code":  "868",
+        "Title":  "Pipelines",
+        "Description":  ""
+    },
+    {
+        "Code":  "869",
+        "Title":  "Television",
+        "Description":  ""
+    },
+    {
+        "Code":  "870",
+        "Title":  "Electric and Gas",
+        "Description":  ""
+    },
+    {
+        "Code":  "871",
+        "Title":  "Electric and Gas Facilities",
+        "Description":  "General electric and gas facilities, buildings, and land including offices, garages, service centers, etc"
+    },
+    {
+        "Code":  "872",
+        "Title":  "Electric SubStation",
+        "Description":  "Electric Power Generation Facilities Includes all land and facilities associated with electric generating stations, i.e. power plant equipment, reservoirs, dams, power house, penstock pipe, waterway structures, etc."
+    },
+    {
+        "Code":  "873",
+        "Title":  "Gas Measuring and Regulation Station",
+        "Description":  ""
+    },
+    {
+        "Code":  "874",
+        "Title":  "Electric Power Generation Facility - Hydro",
+        "Description":  ""
+    },
+    {
+        "Code":  "875",
+        "Title":  "Electric Power Generation Facility - Fossil Fuel",
+        "Description":  ""
+    },
+    {
+        "Code":  "876",
+        "Title":  "Electric Power Generation Facility - Nuclear",
+        "Description":  ""
+    },
+    {
+        "Code":  "877",
+        "Title":  "Electric Power Generation Facility - Other Fuel",
+        "Description":  ""
+    },
+    {
+        "Code":  "880",
+        "Title":  "Electric and Gas Transmission and Distribution",
+        "Description":  ""
+    },
+    {
+        "Code":  "882",
+        "Title":  "Electric Transmission Improvement",
+        "Description":  ""
+    },
+    {
+        "Code":  "883",
+        "Title":  "Gas Transmission Improvement",
+        "Description":  ""
+    },
+    {
+        "Code":  "884",
+        "Title":  "Electric Distribution - Outside Plant Property",
+        "Description":  ""
+    },
+    {
+        "Code":  "885",
+        "Title":  "Gas Distribution - Outside Plant Property",
+        "Description":  ""
+    },
+    {
+        "Code":  "900",
+        "Title":  "WILD, FORESTED, CONSERVATION LANDS AND PUBLIC PARKS",
+        "Description":  ""
+    },
+    {
+        "Code":  "910",
+        "Title":  "Private Wild and Forest Lands except for Private Hunting and Fishing Clubs",
+        "Description":  "This division includes all private lands which are associated with forest land areas that do not conform to any other property type classification, plus plantations and timber tracts having merchantable timber."
+    },
+    {
+        "Code":  "911",
+        "Title":  "Forest Land Under Section 480 of the Real Property Tax Law",
+        "Description":  ""
+    },
+    {
+        "Code":  "912",
+        "Title":  "Forest Land Under Section 480-a of the Real Property Tax Law",
+        "Description":  ""
+    },
+    {
+        "Code":  "920",
+        "Title":  "Private Hunting and Fishing Clubs",
+        "Description":  ""
+    },
+    {
+        "Code":  "930",
+        "Title":  "State Owned Forest Lands",
+        "Description":  ""
+    },
+    {
+        "Code":  "931",
+        "Title":  "State Owned Land (Forest Preserve) in the Adirondack or Catskill Parks Taxable Under Section 532-a of the Real Property Tax Law",
+        "Description":  ""
+    },
+    {
+        "Code":  "932",
+        "Title":  "State Owned Land Other Than Forest Preserve Covered Under Section 534 of the Real Property Tax Law",
+        "Description":  ""
+    },
+    {
+        "Code":  "940",
+        "Title":  "Reforested Land and Other Related Conservation Purposes",
+        "Description":  ""
+    },
+    {
+        "Code":  "941",
+        "Title":  "State Owned Reforested Land Taxable Under Sections 534 and 536 of the Real Property Tax Law",
+        "Description":  ""
+    },
+    {
+        "Code":  "942",
+        "Title":  "County Owned Reforested Land",
+        "Description":  ""
+    },
+    {
+        "Code":  "950",
+        "Title":  "Hudson River and Black River Regulating District Land",
+        "Description":  ""
+    },
+    {
+        "Code":  "960",
+        "Title":  "Public Parks",
+        "Description":  ""
+    },
+    {
+        "Code":  "961",
+        "Title":  "State Owned Public Parks, Recreation Areas, and Other Multiple Uses",
+        "Description":  ""
+    },
+    {
+        "Code":  "962",
+        "Title":  "County Owned Public Parks and Recreation Areas",
+        "Description":  ""
+    },
+    {
+        "Code":  "963",
+        "Title":  "City/Town/Village Public Parks and Recreation Areas",
+        "Description":  ""
+    },
+    {
+        "Code":  "970",
+        "Title":  "Other Wild or Conservation Lands",
+        "Description":  ""
+    },
+    {
+        "Code":  "971",
+        "Title":  "Wetlands, Either Privately or Governmentally Owned, Subject to Specific Restrictions as to Use",
+        "Description":  ""
+    },
+    {
+        "Code":  "972",
+        "Title":  "Land Under Water, Either Privately or Governmentally Owned (other than residential - more properly classified as code 315)",
+        "Description":  ""
+    },
+    {
+        "Code":  "980",
+        "Title":  "Taxable State Owned Conservation Easements",
+        "Description":  ""
+    },
+    {
+        "Code":  "990",
+        "Title":  "Other Taxable State Land Assessments",
+        "Description":  ""
+    },
+    {
+        "Code":  "991",
+        "Title":  "Adirondack Park Aggregate Additional Assessments (Real Property Tax Law, Section 542(3))",
+        "Description":  ""
+    },
+    {
+        "Code":  "992",
+        "Title":  "Hudson River-Black River Regulating District Aggregate Additional Assessments (Environmental Conservation Law, Section 15- 2115)",
+        "Description":  ""
+    },
+    {
+        "Code":  "993",
+        "Title":  "Transition Assessments for Taxable State Owned Land (Real Property Tax Law, Section 545)",
+        "Description":  ""
+    },
+    {
+        "Code":  "994",
+        "Title":  "Transition Assessments for Exempt State Owned Land (Real Property Tax Law, Section 545)",
+        "Description":  ""
+    }
+]
