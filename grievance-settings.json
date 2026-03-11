@@ -1,6 +1,8 @@
 {
   "resources": {
     "rp524FormUrl": "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
-    "grievanceBookletUrl": "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf"
+    "grievanceBookletUrl": "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
+    "exemptionFaqLabel": "Exemption: Frequently Asked Questions",
+    "exemptionFaqUrl": "https://www.albanyny.gov/m/faq?cat=18#question-93"
   }
 }

@@ -1466,6 +1466,8 @@ const comparableDeltaTone = (value, betterWhenLower=false) => {
 const grievanceResourceUrls = {
   rp524FormUrl: grievanceSettings?.resources?.rp524FormUrl || "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
   grievanceBookletUrl: grievanceSettings?.resources?.grievanceBookletUrl || "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
+  exemptionFaqLabel: grievanceSettings?.resources?.exemptionFaqLabel || "Exemption: Frequently Asked Questions",
+  exemptionFaqUrl: grievanceSettings?.resources?.exemptionFaqUrl || "https://www.albanyny.gov/m/faq?cat=18#question-93",
 };
 const classifyGrievanceComparable = (subject, comp) => {
   const subjectAssessed = Number(subject?.assessedValue);
@@ -1510,39 +1512,39 @@ const classifyGrievanceComparable = (subject, comp) => {
 const buildComparableDeltaInfo = (metricKey, value) => {
   if(value == null || !Number.isFinite(value)) return "";
   if(metricKey === "assessed"){
-    if(value < 0) return "(i) This comp is assessed lower than yours, which supports a grievance argument.";
-    if(value > 0) return "(i) This comp is assessed higher than yours, so it does not support a grievance argument.";
-    return "(i) This comp is assessed the same as yours, which is neutral for a grievance.";
+    if(value < 0) return "This comp is assessed lower than yours, which supports a grievance argument.";
+    if(value > 0) return "This comp is assessed higher than yours, so it does not support a grievance argument.";
+    return "This comp is assessed the same as yours, which is neutral for a grievance.";
   }
   if(metricKey === "equity"){
-    if(value < 0) return "(i) This comp has a lower equity ratio than yours, which supports an over-assessment claim.";
-    if(value > 0) return "(i) This comp has a higher equity ratio than yours, which weakens an over-assessment claim.";
-    return "(i) This comp has the same equity ratio as yours, which is neutral for a grievance.";
+    if(value < 0) return "This comp has a lower equity ratio than yours, which supports an over-assessment claim.";
+    if(value > 0) return "This comp has a higher equity ratio than yours, which weakens an over-assessment claim.";
+    return "This comp has the same equity ratio as yours, which is neutral for a grievance.";
   }
   if(metricKey === "fmv"){
-    if(value < 0) return "(i) This comp has a lower FMV than yours, which can support a lower value argument, but it is weaker evidence than a lower assessment.";
-    if(value > 0) return "(i) This comp has a higher FMV than yours, which weakens a lower value argument but still provides market context.";
-    return "(i) This comp has the same FMV as yours, which is neutral market context.";
+    if(value < 0) return "This comp has a lower FMV than yours, which can support a lower value argument, but it is weaker evidence than a lower assessment.";
+    if(value > 0) return "This comp has a higher FMV than yours, which weakens a lower value argument but still provides market context.";
+    return "This comp has the same FMV as yours, which is neutral market context.";
   }
   if(metricKey === "livingArea"){
-    if(value < 0) return "(i) This comp is smaller than yours. That does not prove over-assessment by itself; it only affects how comparable the home is.";
-    if(value > 0) return "(i) This comp is larger than yours. That does not prove over-assessment by itself; it only affects comparability.";
-    return "(i) This comp has the same living area as yours, which strengthens comparability.";
+    if(value < 0) return "This comp is smaller than yours. That does not prove over-assessment by itself; it only affects how comparable the home is.";
+    if(value > 0) return "This comp is larger than yours. That does not prove over-assessment by itself; it only affects comparability.";
+    return "This comp has the same living area as yours, which strengthens comparability.";
   }
   if(metricKey === "yearBuilt"){
-    if(value < 0) return "(i) This comp is older than yours. That is comparability context, not direct grievance evidence.";
-    if(value > 0) return "(i) This comp is newer than yours. That is comparability context, not direct grievance evidence.";
-    return "(i) This comp was built in the same year as yours, which strengthens comparability.";
+    if(value < 0) return "This comp is older than yours. That is comparability context, not direct grievance evidence.";
+    if(value > 0) return "This comp is newer than yours. That is comparability context, not direct grievance evidence.";
+    return "This comp was built in the same year as yours, which strengthens comparability.";
   }
   if(metricKey === "bedrooms"){
-    if(value < 0) return "(i) This comp has fewer bedrooms than yours. That affects comparability, not the grievance by itself.";
-    if(value > 0) return "(i) This comp has more bedrooms than yours. That affects comparability, not the grievance by itself.";
-    return "(i) This comp has the same bedroom count as yours, which strengthens comparability.";
+    if(value < 0) return "This comp has fewer bedrooms than yours. That affects comparability, not the grievance by itself.";
+    if(value > 0) return "This comp has more bedrooms than yours. That affects comparability, not the grievance by itself.";
+    return "This comp has the same bedroom count as yours, which strengthens comparability.";
   }
   if(metricKey === "baths"){
-    if(value < 0) return "(i) This comp has fewer baths than yours. That affects comparability, not the grievance by itself.";
-    if(value > 0) return "(i) This comp has more baths than yours. That affects comparability, not the grievance by itself.";
-    return "(i) This comp has the same bath count as yours, which strengthens comparability.";
+    if(value < 0) return "This comp has fewer baths than yours. That affects comparability, not the grievance by itself.";
+    if(value > 0) return "This comp has more baths than yours. That affects comparability, not the grievance by itself.";
+    return "This comp has the same bath count as yours, which strengthens comparability.";
   }
   return "";
 };
@@ -1561,11 +1563,27 @@ const buildGrievanceNarrative = (subject, subjectProfile, neighborResult) => {
   const compExamples = formatNarrativeCompList(supports.slice(0, 3));
   return `The subject property at ${subject.address} is currently assessed at ${$f(subject.assessedValue)}. Several physically comparable homes${subjectProfile?.neighborhood ? ` in the same ${subjectProfile.neighborhood} neighborhood` : ""} - matching in ${basis} - carry lower assessments. For example, ${compExamples}. The average assessed value across supporting comparable homes is ${$f(neighborResult.grievanceAvgAssessed)}, which is ${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} less than the subject's current assessment. This disparity indicates the subject property is over-assessed relative to its peers and the assessed value should be reduced to align with comparable properties.`;
 };
+const grievanceDayForYear = (year) => {
+  if(!Number.isFinite(year)) return null;
+  const firstOfMay = new Date(Date.UTC(year, 4, 1));
+  const offsetToTuesday = (2 - firstOfMay.getUTCDay() + 7) % 7;
+  return new Date(Date.UTC(year, 4, 1 + offsetToTuesday + 21));
+};
+const grievanceDayLabel = (meta={}, subject=null) => {
+  const year = parseInt(subject?.assessmentYear, 10) || parseInt(meta?.assessmentYear, 10) || null;
+  if(!year) return "Albany's Grievance Day is the 4th Tuesday in May. Confirm the date annually with the City of Albany Assessor's Office.";
+  const deadline = grievanceDayForYear(year);
+  const formatted = deadline ? deadline.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric", year:"numeric", timeZone:"UTC" }) : null;
+  return formatted
+    ? `Albany's Grievance Day for ${year} is ${formatted}. Confirm the date annually with the City of Albany Assessor's Office.`
+    : "Albany's Grievance Day is the 4th Tuesday in May. Confirm the date annually with the City of Albany Assessor's Office.";
+};
 const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, meta={}) => {
   const comps = neighborResult?.grievanceCandidates || [];
   const mailingAddress = (subject?.mailAddressClean || subject?.mailAddress || "").trim();
   const municipality = subject?.municipality || meta?.municipality || "City of Albany";
   const county = subject?.county || meta?.county || "Albany";
+  const supportingCompAssessedAverage = Number.isFinite(neighborResult?.grievanceAvgAssessed) ? $f(neighborResult.grievanceAvgAssessed) : "-";
   const checklist = [
     { label: "Owner name", value: subject?.owner1 || "-", note: "RP-524 owner or complainant field" },
     { label: "Mailing address", value: mailingAddress || "-", note: "Use the assessment roll mailing address unless it needs correction" },
@@ -1577,20 +1595,23 @@ const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, met
     { label: "Current full market value", value: Number.isFinite(subject?.fullMarketValue) ? $f(subject.fullMarketValue) : "-", note: "Roll full market value" },
     { label: "Equity ratio", value: subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-", note: "Useful grievance talking point from this app" },
     { label: "Supporting comp FMV average", value: Number.isFinite(neighborResult?.grievanceAvgFMV) ? $f(neighborResult.grievanceAvgFMV) : "-", note: "Average FMV across only the comps that support your grievance" },
-    { label: "Supporting comp assessed average", value: Number.isFinite(neighborResult?.grievanceAvgAssessed) ? $f(neighborResult.grievanceAvgAssessed) : "-", note: "Average assessed value across only the comps that support your grievance" },
+    { label: "Supporting comp assessed average", value: supportingCompAssessedAverage, note: "Average assessed value across only the comps that support your grievance" },
+    { label: "Suggested requested assessed value", value: supportingCompAssessedAverage, note: "Use this as your requested value on RP-524 - it equals the average assessed value of your grievance-supporting comparable homes" },
     { label: "Supporting comp list", value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}%`).join("; ") : "-", note: "Only lower-assessed comps are included in the grievance package" },
   ];
-  const missing = [];
-  if(!subject?.owner1) missing.push("Owner / complainant name");
-  if(!mailingAddress) missing.push("Mailing address confirmation");
-  if(!subject?.address) missing.push("Property street address");
-  if(!subject?.parcelId) missing.push("Tax map / parcel number");
-  if(!comps.length) missing.push("Supporting comparable evidence - the current match set does not contain lower-assessed comps for an RP-524 package");
-  missing.push("Reason for complaint selection on RP-524 (unequal, excessive, unlawful, or misclassification)");
-  missing.push("Owner contact information and any representative details");
-  missing.push("Your requested value opinion or narrative explanation of the correction sought - use the auto-generated narrative above as a draft you can copy or modify.");
-  missing.push("Signature, filing date, and any hearing attendance details required by the board");
-  return { checklist, missing, narrative: buildGrievanceNarrative(subject, subjectProfile, neighborResult) };
+  const missing = [
+    "Select your reason for complaint on RP-524 (unequal, excessive, unlawful, or misclassification)",
+    "Fill in owner contact information and any representative details",
+    "Enter your requested value opinion - use the auto-generated narrative above as your draft",
+    "Sign the form and note the filing date and any hearing attendance details required by the board",
+  ];
+  return {
+    checklist,
+    missing,
+    narrative: buildGrievanceNarrative(subject, subjectProfile, neighborResult),
+    grievanceDayDeadline: grievanceDayLabel(meta, subject),
+    supportingCompCount: comps.length,
+  };
 };
 const escapePrintableHtml = (value) => (value == null ? "" : String(value))
   .replace(/&/g, "&amp;")
@@ -1700,7 +1721,8 @@ const buildComparablePrintReportHtml = ({subject, subjectProfile, neighborResult
   <section class="hero">
     <h2>Shareable comparable snapshot</h2>
     <p>${escapePrintableHtml(shareLink || "No share link available")}</p>
-    <p class="links"><a href="${escapePrintableHtml(grievanceResourceUrls.rp524FormUrl)}">RP-524 form</a> | <a href="${escapePrintableHtml(grievanceResourceUrls.grievanceBookletUrl)}">Grievance booklet</a></p>
+    <p class="links"><a href="${escapePrintableHtml(grievanceResourceUrls.rp524FormUrl)}">RP-524 form</a> | <a href="${escapePrintableHtml(grievanceResourceUrls.grievanceBookletUrl)}">Grievance booklet</a> | <a href="${escapePrintableHtml(grievanceResourceUrls.exemptionFaqUrl)}">${escapePrintableHtml(grievanceResourceUrls.exemptionFaqLabel)}</a></p>
+    <p><strong>Filing deadline:</strong> ${escapePrintableHtml(grievanceHelper?.grievanceDayDeadline || "Confirm the filing deadline with the City of Albany Assessor's Office.")}</p>
     <p>Use the browser print dialog destination to print on paper or choose Save as PDF.</p>
   </section>
   ${summaryHtml}
@@ -3611,7 +3633,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
         </InfoBox>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Enter Your Address to Compare</div>
-          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setPrintMessage("");}}} label="Load My Home"/>
+          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setCopiedNarrative(false);setFilingChecklistState({});setPrintMessage("");}}} label="Load My Home"/>
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
             <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Compare</button>
@@ -3701,20 +3723,29 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
               </div>
 
               <div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:10}}>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:800,color:"var(--green2)",marginBottom:6}}>RP-524 filing helper</div>
-                    <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,maxWidth:920}}>Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and only the lower-assessed comparable evidence below. Higher-assessed comps stay visible later for research, but they are excluded from the grievance package automatically.</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--green2)"}}>RP-524 filing helper</div>
+                    <span style={{background:grievanceHelper.supportingCompCount>0?"rgba(21,128,61,.14)":"rgba(245,158,11,.16)",border:`1px solid ${grievanceHelper.supportingCompCount>0?"rgba(21,128,61,.26)":"rgba(245,158,11,.28)"}`,color:grievanceHelper.supportingCompCount>0?"var(--green2)":"var(--amber2)",borderRadius:999,padding:"5px 10px",fontSize:10,fontWeight:700}}>{grievanceHelper.supportingCompCount>0 ? `${grievanceHelper.supportingCompCount} supporting comps` : "0 supporting comps - grievance may be difficult to support"}</span>
                   </div>
-                  <div className="print-hide" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <a href={grievanceHelperLinks.rp524FormUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.14)",border:"1px solid rgba(21,128,61,.26)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open RP-524 form</a>
-                    <a href={grievanceHelperLinks.grievanceBookletUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open grievance booklet</a>
-                  </div>
+                </div>
+                <div style={{background:"rgba(245,158,11,.16)",border:"1px solid rgba(245,158,11,.30)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"var(--amber2)",marginBottom:4}}>Filing Deadline: Grievance Day - 4th Tuesday of May</div>
+                  <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{grievanceHelper.grievanceDayDeadline}</div>
+                </div>
+                <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,maxWidth:920,marginBottom:10}}>Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and only the lower-assessed comparable evidence below. Higher-assessed comps stay visible later for research, but they are excluded from the grievance package automatically.</div>
+                <div className="print-hide" style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                  <a href={grievanceHelperLinks.rp524FormUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.14)",border:"1px solid rgba(21,128,61,.26)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open RP-524 form</a>
+                  <a href={grievanceHelperLinks.grievanceBookletUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open grievance booklet</a>
+                  <a href={grievanceHelperLinks.exemptionFaqUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>{grievanceHelperLinks.exemptionFaqLabel}</a>
                 </div>
                 <div style={{fontSize:10,color:"var(--gray2)",marginBottom:12}}>These links are included here because this is the section the homeowner will use to complete RP-524. Document URLs are managed in <b style={{color:"var(--gray)"}}>grievance-settings.json</b>.</div>
                 {grievanceHelper.narrative ? <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.65,marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Auto-generated grievance narrative</div>
-                  {grievanceHelper.narrative}
+                  <div>{grievanceHelper.narrative}</div>
+                  <div className="print-hide" style={{marginTop:10}}>
+                    <button onClick={()=>copyNarrative(grievanceHelper.narrative)} style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>{copiedNarrative?"Copied!":"Copy Narrative"}</button>
+                  </div>
                 </div> : <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.55,marginBottom:12}}>No narrative is generated yet because the current physical match set does not contain a lower-assessed comp that supports your grievance.</div>}
                 <div className="cols-2" style={{display:"grid",gap:12}}>
                   <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px"}}>
@@ -3728,8 +3759,16 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSourc
                   </div>
                   <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px"}}>
                     <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Still needed from the homeowner</div>
-                    <div style={{display:"grid",gap:6}}>
-                      {grievanceHelper.missing.map((item, idx)=><div key={item + idx} style={{fontSize:11,color:"var(--gray)",lineHeight:1.5}}>- {item}</div>)}
+                    <div style={{display:"grid",gap:8}}>
+                      {grievanceHelper.missing.map((item, idx)=>{
+                        const key = `homeowner-step-${idx}`;
+                        const checked = !!filingChecklistState[key];
+                        return <label key={item + idx} style={{display:"grid",gridTemplateColumns:"auto auto 1fr",alignItems:"flex-start",gap:10,fontSize:11,color:"var(--gray)",lineHeight:1.5,cursor:"pointer"}}>
+                          <input type="checkbox" checked={checked} onChange={()=>toggleChecklistItem(key)} style={{marginTop:2,accentColor:"#15803d",cursor:"pointer"}} />
+                          <span style={{fontWeight:700,color:"var(--green2)",minWidth:16}}>{idx + 1}.</span>
+                          <span style={{textDecoration:checked?"line-through":"none",color:checked?"var(--gray2)":"var(--gray)"}}>{item}</span>
+                        </label>;
+                      })}
                     </div>
                     <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55,marginTop:10}}>For the requested value narrative, the draft paragraph above is already prepared for the homeowner to use as-is or edit before filing.</div>
                   </div>
@@ -5751,6 +5790,11 @@ const handleFile=useCallback(e=>{
     </>
   );
 }
+
+
+
+
+
 
 
 
