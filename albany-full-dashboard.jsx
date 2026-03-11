@@ -3216,7 +3216,7 @@ const Opportunity = ({parcels, onDrill}) => {
 };
 
 /* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ 6. TAX TOOLS ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
-const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
+const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, dataSource="sample", autoloadPhase="idle", uploading=false}) => {
   const grievanceHelperLinks = grievanceResourceUrls;
   const [view,setView]=useState("estimator");
   const [query,setQuery]=useState("");
@@ -3309,22 +3309,25 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null}) => {
       hydratedSnapshotRef.current = true;
       return;
     }
-    if(!parcels.length) return;
-    hydratedSnapshotRef.current = true;
+    const waitingForAutoload = dataSource==="sample" && (uploading || autoloadPhase==="idle" || autoloadPhase==="running");
+    if(!parcels.length || waitingForAutoload) return;
     if(!requestedSnapshot.subjectId){
+      hydratedSnapshotRef.current = true;
       setCompareSnapshotMessage("This shared comparable snapshot could not be opened because the subject parcel is missing.");
       return;
     }
     const subjectParcel = parcels.find(parcel=>normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)===requestedSnapshot.subjectId) || null;
     if(!subjectParcel){
+      hydratedSnapshotRef.current = true;
       setCompareSnapshotMessage("This shared comparable snapshot could not be opened because the subject parcel was not found in the current dataset.");
       return;
     }
+    hydratedSnapshotRef.current = true;
     focusNeighborParcel(subjectParcel, {
       exactCompIds: requestedSnapshot.compIds,
       snapshotDatasetKey: requestedSnapshot.datasetKey,
     });
-  }, [focusNeighborParcel, parcels]);
+  }, [autoloadPhase, dataSource, focusNeighborParcel, parcels, uploading]);
 
   useEffect(()=>{
     if(view!=="neighbor" || !neighborResult?.p) return;
@@ -5408,7 +5411,7 @@ const handleFile=useCallback(e=>{
     if(tab==="browse") return <Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)} ownerPortfolioIndex={ownerPortfolioIndex}/>;
     if(tab==="mapview") return <MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} neighborhoodBoundaries={neighborhoodBoundaries} neighborhoodAssociations={neighborhoodAssociations} compareList={compareList} onCompare={toggleCompare} onDrill={setDrillList} jumpRequest={mapJumpRequest} advanced={true} ownerPortfolioIndex={ownerPortfolioIndex}/>;
     if(tab==="equity") return <Equity parcels={parcels} onDrill={setDrillList}/>;
-    if(tab==="taxtools") return <TaxTools parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex}/>;
+    if(tab==="taxtools") return <TaxTools parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex} dataSource={dataSource} autoloadPhase={autoloadState.phase} uploading={uploading}/>;
     if(tab==="compare") return <Compare parcels={parcels} compareList={compareList} onRemove={removeCompare} onAdd={addToCompare}/>;
     if(tab==="ownership") return <Ownership parcels={parcels} onDrill={setDrillList} ownerPortfolioGroups={ownerPortfolioGroups}/>;
     if(tab==="analytics") return <Analytics parcels={parcels} onDrill={setDrillList}/>;
@@ -5586,6 +5589,7 @@ const handleFile=useCallback(e=>{
     </>
   );
 }
+
 
 
 
