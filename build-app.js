@@ -56,3 +56,4 @@ for (const htmlFile of htmlFiles) rewriteHtmlBundleReference(htmlFile, bundleVer
 
 console.log("Built " + path.relative(root, outfile) + " from " + path.relative(root, sourceFile));
 console.log("Updated HTML bundle version to " + bundleVersion);
+

@@ -14,6 +14,7 @@ const requiredFiles = [
 const optionalFiles = [
   "albany-dashboard.html",
   "albany-parcel-geometry.json",
+  "albany-sales.json",
   "albany_street_centerlines.geojson",
   "logo_transparent.png",
   "CNAME",
@@ -110,3 +111,4 @@ console.log("Staged GitHub Pages site in " + siteDir);
 for (const item of copied) {
   console.log(`- ${item.name} (${item.sizeMB} MB)`);
 }
+

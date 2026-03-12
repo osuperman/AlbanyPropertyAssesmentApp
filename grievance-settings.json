@@ -4,5 +4,9 @@
     "grievanceBookletUrl": "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
     "exemptionFaqLabel": "Exemption: Frequently Asked Questions",
     "exemptionFaqUrl": "https://www.albanyny.gov/m/faq?cat=18#question-93"
+  },
+  "streetView": {
+    "embedApiKey": "AIzaSyAxeNVO6bWSNJI7k2lf9O6h7sZDDi5TY2I",
+    "buttonLabel": "Street View"
   }
 }
