@@ -317,7 +317,7 @@ const ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal ope
 const NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER = "Some past transfers on this home were gifts or family moves, not normal market sales. These are called 'non-arm's-length' transfers, so this tool shows them for history but does not treat their prices as market value.";
 const ARM_LENGTH_DEFINITION = "Arm's-length means a normal open-market sale between unrelated buyers and sellers.";
 const SALES_DATA_SOURCE_NOTE = "Sales data source: Office of Real Property Tax Services (ORPTS) Municipal Data Portal.";
-const MATCHED_HOME_DETAILS_INFO = 'See "Why this home was selected" for details.';
+const MATCHED_HOME_DETAILS_INFO = 'See "Why this home was included" for details.';
 const TERM_HELP = {
   fmv: "Estimated full market value of your property.",
   assessedValue: "The value the city uses to calculate your taxes.",
@@ -1380,6 +1380,7 @@ const googleMapsHref = (address, zip, neighborhood) => {
 };
 const streetViewSettings = {
   embedApiKey: String(grievanceSettings?.streetView?.embedApiKey || "").trim(),
+  staticApiKey: String(grievanceSettings?.streetView?.staticApiKey || grievanceSettings?.streetView?.embedApiKey || "").trim(),
   buttonLabel: grievanceSettings?.streetView?.buttonLabel || "Street View",
 };
 const MAP_NATIVE_CRS = "EPSG:26918";
@@ -1402,13 +1403,29 @@ const projectNativePointToLatLng = point => {
     return null;
   }
 };
+const googleStreetViewLocation = (address, zip, neighborhood, streetViewLatLng=null) => {
+  const latLng = Array.isArray(streetViewLatLng) && Number.isFinite(streetViewLatLng[0]) && Number.isFinite(streetViewLatLng[1]) ? streetViewLatLng : null;
+  return latLng ? `${latLng[0]},${latLng[1]}` : googleLocationQuery(address, zip, neighborhood);
+};
 const googleStreetViewEmbedSrc = (address, zip, neighborhood, streetViewLatLng=null) => {
   const apiKey = streetViewSettings.embedApiKey;
-  if(!apiKey) return "";
-  const latLng = Array.isArray(streetViewLatLng) && Number.isFinite(streetViewLatLng[0]) && Number.isFinite(streetViewLatLng[1]) ? streetViewLatLng : null;
-  const location = latLng ? `${latLng[0]},${latLng[1]}` : googleLocationQuery(address, zip, neighborhood);
-  if(!location) return "";
+  const location = googleStreetViewLocation(address, zip, neighborhood, streetViewLatLng);
+  if(!apiKey || !location) return "";
   return `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(apiKey)}&location=${encodeURIComponent(location)}&source=outdoor`;
+};
+const googleStreetViewStaticSrc = (address, zip, neighborhood, streetViewLatLng=null, options={}) => {
+  const apiKey = streetViewSettings.staticApiKey;
+  const location = googleStreetViewLocation(address, zip, neighborhood, streetViewLatLng);
+  const width = Math.max(120, Number(options?.width) || 360);
+  const height = Math.max(90, Number(options?.height) || 220);
+  if(!apiKey || !location) return "";
+  return `https://maps.googleapis.com/maps/api/streetview?size=${width}x${height}&location=${encodeURIComponent(location)}&source=outdoor&key=${encodeURIComponent(apiKey)}`;
+};
+const googleStreetViewMetadataSrc = (address, zip, neighborhood, streetViewLatLng=null) => {
+  const apiKey = streetViewSettings.staticApiKey;
+  const location = googleStreetViewLocation(address, zip, neighborhood, streetViewLatLng);
+  if(!apiKey || !location) return "";
+  return `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(location)}&source=outdoor&key=${encodeURIComponent(apiKey)}`;
 };
 async function copyTextToClipboard(text){
   if(!text || typeof document==="undefined") return false;
@@ -1443,18 +1460,139 @@ const dispatchApplicationMapJump = detail => {
     window.dispatchEvent(new CustomEvent("albany:jump-to-research-map", { detail }));
   }catch{}
 };
+const StreetViewModal = ({open, onClose, address, zip, neighborhood, streetViewSrc}) => {
+  useEffect(() => {
+    if(!open || typeof window==="undefined") return undefined;
+    const onKeyDown = event => {
+      if(event.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+  if(!open || !streetViewSrc) return null;
+  return <div
+    role="dialog"
+    aria-modal="true"
+    aria-label={`Street View for ${address}`}
+    onClick={()=>onClose?.()}
+    style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+  >
+    <div onClick={e=>e.stopPropagation()} style={{width:"min(1080px,100%)",maxHeight:"min(88vh,900px)",background:"var(--card)",borderRadius:14,border:"1px solid rgba(148,163,184,.3)",boxShadow:"0 24px 64px rgba(15,23,42,.45)",display:"grid",gridTemplateRows:"auto minmax(0,1fr)",overflow:"hidden"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,padding:"14px 16px",borderBottom:"1px solid var(--border)",background:"rgba(255,255,255,.96)"}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}>{address}</div>
+          <div style={{fontSize:11,color:"var(--gray2)",marginTop:4}}>{[neighborhood, zip].filter(Boolean).join(" | ") || "Albany, NY"}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <a
+            href={googleMapsHref(address, zip, neighborhood)}
+            target="_blank"
+            rel="noreferrer"
+            style={{fontSize:11,fontWeight:700,color:"var(--blue3)",textDecoration:"underline",textUnderlineOffset:2}}
+          >
+            Open in Google Maps
+          </a>
+          <button
+            type="button"
+            onClick={()=>onClose?.()}
+            style={{background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.22)",color:"var(--blue3)",borderRadius:999,padding:"7px 11px",fontSize:11,fontWeight:700,cursor:"pointer"}}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+      <div style={{background:"var(--bg2)",minHeight:360}}>
+        <iframe
+          title={`Street View for ${address}`}
+          src={streetViewSrc}
+          loading="lazy"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+          style={{width:"100%",height:"min(72vh,680px)",minHeight:360,border:"none",display:"block"}}
+        />
+      </div>
+    </div>
+  </div>;
+};
+const StreetViewPreview = ({address, zip, neighborhood, streetViewLatLng=null, stopPropagation=true, height=168}) => {
+  const [streetViewOpen, setStreetViewOpen] = useState(false);
+  const [metadataState, setMetadataState] = useState("loading");
+  const [imageFailed, setImageFailed] = useState(false);
+  const streetViewSrc = useMemo(() => googleStreetViewEmbedSrc(address, zip, neighborhood, streetViewLatLng), [address, neighborhood, streetViewLatLng, zip]);
+  const staticSrc = useMemo(() => googleStreetViewStaticSrc(address, zip, neighborhood, streetViewLatLng, { width: 420, height: Math.round(height * 2) }), [address, height, neighborhood, streetViewLatLng, zip]);
+  const metadataSrc = useMemo(() => googleStreetViewMetadataSrc(address, zip, neighborhood, streetViewLatLng), [address, neighborhood, streetViewLatLng, zip]);
+  useEffect(() => {
+    let cancelled = false;
+    if(!metadataSrc){
+      setMetadataState("unavailable");
+      return undefined;
+    }
+    setMetadataState("loading");
+    setImageFailed(false);
+    fetch(metadataSrc)
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if(cancelled) return;
+        setMetadataState(data?.status === "OK" ? "ready" : "missing");
+      })
+      .catch(() => {
+        if(cancelled) return;
+        setMetadataState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [metadataSrc]);
+  const canShowImage = metadataState === "ready" && !imageFailed && !!staticSrc;
+  const canOpenModal = !!streetViewSrc;
+  const placeholder = <div style={{height,display:"grid",placeItems:"center",padding:"14px 12px",textAlign:"center",background:"linear-gradient(180deg, rgba(241,245,249,.92) 0%, rgba(226,232,240,.92) 100%)",color:"var(--gray2)"}}>
+    <div style={{display:"grid",gap:6}}>
+      <div style={{fontSize:10,fontWeight:800,letterSpacing:.45,textTransform:"uppercase",color:"var(--gray2)"}}>Street View</div>
+      <div style={{fontSize:11,lineHeight:1.5}}>
+        {metadataState==="loading" ? "Loading property photo..." : "Street View image unavailable for this property."}
+      </div>
+      {canOpenModal && metadataState!=="loading" && <button
+        type="button"
+        onClick={e=>{ if(stopPropagation) e.stopPropagation(); setStreetViewOpen(true); }}
+        style={{justifySelf:"center",background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.22)",color:"var(--blue3)",borderRadius:999,padding:"7px 11px",fontSize:10,fontWeight:700,cursor:"pointer"}}
+      >
+        Open Street View
+      </button>}
+    </div>
+  </div>;
+  return <>
+    <div className="print-hide" style={{display:"grid",gap:6}}>
+      <div style={{fontSize:10,fontWeight:800,letterSpacing:.45,textTransform:"uppercase",color:"var(--gray2)"}}>Property photo</div>
+      <button
+        type="button"
+        onClick={e=>{ if(stopPropagation) e.stopPropagation(); if(canOpenModal) setStreetViewOpen(true); }}
+        disabled={!canOpenModal}
+        style={{padding:0,border:"1px solid rgba(148,163,184,.18)",borderRadius:12,overflow:"hidden",background:"rgba(255,255,255,.84)",cursor:canOpenModal?"pointer":"default",boxShadow:"0 12px 24px rgba(15,23,42,.06)",textAlign:"left"}}
+      >
+        {canShowImage ? <div style={{position:"relative"}}>
+          <img
+            src={staticSrc}
+            alt={`Street View of ${address}`}
+            onError={()=>setImageFailed(true)}
+            style={{display:"block",width:"100%",height,objectFit:"cover",background:"rgba(241,245,249,.9)"}}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+          <div style={{position:"absolute",left:10,bottom:10,display:"inline-flex",alignItems:"center",gap:6,background:"rgba(15,23,42,.72)",color:"#fff",borderRadius:999,padding:"6px 10px",fontSize:10,fontWeight:700}}>
+            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:999,background:"rgba(255,255,255,.16)",fontFamily:"var(--fm)",fontSize:12}}>+</span>
+            Open Street View
+          </div>
+        </div> : placeholder}
+      </button>
+      <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.45}}>Static Street View preview. Click to open the full Street View panel.</div>
+    </div>
+    <StreetViewModal open={streetViewOpen} onClose={()=>setStreetViewOpen(false)} address={address} zip={zip} neighborhood={neighborhood} streetViewSrc={streetViewSrc} />
+  </>;
+};
 const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, children, stopPropagation=true, style={}, showStreetView=false, streetViewLatLng=null}) => {
   const label = children ?? address ?? "(no address)";
   const [streetViewOpen, setStreetViewOpen] = useState(false);
   const streetViewSrc = useMemo(() => showStreetView ? googleStreetViewEmbedSrc(address, zip, neighborhood, streetViewLatLng) : "", [address, neighborhood, showStreetView, streetViewLatLng, zip]);
-  useEffect(() => {
-    if(!streetViewOpen || typeof window==="undefined") return undefined;
-    const onKeyDown = event => {
-      if(event.key === "Escape") setStreetViewOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [streetViewOpen]);
   if(!address) return <>{label}</>;
   return (
     <>
@@ -1487,49 +1625,7 @@ const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, child
           {streetViewSettings.buttonLabel}
         </button>}
       </span>
-      {streetViewOpen && streetViewSrc && <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Street View for ${address}`}
-        onClick={()=>setStreetViewOpen(false)}
-        style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
-      >
-        <div onClick={e=>e.stopPropagation()} style={{width:"min(1080px,100%)",maxHeight:"min(88vh,900px)",background:"var(--card)",borderRadius:14,border:"1px solid rgba(148,163,184,.3)",boxShadow:"0 24px 64px rgba(15,23,42,.45)",display:"grid",gridTemplateRows:"auto minmax(0,1fr)",overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,padding:"14px 16px",borderBottom:"1px solid var(--border)",background:"rgba(255,255,255,.96)"}}>
-            <div style={{minWidth:0}}>
-              <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}>{address}</div>
-              <div style={{fontSize:11,color:"var(--gray2)",marginTop:4}}>{[neighborhood, zip].filter(Boolean).join(" | ") || "Albany, NY"}</div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",justifyContent:"flex-end"}}>
-              <a
-                href={googleMapsHref(address, zip, neighborhood)}
-                target="_blank"
-                rel="noreferrer"
-                style={{fontSize:11,fontWeight:700,color:"var(--blue3)",textDecoration:"underline",textUnderlineOffset:2}}
-              >
-                Open in Google Maps
-              </a>
-              <button
-                type="button"
-                onClick={()=>setStreetViewOpen(false)}
-                style={{background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.22)",color:"var(--blue3)",borderRadius:999,padding:"7px 11px",fontSize:11,fontWeight:700,cursor:"pointer"}}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-          <div style={{background:"var(--bg2)",minHeight:360}}>
-            <iframe
-              title={`Street View for ${address}`}
-              src={streetViewSrc}
-              loading="lazy"
-              allowFullScreen
-              referrerPolicy="strict-origin-when-cross-origin"
-              style={{width:"100%",height:"min(72vh,680px)",minHeight:360,border:"none",display:"block"}}
-            />
-          </div>
-        </div>
-      </div>}
+      <StreetViewModal open={streetViewOpen} onClose={()=>setStreetViewOpen(false)} address={address} zip={zip} neighborhood={neighborhood} streetViewSrc={streetViewSrc} />
     </>
   );
 };
@@ -1655,15 +1751,213 @@ const streetNameKeyForComp = addr => {
 };
 const comparePctDelta = (a,b) => {
   if(!(Number.isFinite(a) && a>0 && Number.isFinite(b) && b>0)) return null;
-  return Math.abs(a-b) / Math.max(a, 1);
+  return Math.abs(a-b) / Math.max(a, b);
+};
+const toComparableNumber = value => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+const roundComparableNumber = (value, digits=1) => {
+  if(!Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
+const meanComparableValue = (values=[], digits=null) => {
+  const nums = values.map(toComparableNumber).filter(Number.isFinite);
+  if(!nums.length) return null;
+  const avg = nums.reduce((sum, value)=>sum+value, 0) / nums.length;
+  return digits == null ? avg : roundComparableNumber(avg, digits);
+};
+const buildEquityUniformityNotice = (parcels=[]) => {
+  const equityValues = (Array.isArray(parcels) ? parcels : [])
+    .filter(parcel => isResidentialPropClass(parcel?.propClass))
+    .map(parcel => parseFloat(eqRFast(parcel)))
+    .filter(Number.isFinite);
+  if(equityValues.length < 20) return null;
+  const avg = equityValues.reduce((sum, value)=>sum+value, 0) / equityValues.length;
+  const stdDev = Math.sqrt(equityValues.reduce((sum, value)=>sum + ((value - avg) ** 2), 0) / equityValues.length);
+  const min = Math.min(...equityValues);
+  const max = Math.max(...equityValues);
+  const uniqueCount = new Set(equityValues.map(value => value.toFixed(1))).size;
+  const isUniform = stdDev <= 1.25 || ((max - min) <= 3 && uniqueCount <= 4);
+  if(!isUniform) return null;
+  return {
+    sampleSize: equityValues.length,
+    average: roundComparableNumber(avg, 1),
+    min: roundComparableNumber(min, 1),
+    max: roundComparableNumber(max, 1),
+    stdDev: roundComparableNumber(stdDev, 1),
+    detail: `Equity % is nearly constant across ${nf(equityValues.length)} residential parcels in this loaded roll, so it adds little evidence here. Most homes fall between ${roundComparableNumber(min, 1)}% and ${roundComparableNumber(max, 1)}%.`,
+  };
+};
+const safeDivideComparable = (numerator, denominator) => {
+  if(!(Number.isFinite(numerator) && Number.isFinite(denominator) && denominator>0)) return null;
+  return numerator / denominator;
+};
+const STYLE_FAMILY_KEYWORDS = [
+  { family: "old_style", match: /(old style|mansion|victorian|row|town house|townhouse)/i },
+  { family: "colonial", match: /colonial/i },
+  { family: "cape", match: /cape/i },
+  { family: "ranch", match: /(raised ranch|ranch)/i },
+  { family: "bungalow", match: /(bungalow|cottage)/i },
+  { family: "split_level", match: /(split level|split-level|split)/i },
+  { family: "contemporary", match: /(contemporary|a-frame|log home|log)/i },
+  { family: "two_family_converted", match: /(duplex|converted)/i },
+];
+const normalizeStyleFamily = rawStyle => {
+  const normalized = (rawStyle || "").toString().trim();
+  if(!normalized) return "unknown";
+  const match = STYLE_FAMILY_KEYWORDS.find(entry => entry.match.test(normalized));
+  return match ? match.family : "unknown";
+};
+const RESIDENTIAL_CLASS_CLOSE_PAIRS = new Set([
+  "210|215",
+  "215|210",
+  "220|221",
+  "221|220",
+  "230|231",
+  "231|230",
+  "240|241",
+  "241|240",
+]);
+const residentialUnitCountForClass = (code, desc="") => {
+  const raw = `${propClassOfficialTitle(code)} ${propClassOfficialDescription(code)} ${desc || ""}`.trim();
+  const familyMatch = raw.match(/(\d)\s*family/i);
+  if(familyMatch) return Number(familyMatch[1]);
+  const codeKey = String(code || "").trim();
+  if(codeKey==="210" || codeKey==="215") return 1;
+  if(codeKey==="220" || codeKey==="221") return 2;
+  if(codeKey==="230" || codeKey==="231") return 3;
+  return null;
+};
+const residentialFamilyForClass = (code, desc="") => {
+  const unitCount = residentialUnitCountForClass(code, desc);
+  if(unitCount===1) return "single_family";
+  if(unitCount===2) return "two_family";
+  if(unitCount===3) return "three_family";
+  if(isResidentialPropClass(code)) return "residential";
+  return "non_residential";
+};
+const classCompatibilityTier = (subject, comp, { allowBroadClass=false }={}) => {
+  const subjectCode = String(subject?.propClass || "").trim();
+  const compCode = String(comp?.propClass || "").trim();
+  if(!subjectCode || !compCode) return { tier: "tier_3_incompatible", score: 0, label: "Class unavailable" };
+  if(subjectCode===compCode) return { tier: "tier_0_exact", score: 18, label: "Exact class match" };
+  if(!isResidentialPropClass(subjectCode) || !isResidentialPropClass(compCode)) return { tier: "tier_3_incompatible", score: 0, label: "Incompatible class" };
+  if(RESIDENTIAL_CLASS_CLOSE_PAIRS.has(`${subjectCode}|${compCode}`)){
+    return { tier: "tier_1_close", score: 11, label: "Close residential class match" };
+  }
+  const subjectUnits = residentialUnitCountForClass(subjectCode, subject?.propClassDesc || "");
+  const compUnits = residentialUnitCountForClass(compCode, comp?.propClassDesc || "");
+  if(subjectUnits != null && compUnits != null && subjectUnits===compUnits){
+    return { tier: "tier_1_close", score: 11, label: "Close residential class match" };
+  }
+  if(allowBroadClass && residentialFamilyForClass(subjectCode, subject?.propClassDesc || "")===residentialFamilyForClass(compCode, comp?.propClassDesc || "")){
+    return { tier: "tier_2_broad", score: 4, label: "Broad residential class match" };
+  }
+  return { tier: "tier_3_incompatible", score: 0, label: "Incompatible class" };
+};
+const grievanceSupportLabelForScore = score => {
+  if(score >= 25) return "strong_support";
+  if(score >= 12) return "moderate_support";
+  if(score > 0) return "weak_support";
+  if(score >= -8) return "neutral";
+  return "weakens_case";
+};
+const grievanceRelevanceStyle = (kind="neutral") => {
+  if(kind==="strong_support") return {
+    badge: "Strong support",
+    headline: "Strongly supports the appeal",
+    tone: "var(--green2)",
+    border: "rgba(21,128,61,.26)",
+    background: "rgba(22,163,74,.10)",
+  };
+  if(kind==="moderate_support") return {
+    badge: "Moderate support",
+    headline: "Supports the appeal",
+    tone: "var(--green2)",
+    border: "rgba(22,163,74,.24)",
+    background: "rgba(22,163,74,.08)",
+  };
+  if(kind==="weak_support") return {
+    badge: "Weak support",
+    headline: "Only modest support",
+    tone: "var(--amber2)",
+    border: "rgba(245,158,11,.24)",
+    background: "rgba(245,158,11,.10)",
+  };
+  if(kind==="weakens_case") return {
+    badge: "Weakens case",
+    headline: "Likely counter-evidence",
+    tone: "var(--red2)",
+    border: "rgba(220,38,38,.22)",
+    background: "rgba(220,38,38,.07)",
+  };
+  return {
+    badge: "Neutral",
+    headline: "Neutral assessment signal",
+    tone: "var(--gray2)",
+    border: "rgba(100,116,139,.24)",
+    background: "rgba(148,163,184,.10)",
+  };
+};
+const grievanceRelevanceBadgeColor = (kind="neutral") => {
+  if(kind==="strong_support" || kind==="moderate_support") return "#16a34a";
+  if(kind==="weak_support") return "#d97706";
+  if(kind==="weakens_case") return "#dc2626";
+  return "#64748b";
+};
+const grievanceRelevanceAccentColor = (kind="neutral") => {
+  if(kind==="strong_support" || kind==="moderate_support") return "rgba(22,163,74,.82)";
+  if(kind==="weak_support") return "rgba(245,158,11,.58)";
+  if(kind==="weakens_case") return "rgba(220,38,38,.30)";
+  return "rgba(148,163,184,.42)";
+};
+const appealRecommendationTheme = (recommendedAction="do_not_recommend") => {
+  if(recommendedAction==="recommend_filing"){
+    return {
+      background: "rgba(22,163,74,.10)",
+      border: "rgba(22,163,74,.24)",
+      color: "var(--green2)",
+    };
+  }
+  if(recommendedAction==="recommend_filing_with_caution" || recommendedAction==="review_manually"){
+    return {
+      background: "rgba(245,158,11,.10)",
+      border: "rgba(245,158,11,.22)",
+      color: "var(--amber2)",
+    };
+  }
+  return {
+    background: "rgba(220,38,38,.08)",
+    border: "rgba(220,38,38,.18)",
+    color: "var(--red2)",
+  };
+};
+const appealCaseStrengthColor = (label="do_not_recommend") => {
+  if(label==="strong") return "var(--green2)";
+  if(label==="moderate") return "var(--blue3)";
+  if(label==="weak") return "var(--amber2)";
+  return "var(--red2)";
 };
 const buildComparableProfile = p => {
   const livingArea = inventorySqft(p);
   const yearBuilt = inventoryYearBuilt(p);
   const bedrooms = inventoryBedrooms(p);
+  const fullBaths = inventoryFullBaths(p);
+  const halfBaths = inventoryHalfBaths(p);
   const bathCount = inventoryBathCount(p);
   const bathText = inventoryBathText(p);
   const style = inventoryStyle(p) || null;
+  const styleFamily = normalizeStyleFamily(style);
+  const assessedValue = toComparableNumber(p?.assessedValue);
+  const fullMarketValue = toComparableNumber(p?.fullMarketValue);
+  const equityRatio = safeDivideComparable(assessedValue, fullMarketValue);
+  const assessedPerSqft = safeDivideComparable(assessedValue, livingArea);
+  const fmvPerSqft = safeDivideComparable(fullMarketValue, livingArea);
+  const latLng = (Number.isFinite(Number(p?.eastCoord)) && Number.isFinite(Number(p?.nrthCoord)))
+    ? projectNativePointToLatLng([Number(p.eastCoord), Number(p.nrthCoord)])
+    : null;
   const availablePhysicalFields = [];
   if(livingArea != null) availablePhysicalFields.push("Living area");
   if(yearBuilt != null) availablePhysicalFields.push("Year built");
@@ -1674,19 +1968,31 @@ const buildComparableProfile = p => {
     livingArea,
     yearBuilt,
     bedrooms,
+    fullBaths,
+    halfBaths,
     bathCount,
+    bathrooms: bathCount,
     bathText: bathText === "-" ? null : bathText,
     style,
+    styleFamily,
     availablePhysicalFields,
     neighborhood: parcelNeighborhoodName(p) || null,
+    zipCode: (p?.zip || "").toString().trim() || null,
+    normalizedStreetName: streetNameKeyForComp(p?.address),
     classLabel: propClassLabel(p),
-    equity: Number.isFinite(parseFloat(eqRFast(p))) ? parseFloat(eqRFast(p)) : null,
+    equity: equityRatio != null ? roundComparableNumber(equityRatio * 100, 1) : (Number.isFinite(parseFloat(eqRFast(p))) ? parseFloat(eqRFast(p)) : null),
+    equityRatio,
+    assessedPerSqft,
+    fmvPerSqft,
+    latitude: latLng ? latLng[0] : null,
+    longitude: latLng ? latLng[1] : null,
   };
 };
 const buildComparableDelta = (subject, comp, subjectProfile, compProfile) => ({
   fmv: Number.isFinite(subject?.fullMarketValue) && Number.isFinite(comp?.fullMarketValue) ? comp.fullMarketValue - subject.fullMarketValue : null,
   assessed: Number.isFinite(subject?.assessedValue) && Number.isFinite(comp?.assessedValue) ? comp.assessedValue - subject.assessedValue : null,
   equity: subjectProfile?.equity != null && compProfile?.equity != null ? +(compProfile.equity - subjectProfile.equity).toFixed(1) : null,
+  assessedPerSqft: subjectProfile?.assessedPerSqft != null && compProfile?.assessedPerSqft != null ? roundComparableNumber(compProfile.assessedPerSqft - subjectProfile.assessedPerSqft, 2) : null,
   livingArea: subjectProfile?.livingArea != null && compProfile?.livingArea != null ? compProfile.livingArea - subjectProfile.livingArea : null,
   yearBuilt: subjectProfile?.yearBuilt != null && compProfile?.yearBuilt != null ? compProfile.yearBuilt - subjectProfile.yearBuilt : null,
   bedrooms: subjectProfile?.bedrooms != null && compProfile?.bedrooms != null ? compProfile.bedrooms - subjectProfile.bedrooms : null,
@@ -1741,52 +2047,159 @@ const grievanceResourceUrls = {
   exemptionFaqLabel: grievanceSettings?.resources?.exemptionFaqLabel || "Exemption: Frequently Asked Questions",
   exemptionFaqUrl: grievanceSettings?.resources?.exemptionFaqUrl || "https://www.albanyny.gov/m/faq?cat=18#question-93",
 };
-const classifyGrievanceComparable = (subject, comp) => {
-  const subjectAssessed = Number(subject?.assessedValue);
-  const compAssessed = Number(comp?.assessedValue);
-  if(!Number.isFinite(subjectAssessed) || !Number.isFinite(compAssessed)) return {
-    kind: "neutral",
-    badge: "Neutral",
-    headline: "Assessment comparison unavailable",
-    detail: "This comp stays in the research list, but missing assessment data means it cannot strengthen your grievance package.",
-    tone: "var(--gray2)",
-    border: "rgba(100,116,139,.24)",
-    background: "rgba(148,163,184,.10)",
-  };
-  if(compAssessed < subjectAssessed) return {
-    kind: "supports",
-    badge: "Supports grievance",
-    headline: "Assessed lower than yours",
-    detail: "Assessed lower than yours - supports an RP-524 grievance argument that your property is over-assessed.",
-    tone: "var(--green2)",
-    border: "rgba(34,197,94,.24)",
-    background: "rgba(34,197,94,.08)",
-  };
-  if(compAssessed > subjectAssessed) return {
-    kind: "does_not_support",
-    badge: "Does not support grievance",
-    headline: "Assessed higher than yours",
-    detail: "Assessed higher than yours - this comp would not help your grievance. It suggests your current assessment may be reasonable relative to this similar home. This comp is shown for context because it is the type of evidence the assessor could use to refute your grievance.",
-    tone: "var(--red2)",
-    border: "rgba(220,38,38,.22)",
-    background: "rgba(220,38,38,.07)",
-  };
+const comparableSupportDisplayStatus = kind => kind==="strong_support" || kind==="moderate_support" ? "supports" : kind==="weak_support" || kind==="neutral" ? "neutral" : "weakens";
+const explanationStatusTone = status => status==="supports" ? { color: "var(--green2)", background: "rgba(22,163,74,.08)", border: "rgba(22,163,74,.20)" } : status==="weakens" ? { color: "var(--red2)", background: "rgba(220,38,38,.06)", border: "rgba(220,38,38,.18)" } : { color: "var(--gray2)", background: "rgba(148,163,184,.10)", border: "rgba(148,163,184,.18)" };
+const buildGrievanceComparableExplanation = (subject, comp, kind="neutral") => {
+  const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
+  const confidenceNotes = Array.isArray(comp?._selectionDiagnostics?.confidenceNotes) ? comp._selectionDiagnostics.confidenceNotes : [];
+  const concerns = Array.isArray(comp?._selectionDiagnostics?.disqualifyingConcerns) ? comp._selectionDiagnostics.disqualifyingConcerns : [];
+  const subjectFmv = Number(subject?.fullMarketValue);
+  const compFmv = Number(comp?.fullMarketValue);
+  const assessedPctAdvantage = Number(metrics.assessedPctAdvantage);
+  const assessedPerSqftAdvantagePct = Number(metrics.assessedPerSqftAdvantagePct);
+  const equityRatioDeltaPoints = Number(metrics.equityRatioDeltaPoints);
+  const fmvPctDifference = Number.isFinite(subjectFmv) && Number.isFinite(compFmv) && subjectFmv > 0 && compFmv > 0 ? Math.abs(subjectFmv - compFmv) / Math.max(subjectFmv, compFmv) : null;
+  const perSqftTied = Number.isFinite(assessedPerSqftAdvantagePct) && Math.abs(assessedPerSqftAdvantagePct) < 0.02;
+  const equityTied = Number.isFinite(equityRatioDeltaPoints) && Math.abs(equityRatioDeltaPoints) < 1;
+  const positiveRawAdvantage = Number.isFinite(assessedPctAdvantage) && assessedPctAdvantage > 0;
+  const tiedLowerValueHome = positiveRawAdvantage && perSqftTied && equityTied;
+  const assessedPctText = Number.isFinite(assessedPctAdvantage) ? `${Math.abs(assessedPctAdvantage * 100).toFixed(1)}%` : null;
+  const perSqftPctText = Number.isFinite(assessedPerSqftAdvantagePct) ? `${Math.abs(assessedPerSqftAdvantagePct * 100).toFixed(1)}%` : null;
+  const equityPointText = Number.isFinite(equityRatioDeltaPoints) ? `${Math.abs(equityRatioDeltaPoints).toFixed(1)} points` : null;
+  const fmvPctText = Number.isFinite(fmvPctDifference) ? `${(fmvPctDifference * 100).toFixed(1)}%` : null;
+  const qualityScore = Number(comp?._comparableQualityScore);
+  const confidenceScore = Number(comp?._dataConfidenceScore);
+  const breakdownRows = [];
+
+  breakdownRows.push(Number.isFinite(assessedPctAdvantage)
+    ? assessedPctAdvantage > 0
+      ? { label: "Raw assessed value", status: "supports", valueText: `${assessedPctText} lower`, explanation: `This home is assessed ${assessedPctText} lower than yours in raw dollars.` }
+      : assessedPctAdvantage < 0
+        ? { label: "Raw assessed value", status: "weakens", valueText: `${assessedPctText} higher`, explanation: `This home is assessed ${assessedPctText} higher than yours in raw dollars.` }
+        : { label: "Raw assessed value", status: "neutral", valueText: "About the same", explanation: "This home is assessed about the same as yours in raw dollars." }
+    : { label: "Raw assessed value", status: "neutral", valueText: "Not available", explanation: "Raw assessed values are not available on both homes." });
+
+  breakdownRows.push(Number.isFinite(assessedPerSqftAdvantagePct)
+    ? assessedPerSqftAdvantagePct >= 0.02
+      ? { label: "Assessed value per sq ft", status: "supports", valueText: `${perSqftPctText} lower`, explanation: `On a per-square-foot basis, this home is assessed ${perSqftPctText} lower than yours.` }
+      : assessedPerSqftAdvantagePct <= -0.02
+        ? { label: "Assessed value per sq ft", status: "weakens", valueText: `${perSqftPctText} higher`, explanation: `On a per-square-foot basis, this home is assessed ${perSqftPctText} higher than yours.` }
+        : { label: "Assessed value per sq ft", status: "neutral", valueText: "About the same", explanation: "On a per-square-foot basis, this home is about the same as yours." }
+    : { label: "Assessed value per sq ft", status: "neutral", valueText: "Not available", explanation: "Per-square-foot comparison is not available on both homes." });
+
+  breakdownRows.push(Number.isFinite(equityRatioDeltaPoints)
+    ? equityRatioDeltaPoints >= 1
+      ? { label: "Equity ratio", status: "supports", valueText: `${equityPointText} lower`, explanation: `Its equity ratio is ${equityPointText} lower than yours, which supports an unequal-assessment argument.` }
+      : equityRatioDeltaPoints <= -1
+        ? { label: "Equity ratio", status: "weakens", valueText: `${equityPointText} higher`, explanation: `Its equity ratio is ${equityPointText} higher than yours, which weakens an unequal-assessment argument.` }
+        : { label: "Equity ratio", status: "neutral", valueText: "Effectively the same", explanation: "Its equity ratio is effectively the same as yours." }
+    : { label: "Equity ratio", status: "neutral", valueText: "Not available", explanation: "Equity ratio comparison is not available on both homes." });
+
+  breakdownRows.push(Number.isFinite(qualityScore)
+    ? qualityScore >= 70
+      ? { label: "Physical match quality", status: "supports", valueText: `Strong match (${qualityScore})`, explanation: "This is a strong physical match on class, location, and home characteristics." }
+      : qualityScore >= 55
+        ? { label: "Physical match quality", status: "neutral", valueText: `Reasonable match (${qualityScore})`, explanation: concerns[0] || "This is a reasonable match, but not one of the cleanest apples-to-apples comps." }
+        : { label: "Physical match quality", status: "weakens", valueText: `Loose match (${qualityScore})`, explanation: concerns[0] || "The physical match is loose enough to weaken the comp as grievance evidence." }
+    : { label: "Physical match quality", status: "neutral", valueText: "Not scored", explanation: "The physical match score is not available." });
+
+  breakdownRows.push(Number.isFinite(confidenceScore)
+    ? confidenceScore >= 80
+      ? { label: "Data confidence", status: "supports", valueText: `High (${confidenceScore})`, explanation: "The comparison has strong underlying data coverage." }
+      : confidenceScore >= 60
+        ? { label: "Data confidence", status: "neutral", valueText: `Medium (${confidenceScore})`, explanation: confidenceNotes[0] || "The comparison is usable, but some data are missing or less certain." }
+        : { label: "Data confidence", status: "weakens", valueText: `Low (${confidenceScore})`, explanation: confidenceNotes[0] || "Incomplete data materially weakens this comparison." }
+    : { label: "Data confidence", status: "neutral", valueText: "Not scored", explanation: "The data-confidence score is not available." });
+
+  breakdownRows.push({
+    label: "Final support level",
+    status: comparableSupportDisplayStatus(kind),
+    valueText: grievanceRelevanceStyle(kind).badge,
+    explanation: kind==="strong_support"
+      ? "Raw assessed value, normalized metrics, and comp quality all line up well."
+      : kind==="moderate_support"
+        ? "This comp supports the grievance overall, but not every signal is equally strong."
+        : kind==="weak_support"
+          ? "This comp helps, but mostly on raw assessed value rather than on stronger apples-to-apples fairness checks."
+          : kind==="weakens_case"
+            ? "This comp is similar enough to matter, but its assessment pattern cuts against the grievance."
+            : "This comp is useful context, but it does not clearly support or weaken the grievance on its own.",
+  });
+
+  const primaryReason = tiedLowerValueHome
+    ? "Lower raw assessment is not backed up by stronger normalized metrics."
+    : breakdownRows.find(row=>row.status==="weakens")?.explanation
+      || breakdownRows.find(row=>row.status==="neutral" && row.label!=="Final support level")?.explanation
+      || breakdownRows[breakdownRows.length - 1].explanation;
+  const normalizationOutcome = tiedLowerValueHome
+    ? "tied_lower_value_home"
+    : breakdownRows.some(row=>row.label==="Assessed value per sq ft" && row.status==="weakens") || breakdownRows.some(row=>row.label==="Equity ratio" && row.status==="weakens")
+      ? "normalized_metrics_weaken"
+      : breakdownRows.some(row=>row.label==="Assessed value per sq ft" && row.status==="supports") || breakdownRows.some(row=>row.label==="Equity ratio" && row.status==="supports")
+        ? "normalized_metrics_support"
+        : "normalized_metrics_neutral";
+  const summaryHeadline = kind==="strong_support"
+    ? "Clear support on both raw and apples-to-apples checks."
+    : kind==="moderate_support"
+      ? "Supports the grievance after apples-to-apples checks."
+      : kind==="weak_support"
+        ? "Helpful, but not strong on an apples-to-apples basis."
+        : kind==="weakens_case"
+          ? "Looks comparable, but this one cuts against the grievance."
+          : "Useful context, but not meaningful grievance evidence by itself.";
+  let summaryText = kind==="strong_support"
+    ? "This home is lower in assessed value and still looks favorable after comparing equity ratio, assessed value per sq ft, and overall match quality."
+    : kind==="moderate_support"
+      ? "This home supports the grievance overall, although one or more apples-to-apples checks are less convincing than the raw assessed-value gap."
+      : kind==="weak_support"
+        ? "This home is lower in assessed value, but the stronger apples-to-apples checks do not back it up enough to make it more than weak support."
+        : kind==="weakens_case"
+          ? "Even though this home may look similar, its normalized assessment signals weaken the grievance."
+          : "This home may still be useful for context, but its normalized assessment signals are effectively tied or mixed.";
+  if(tiedLowerValueHome && assessedPctText){
+    summaryText = `This home is assessed ${assessedPctText} lower than yours, but its equity ratio and assessed value per sq ft are about the same.${compFmv > 0 && subjectFmv > 0 && compFmv < subjectFmv && fmvPctText ? ` Its full market value is also ${fmvPctText} lower.` : ""} That usually means it is lower mostly because it is a lower-value or smaller home overall, not because it is clearly assessed more favorably.`;
+  }else if(kind==="weak_support" && assessedPctText){
+    if(breakdownRows[1].status==="weakens"){
+      summaryText = `This home is assessed ${assessedPctText} lower than yours, but its assessed value per sq ft is not favorable enough to make it strong evidence.`;
+    }else if(breakdownRows[2].status==="weakens"){
+      summaryText = `This home is assessed ${assessedPctText} lower than yours, but its equity ratio is not favorable enough to make it strong evidence.`;
+    }else{
+      summaryText = `This home is assessed ${assessedPctText} lower than yours, but the lower assessment is not backed up strongly enough by equity ratio, assessed value per sq ft, and overall comparability.`;
+    }
+  }
+  const trustNote = tiedLowerValueHome
+    ? "A lower assessed value does not automatically mean better grievance evidence if the comp is also proportionally lower in full market value or size."
+    : Number(confidenceScore) < 75
+      ? "Some missing or incomplete data reduce how much confidence the app can place in this comp."
+      : "The final support level combines raw assessed value, normalized fairness checks, match quality, and data confidence.";
   return {
-    kind: "neutral",
-    badge: "Neutral",
-    headline: "Assessed the same as yours",
-    detail: "Assessed the same as yours - confirms your assessment is in line with this similar home but does not strengthen a grievance argument.",
-    tone: "var(--gray2)",
-    border: "rgba(100,116,139,.24)",
-    background: "rgba(148,163,184,.10)",
+    summaryHeadline,
+    summaryText,
+    primaryReason,
+    breakdownRows,
+    normalizationOutcome,
+    trustNote,
+  };
+};
+const classifyGrievanceComparable = (subject, comp) => {
+  const score = Number(comp?._grievanceSupportScore);
+  const kind = grievanceSupportLabelForScore(Number.isFinite(score) ? score : 0);
+  const style = grievanceRelevanceStyle(kind);
+  const explanation = buildGrievanceComparableExplanation(subject, comp, kind);
+  return {
+    kind,
+    score: Number.isFinite(score) ? score : 0,
+    ...style,
+    detail: explanation.summaryText,
+    explanation,
   };
 };
 const buildComparableDeltaInfo = (metricKey, value) => {
   if(value == null || !Number.isFinite(value)) return "";
   if(metricKey === "assessed"){
-    if(value < 0) return "This comp is assessed lower than yours, which supports a grievance argument.";
-    if(value > 0) return "This comp is assessed higher than yours, so it does not support a grievance argument.";
-    return "This comp is assessed the same as yours, which is neutral for a grievance.";
+    if(value < 0) return "This comp is assessed lower than yours. That helps, but it only becomes grievance evidence when quality, confidence, and normalized metrics also line up.";
+    if(value > 0) return "This comp is assessed higher than yours, which usually weakens grievance support even if the home is still useful context.";
+    return "This comp is assessed about the same as yours, which is neutral unless normalized metrics still favor your parcel.";
   }
   if(metricKey === "equity"){
     if(value < 0) return "This comp has a lower equity ratio than yours, which supports an over-assessment claim.";
@@ -1824,9 +2237,9 @@ const buildComparableGroupDeltaInfo = (metricKey, value, count=0) => {
   if(value == null || !Number.isFinite(value)) return "";
   const groupLabel = count === 1 ? "The selected grievance comp" : "The selected grievance comp average";
   if(metricKey === "assessed"){
-    if(value < 0) return `${groupLabel} is assessed lower than your property, which supports a grievance argument.`;
+    if(value < 0) return `${groupLabel} is assessed lower than your property. That helps, but it is strongest when normalized metrics also favor your parcel.`;
     if(value > 0) return `${groupLabel} is assessed higher than your property, which weakens a grievance argument.`;
-    return `${groupLabel} is assessed the same as your property, which is neutral for a grievance.`;
+    return `${groupLabel} is assessed about the same as your property, which is neutral unless normalized metrics lean your way.`;
   }
   if(metricKey === "equity"){
     if(value < 0) return `${groupLabel} carries a lower equity ratio than your property, which supports an over-assessment claim.`;
@@ -1847,21 +2260,136 @@ const formatNarrativeCompList = (comps=[]) => {
   if(items.length===2) return items[0] + " and " + items[1];
   return items.slice(0, -1).join(", ") + ", and " + items[items.length - 1];
 };
+const buildWeightedMedianAssessedValue = entries => {
+  const sorted = entries
+    .filter(entry=>Number.isFinite(entry?.assessedValue) && Number.isFinite(entry?.weight) && entry.weight>0)
+    .sort((a,b)=>a.assessedValue-b.assessedValue);
+  if(!sorted.length) return null;
+  const totalWeight = sorted.reduce((sum, entry)=>sum+entry.weight, 0);
+  if(!(totalWeight>0)) return null;
+  let cumulative = 0;
+  for(const entry of sorted){
+    cumulative += entry.weight;
+    if(cumulative >= totalWeight / 2) return Math.round(entry.assessedValue);
+  }
+  return Math.round(sorted[sorted.length - 1].assessedValue);
+};
+const buildSuggestedRequestedValue = (subjectProfile, packageComps=[]) => {
+  const selected = (Array.isArray(packageComps) ? packageComps : []).filter(Boolean);
+  const eligible = selected.filter(comp=>
+    Number(comp?._comparableQualityScore) >= 60 &&
+    Number(comp?._dataConfidenceScore) >= 70 &&
+    Number(comp?._grievanceSupportScore) >= 12 &&
+    Number.isFinite(Number(comp?.assessedValue))
+  );
+  if(!eligible.length){
+    return {
+      value: null,
+      method: "review_manually",
+      reviewManually: true,
+      confidence: "low",
+      note: "No selected comps meet the minimum quality, support, and confidence thresholds for an automatic requested value.",
+      eligibleCount: 0,
+    };
+  }
+  const weightedEntries = eligible.map(comp => ({
+    comp,
+    assessedValue: Number(comp.assessedValue),
+    weight: (0.5 * Number(comp?._comparableQualityScore || 0)) + (0.3 * Number(comp?._grievanceSupportScore || 0)) + (0.2 * Number(comp?._dataConfidenceScore || 0)),
+  })).filter(entry=>entry.weight>0);
+  if(weightedEntries.length===1){
+    return {
+      value: null,
+      method: "review_manually",
+      reviewManually: true,
+      confidence: "low",
+      note: "Only one comp clears the automatic requested-value thresholds, so the value should be reviewed manually.",
+      eligibleCount: 1,
+    };
+  }
+  const assessedValues = weightedEntries.map(entry=>entry.assessedValue);
+  const minAssessed = Math.min(...assessedValues);
+  const maxAssessed = Math.max(...assessedValues);
+  const spreadPct = maxAssessed>0 ? (maxAssessed - minAssessed) / maxAssessed : 0;
+  let value = null;
+  let method = "review_manually";
+  if(weightedEntries.length >= 3){
+    value = buildWeightedMedianAssessedValue(weightedEntries);
+    method = "weighted_median";
+  }else{
+    const weightedAverage = weightedEntries.reduce((sum, entry)=>sum+(entry.assessedValue * entry.weight), 0) / weightedEntries.reduce((sum, entry)=>sum+entry.weight, 0);
+    const midpoint = (weightedEntries[0].assessedValue + weightedEntries[1].assessedValue) / 2;
+    value = Math.round(Math.min(weightedAverage, midpoint));
+    method = "lower_of_weighted_average_or_midpoint";
+  }
+  if(Number.isFinite(value)) value = Math.max(value, minAssessed);
+  const subjectEquity = Number(subjectProfile?.equity);
+  const equityParity = eligible.length>0 && eligible.every(comp=>{
+    const compEquity = Number(comp?._compProfile?.equity);
+    return Number.isFinite(subjectEquity) && Number.isFinite(compEquity) && Math.abs(subjectEquity - compEquity) < 1;
+  });
+  const notes = [];
+  if(spreadPct > 0.2) notes.push("Selected comp assessed values are spread more than 20%, so the result should be reviewed manually.");
+  if(equityParity) notes.push("Selected comps have equity ratios within 1 point of the subject, which lowers confidence in the requested value.");
+  return {
+    value: Number.isFinite(value) ? value : null,
+    method,
+    reviewManually: spreadPct > 0.2,
+    confidence: spreadPct > 0.2 || equityParity ? "medium" : "high",
+    note: notes.join(" "),
+    eligibleCount: weightedEntries.length,
+  };
+};
+const buildNormalizedMetricSupportState = (packageComps=[]) => {
+  const comps = (Array.isArray(packageComps) ? packageComps : []).filter(Boolean);
+  if(!comps.length) return { label: "neutral", detail: "Normalized metrics are not available because no grievance comps are selected." };
+  let supportiveCount = 0;
+  let neutralCount = 0;
+  for(const comp of comps){
+    const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
+    const equitySupport = Number(metrics.equityRatioDeltaPoints) >= 1;
+    const perSqftSupport = Number(metrics.assessedPerSqftAdvantagePct) >= 0.02;
+    const equityNeutral = Number.isFinite(Number(metrics.equityRatioDeltaPoints)) && Math.abs(Number(metrics.equityRatioDeltaPoints)) < 1;
+    const perSqftNeutral = Number.isFinite(Number(metrics.assessedPerSqftAdvantagePct)) && Math.abs(Number(metrics.assessedPerSqftAdvantagePct)) < 0.02;
+    if(equitySupport || perSqftSupport) supportiveCount += 1;
+    else if(equityNeutral && perSqftNeutral) neutralCount += 1;
+  }
+  if(supportiveCount===comps.length) return { label: "supportive", detail: "Normalized metrics support the grievance across the selected package." };
+  if(supportiveCount >= Math.max(1, Math.ceil(comps.length / 2))) return { label: "mixed", detail: "Normalized metrics are mixed, but they lean supportive overall." };
+  if(neutralCount===comps.length) return { label: "neutral", detail: "Normalized metrics are broadly neutral across the selected comps." };
+  return { label: "mixed", detail: "Normalized metrics are mixed and do not consistently support the grievance." };
+};
+const buildGrievancePackageLimitations = (packageComps=[]) => {
+  const limitations = [];
+  if(packageComps.length < 3) limitations.push("fewer than 3 comps are currently selected");
+  if(packageComps.some(comp=>comp?._dataConfidenceLabel==="low")) limitations.push("at least one selected comp has low data confidence");
+  if(packageComps.some(comp=>Number(comp?._comparableQualityScore) < 55)) limitations.push("at least one selected comp is only a loose physical match");
+  return limitations;
+};
 const buildSelectedGrievancePackage = (subject, subjectProfile, comps=[]) => {
   const packageComps = (Array.isArray(comps) ? comps : []).filter(Boolean);
   const subjectEquity = subjectProfile?.equity;
   const grievanceAvgFMV = packageComps.length ? Math.round(packageComps.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/packageComps.length) : null;
   const grievanceAvgAssessed = packageComps.length ? Math.round(packageComps.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/packageComps.length) : null;
-  const grievanceAvgEquity = packageComps.length ? +(packageComps.reduce((sum, comp)=>sum+(parseFloat(eqRFast(comp))||0),0)/packageComps.length).toFixed(1) : null;
+  const grievanceAvgEquity = packageComps.length ? meanComparableValue(packageComps.map(comp=>comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
   const grievanceDeltaFMV = grievanceAvgFMV!=null ? subject.fullMarketValue-grievanceAvgFMV : null;
   const grievanceDeltaFMVPct = (grievanceAvgFMV && grievanceDeltaFMV!=null) ? (grievanceDeltaFMV/grievanceAvgFMV)*100 : null;
   const grievanceDeltaAssessed = grievanceAvgAssessed!=null ? subject.assessedValue-grievanceAvgAssessed : null;
-  const grievanceDeltaEquity = (grievanceAvgEquity!=null && subjectEquity!=null) ? +(subjectEquity-grievanceAvgEquity).toFixed(1) : null;
-  const grievanceSignal = grievanceDeltaEquity==null ? null : (grievanceDeltaEquity>8 ? "Selected grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity<-8 ? "Selected grievance comps carry higher equity ratios than your home." : "Selected grievance comps show equity ratios in line with your home.");
-  const grievanceSupportCount = packageComps.filter(comp=>comp?._grievanceRelevance?.kind === "supports").length;
+  const grievanceDeltaEquity = (grievanceAvgEquity!=null && subjectEquity!=null) ? roundComparableNumber(subjectEquity-grievanceAvgEquity, 1) : null;
+  const grievanceSignal = grievanceDeltaEquity==null ? null : (grievanceDeltaEquity>=3 ? "Selected grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity<=-3 ? "Selected grievance comps carry higher equity ratios than your home." : "Selected grievance comps show equity ratios in line with your home.");
+  const grievanceSupportCount = packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0).length;
+  const grievanceModerateOrBetterCount = packageComps.filter(comp=>["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind)).length;
+  const grievanceAverageSupportScore = meanComparableValue(packageComps.map(comp=>comp?._grievanceSupportScore), 1);
+  const grievanceAverageQualityScore = meanComparableValue(packageComps.map(comp=>comp?._comparableQualityScore), 1);
+  const grievanceAverageConfidenceScore = meanComparableValue(packageComps.map(comp=>comp?._dataConfidenceScore), 1);
+  const normalizedMetricSupport = buildNormalizedMetricSupportState(packageComps);
+  const packageLimitations = buildGrievancePackageLimitations(packageComps);
+  const suggestedRequestedValue = buildSuggestedRequestedValue(subjectProfile, packageComps);
   return {
-    grievanceSupportPool: packageComps,
+    grievanceSupportPool: packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0),
+    grievanceCandidatePool: packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0),
     grievanceCandidates: packageComps,
+    grievancePackage: packageComps,
     grievanceAvgFMV,
     grievanceAvgAssessed,
     grievanceAvgEquity,
@@ -1871,70 +2399,78 @@ const buildSelectedGrievancePackage = (subject, subjectProfile, comps=[]) => {
     grievanceDeltaEquity,
     grievanceSignal,
     grievanceSupportCount,
+    grievanceModerateOrBetterCount,
+    grievanceAverageSupportScore,
+    grievanceAverageQualityScore,
+    grievanceAverageConfidenceScore,
+    normalizedMetricSupport,
+    packageLimitations,
+    suggestedRequestedAssessedValue: suggestedRequestedValue.value,
+    suggestedRequestedAssessedValueMethod: suggestedRequestedValue.method,
+    suggestedRequestedAssessedValueReviewManually: suggestedRequestedValue.reviewManually,
+    suggestedRequestedAssessedValueNote: suggestedRequestedValue.note,
+    suggestedRequestedAssessedValueEligibleCount: suggestedRequestedValue.eligibleCount,
     grievancePackageAllSupportive: packageComps.length>0 && grievanceSupportCount===packageComps.length,
   };
 };
 const buildGrievanceStrengthAssessment = (subject, neighborResult, totalComparableCount=0) => {
   const packageComps = neighborResult?.grievanceCandidates || [];
-  const supportCount = packageComps.filter(comp=>comp?._grievanceRelevance?.kind === "supports").length;
+  const supportCount = packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0).length;
+  const moderateOrBetterCount = packageComps.filter(comp=>["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind)).length;
   if(!packageComps.length){
     return { label: "Weak", color: "var(--red2)", detail: `No comps are currently included in the grievance package. Add at least one comparable home before relying on this filing summary.` };
   }
   const supportRatio = totalComparableCount>0 ? supportCount / totalComparableCount : 0;
-  const assessedGap = Number(neighborResult?.grievanceDeltaAssessed) || 0;
-  const assessedGapPct = subject?.assessedValue>0 ? assessedGap / subject.assessedValue : 0;
-  const equityGapAbs = Math.abs(Number(neighborResult?.grievanceDeltaEquity) || 0);
-  const avgMatchRatio = packageComps.length ? packageComps.reduce((sum, comp)=>{
-    const possible = Number(comp?._compPhysicalFieldCountPossible || 0);
-    const used = Array.isArray(comp?._compPhysicalFieldsUsed) ? comp._compPhysicalFieldsUsed.length : 0;
-    if(!possible) return sum + 0.5;
-    return sum + (used / possible);
-  }, 0) / packageComps.length : 0;
-  let score = 0;
-  if(supportRatio >= 0.7) score += 2;
-  else if(supportRatio >= 0.45) score += 1;
-  if(assessedGapPct >= 0.1) score += 2;
-  else if(assessedGapPct >= 0.04) score += 1;
-  if(equityGapAbs >= 8) score += 2;
-  else if(equityGapAbs >= 3) score += 1;
-  if(avgMatchRatio >= 0.9) score += 2;
-  else if(avgMatchRatio >= 0.7) score += 1;
-  const label = score >= 7 ? "Strong" : score >= 5 ? "Moderate" : score >= 3 ? "Modest" : "Weak";
-  const color = label === "Strong" ? "var(--green2)" : label === "Moderate" ? "var(--blue3)" : label === "Modest" ? "var(--amber)" : "var(--red2)";
-  const supportSentence = supportRatio >= 0.7
-    ? `${supportCount} of ${Math.max(totalComparableCount, packageComps.length)} comparable homes point in a lower-assessment direction.`
+  const avgSupport = meanComparableValue(packageComps.map(comp=>comp?._grievanceSupportScore), 1) || 0;
+  const avgQuality = meanComparableValue(packageComps.map(comp=>comp?._comparableQualityScore), 1) || 0;
+  const avgConfidence = meanComparableValue(packageComps.map(comp=>comp?._dataConfidenceScore), 1) || 0;
+  const label = moderateOrBetterCount >= 3 && avgSupport >= 18 && avgQuality >= 60 && avgConfidence >= 65
+    ? "Strong"
+    : moderateOrBetterCount >= 2 && avgSupport >= 10 && avgQuality >= 50 && avgConfidence >= 60
+      ? "Moderate"
+      : supportCount > 0
+        ? "Modest"
+        : "Weak";
+  const color = label === "Strong" ? "var(--green2)" : label === "Moderate" ? "var(--blue3)" : label === "Modest" ? "var(--amber2)" : "var(--red2)";
+  const supportSentence = moderateOrBetterCount >= 3
+    ? `${moderateOrBetterCount} selected comps are moderate support or better.`
     : supportRatio >= 0.45
-      ? `${supportCount} of ${Math.max(totalComparableCount, packageComps.length)} comparable homes support the grievance, but the split is mixed.`
-      : `${supportCount} of ${Math.max(totalComparableCount, packageComps.length)} comparable homes support the grievance, so the evidence base is limited.`;
-  const deltaSentence = assessedGap > 0
-    ? `The selected grievance comps average ${$f(Math.abs(assessedGap))} below your current assessment.`
-    : assessedGap < 0
-      ? `The selected grievance comps average ${$f(Math.abs(assessedGap))} above your current assessment, which weakens the filing position.`
-      : `The selected grievance comps average the same assessed value as your property.`;
-  const matchSentence = avgMatchRatio >= 0.85
-    ? "The included homes are close physical matches."
-    : avgMatchRatio >= 0.65
-      ? "The included homes are reasonably similar, but not perfect matches."
-      : "The included homes require a broader comparability argument because the physical match is loose.";
-  return { label, color, detail: `${supportSentence} ${deltaSentence} ${matchSentence}` };
+      ? `${supportCount} selected comps support the grievance, but the supporting pool is mixed.`
+      : supportCount > 0
+        ? `${supportCount} selected comps support the grievance, but the supporting pool is thin.`
+        : `No selected comps currently provide a positive grievance-support score.`;
+  const qualitySentence = `Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`;
+  const normalizedSentence = neighborResult?.normalizedMetricSupport?.detail || "Normalized metric support has not been evaluated yet.";
+  return { label, color, detail: `${supportSentence} ${qualitySentence} ${normalizedSentence}` };
 };
-const buildGrievanceNarrative = (subject, subjectProfile, neighborResult, salesByParcelId=null) => {
+const buildGrievanceNarrative = (subject, subjectProfile, neighborResult, salesByParcelId=null, neighborhoodBenchmark=null) => {
   const selectedComps = neighborResult?.grievanceCandidates || [];
   if(!selectedComps.length || neighborResult?.grievanceAvgAssessed == null || neighborResult?.grievanceDeltaAssessed == null) return "";
   const comparisonFields = ["property class"].concat((subjectProfile?.availablePhysicalFields || []).map(field => field.toLowerCase()));
   const basis = comparisonFields.length > 1 ? comparisonFields.slice(0, -1).join(", ") + ", and " + comparisonFields[comparisonFields.length - 1] : comparisonFields[0];
-  const supportiveComps = selectedComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "supports");
-  const compExamples = formatNarrativeCompList((supportiveComps.length ? supportiveComps : selectedComps).slice(0, 3));
+  const strongOrModerate = selectedComps.filter(parcel=>["strong_support", "moderate_support"].includes(parcel?._grievanceRelevance?.kind));
+  const supportiveComps = selectedComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0);
+  const compExamples = formatNarrativeCompList((strongOrModerate.length ? strongOrModerate : supportiveComps.length ? supportiveComps : selectedComps).slice(0, 3));
   const saleSentences = selectedComps.slice(0, 4).map(parcel => {
     const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
     if(!sale || !isRecentArmsLengthSale(sale, 3)) return "";
-    return `This comparable property at ${parcel.address} also sold on ${formatSalesDate(sale.sale_dte || sale.deed_dte)} for ${formatSalePrice(sale.sale_price)} in an arm's-length transaction, providing additional market evidence supporting a lower valuation.`;
+    return `Recent arm's-length sale evidence also exists at ${parcel.address}, which sold on ${formatSalesDate(sale.sale_dte || sale.deed_dte)} for ${formatSalePrice(sale.sale_price)}.`;
   }).filter(Boolean);
-  if(neighborResult?.grievancePackageAllSupportive){
-    return `The subject property at ${subject.address} is currently assessed at ${$f(subject.assessedValue)}. Several physically comparable homes${subjectProfile?.neighborhood ? ` in the same ${subjectProfile.neighborhood} neighborhood` : ""} - matching in ${basis} - carry lower assessments. For example, ${compExamples}. The average assessed value across the selected grievance comps is ${$f(neighborResult.grievanceAvgAssessed)}, which is ${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} less than the subject's current assessment. ${saleSentences.join(" ")}${saleSentences.length ? " " : ""}This disparity indicates the subject property is over-assessed relative to its peers and the assessed value should be reduced to align with comparable properties.`;
-  }
-  const contextCount = selectedComps.length - supportiveComps.length;
-  return `The subject property at ${subject.address} is currently assessed at ${$f(subject.assessedValue)}. The homeowner-selected grievance package currently includes ${selectedComps.length} physically comparable homes${subjectProfile?.neighborhood ? ` from ${subjectProfile.neighborhood} and nearby areas` : ""}, chosen for similarity in ${basis}. ${supportiveComps.length ? `Among the selected homes, ${compExamples}.` : `None of the selected homes is assessed below the subject.`} The average assessed value across the selected grievance comps is ${$f(neighborResult.grievanceAvgAssessed)}, which is ${neighborResult.grievanceDeltaAssessed >= 0 ? $f(Math.abs(neighborResult.grievanceDeltaAssessed)) + " less" : $f(Math.abs(neighborResult.grievanceDeltaAssessed)) + " more"} than the subject's current assessment. ${contextCount>0 ? `${contextCount} higher-assessed or equal-assessed comp${contextCount===1?" is":"s are"} included for context at the homeowner's request.` : ""}${contextCount>0 && saleSentences.length ? " " : ""}${saleSentences.join(" ")}`;
+  const normalizedState = neighborResult?.normalizedMetricSupport || buildNormalizedMetricSupportState(selectedComps);
+  const benchmarkLabel = neighborhoodBenchmark?.interpretationLabel || "neutral";
+  const benchmarkSentence = neighborhoodBenchmark
+    ? benchmarkLabel==="supportive"
+      ? "The neighborhood benchmark is supportive on both equity ratio and assessed value per square foot."
+      : benchmarkLabel==="mild_support"
+        ? "The neighborhood benchmark is mildly supportive."
+        : "The neighborhood benchmark is neutral."
+    : "A neighborhood benchmark could not be calculated.";
+  const averageSentence = `The selected comp package averages ${$f(neighborResult.grievanceAvgAssessed)}, which is ${neighborResult.grievanceDeltaAssessed >= 0 ? `${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} below` : `${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} above`} the subject's current assessment.`;
+  const limitations = neighborResult?.packageLimitations || buildGrievancePackageLimitations(selectedComps);
+  const limitationSentence = limitations.length ? `Material limitations: ${limitations.join("; ")}.` : "";
+  const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
+  const legalGroundSentence = complaintReasonGuidance.narrativeSentence;
+  return `The subject property at ${subject.address} is currently assessed at ${$f(subject.assessedValue)}. The current grievance package contains ${selectedComps.length} comparable home${selectedComps.length===1?"":"s"}, including ${strongOrModerate.length} with strong or moderate support. These homes were chosen for similarity in ${basis}. ${compExamples ? `Examples include ${compExamples}. ` : ""}${averageSentence} ${normalizedState.detail} ${benchmarkSentence} ${legalGroundSentence} ${saleSentences.join(" ")} ${limitationSentence}`.replace(/\s+/g, " ").trim();
 };
 const grievanceDayForYear = (year) => {
   if(!Number.isFinite(year)) return null;
@@ -1957,16 +2493,104 @@ const grievanceDayLabel = (meta={}, subject=null) => {
     warning,
   };
 };
-const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, meta={}, salesByParcelId=null) => {
+const buildComplaintReasonGuidance = (subject, subjectProfile, neighborResult, neighborhoodBenchmark=null) => {
+  const subjectEquity = Number(subjectProfile?.equity);
+  const packageEquity = Number(neighborResult?.grievanceAvgEquity);
+  const equityGapPoints = Number.isFinite(subjectEquity) && Number.isFinite(packageEquity)
+    ? roundComparableNumber(subjectEquity - packageEquity, 1)
+    : null;
+  const fullMarketValueGap = Number(neighborResult?.grievanceDeltaFMV);
+  const unequalSupport = Number.isFinite(equityGapPoints) && equityGapPoints >= 1;
+  const excessiveSupport = Number.isFinite(fullMarketValueGap) && fullMarketValueGap > 0;
+  const benchmarkSupport = neighborhoodBenchmark?.interpretationLabel==="supportive" || neighborhoodBenchmark?.interpretationLabel==="mild_support";
+  const sameClass = isResidentialPropClass(subject?.propClass);
+  const unlawfulNotSupportedNote = "This app does not detect unlawful-assessment grounds from comparable-home data. Use that box only if you have separate proof such as a wholly exempt property, a boundary/location error, or another roll-authority problem.";
+  const misclassificationNotSupportedNote = "This app does not detect misclassification from comparable-home data. Use that box only if the parcel is placed in the wrong tax class or homestead/non-homestead allocation, which usually requires separate classification evidence.";
+  if(unequalSupport && excessiveSupport){
+    const why = `Check both "Unequal assessment" and "Excessive assessment" in RP-524 Part Three. Unequal is stronger because your equity ratio is ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"} above the selected comp package, and excessive is also supported because your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average.`;
+    return {
+      primaryCode: "unequal",
+      primaryLabel: "Unequal Assessment",
+      displayLabel: "Unequal + Excessive Assessment",
+      secondaryCode: "excessive",
+      secondaryLabel: "Excessive Assessment",
+      selectionLabel: 'Check "Unequal assessment" and "Excessive assessment"',
+      why,
+      shortWhy: `Unequal is stronger because your equity ratio is ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"} above the selected comp package, and excessive is also supported because your current full market value still sits above the comp package average.`,
+      narrativeSentence: "The current evidence supports both unequal-assessment and excessive-assessment arguments, with unequal assessment slightly stronger.",
+      unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
+      unlawfulNotSupportedNote,
+      misclassificationNotSupportedNote,
+      appSupportsComparableGroundsOnly: true,
+    };
+  }
+  if(unequalSupport){
+    const benchmarkTail = benchmarkSupport ? " The neighborhood fairness benchmark also leans in the same direction." : "";
+    const why = `Check "Unequal assessment" in RP-524 Part Three because your property carries a higher effective assessment ratio than the selected comparable package by ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"}.${benchmarkTail}`;
+    return {
+      primaryCode: "unequal",
+      primaryLabel: "Unequal Assessment",
+      displayLabel: "Unequal Assessment",
+      secondaryCode: null,
+      secondaryLabel: "",
+      selectionLabel: 'Check "Unequal assessment"',
+      why,
+      shortWhy: `Your property carries a higher effective assessment ratio than the selected comp package by ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"}.${benchmarkTail}`.trim(),
+      narrativeSentence: "The stronger RP-524 basis appears to be unequal assessment because the subject carries a higher effective assessment ratio than the selected comps.",
+      unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
+      unlawfulNotSupportedNote,
+      misclassificationNotSupportedNote,
+      appSupportsComparableGroundsOnly: true,
+    };
+  }
+  if(excessiveSupport){
+    const why = `Check "Excessive assessment" in RP-524 Part Three because your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average, which points to overvaluation more than unequal treatment.`;
+    return {
+      primaryCode: "excessive",
+      primaryLabel: "Excessive Assessment",
+      displayLabel: "Excessive Assessment",
+      secondaryCode: null,
+      secondaryLabel: "",
+      selectionLabel: 'Check "Excessive assessment"',
+      why,
+      shortWhy: `Your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average, which points to overvaluation more than unequal treatment.`,
+      narrativeSentence: "The stronger RP-524 basis appears to be excessive assessment because the subject's full market value remains above the selected comp package.",
+      unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
+      unlawfulNotSupportedNote,
+      misclassificationNotSupportedNote,
+      appSupportsComparableGroundsOnly: true,
+    };
+  }
+  const manualReviewWhy = sameClass
+    ? `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.`
+    : `The current comparable package does not clearly support unequal or excessive assessment, and the app does not have enough classification evidence to recommend unlawful or misclassification grounds.`;
+  return {
+    primaryCode: "manual_review",
+    primaryLabel: "Manual Review Needed",
+    displayLabel: "Manual Review Needed",
+    secondaryCode: null,
+    secondaryLabel: "",
+    selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+    why: manualReviewWhy,
+    shortWhy: "The current comparable package does not clearly establish unequal or excessive assessment.",
+    narrativeSentence: "The current evidence does not clearly establish either unequal assessment or excessive assessment as a strong standalone basis.",
+    unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
+    unlawfulNotSupportedNote,
+    misclassificationNotSupportedNote,
+    appSupportsComparableGroundsOnly: true,
+  };
+};
+const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, meta={}, salesByParcelId=null, neighborhoodBenchmark=null) => {
   const comps = neighborResult?.grievanceCandidates || [];
   const mailingAddress = (subject?.mailAddressClean || subject?.mailAddress || "").trim();
   const municipality = subject?.municipality || meta?.municipality || "City of Albany";
   const county = subject?.county || meta?.county || "Albany";
   const labelPrefix = neighborResult?.grievancePackageCustom ? "Selected grievance comp" : "Supporting comp";
-  const suggestedValue = Number.isFinite(neighborResult?.grievanceAvgAssessed) ? neighborResult.grievanceAvgAssessed : null;
-  const supportingCompAssessedAverage = suggestedValue != null ? $f(suggestedValue) : "-";
+  const suggestedValue = Number.isFinite(neighborResult?.suggestedRequestedAssessedValue) ? neighborResult.suggestedRequestedAssessedValue : (Number.isFinite(neighborResult?.grievanceAvgAssessed) ? neighborResult.grievanceAvgAssessed : null);
+  const supportingCompAssessedAverage = Number.isFinite(neighborResult?.grievanceAvgAssessed) ? $f(neighborResult.grievanceAvgAssessed) : "-";
   const assessedReduction = suggestedValue != null && Number.isFinite(subject?.assessedValue) ? Math.max(subject.assessedValue - suggestedValue, 0) : null;
   const grievanceDay = grievanceDayLabel(meta, subject);
+  const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
   const checklist = [
     { label: "Owner name", value: subject?.owner1 || "-", note: "RP-524 owner or complainant field" },
     { label: "Mailing address", value: mailingAddress || "-", note: "Use the assessment roll mailing address unless it needs correction" },
@@ -1977,14 +2601,17 @@ const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, met
     { label: "Current assessed value", value: Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-", note: "Roll value from the assessment record" },
     { label: "Current full market value", value: Number.isFinite(subject?.fullMarketValue) ? $f(subject.fullMarketValue) : "-", note: "Roll full market value" },
     { label: "Equity ratio", value: subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-", note: "Useful grievance talking point from this app" },
+    { label: "Recommended RP-524 complaint reason", value: complaintReasonGuidance.selectionLabel, note: complaintReasonGuidance.why },
     { label: `${labelPrefix} FMV average`, value: Number.isFinite(neighborResult?.grievanceAvgFMV) ? $f(neighborResult.grievanceAvgFMV) : "-", note: `${labelPrefix} average FMV for the homes currently included in the grievance package` },
     { label: `${labelPrefix} assessed average`, value: supportingCompAssessedAverage, note: `${labelPrefix} average assessed value for the homes currently included in the grievance package` },
-    { label: "Suggested requested assessed value", value: supportingCompAssessedAverage, note: "Use this as your requested value on RP-524 - it equals the average assessed value of the homes currently included in your grievance package" },
+    { label: "Suggested requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueMethod==="weighted_median" ? "Weighted median of the strongest selected grievance comps." : neighborResult?.suggestedRequestedAssessedValueMethod==="lower_of_weighted_average_or_midpoint" ? "Conservative value from the two strongest selected grievance comps." : (neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the selected package does not support an automatic requested value.") },
     { label: "Potential assessed value reduction", value: assessedReduction!=null ? $f(assessedReduction) : "-", note: assessedReduction!=null ? `Dollar tax savings are not shown here because tax rates are not loaded in Neighbor Compare. Use the Savings Estimator tab and your current tax bill to convert this ${$f(assessedReduction)} assessment reduction into annual dollar savings.` : "A suggested requested value is needed before the reduction amount can be calculated.", action: assessedReduction!=null ? "open_estimator" : null },
-    { label: `${labelPrefix} list`, value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}%`).join("; ") : "-", note: neighborResult?.grievancePackageCustom ? "This list reflects your current custom grievance selection." : "Only lower-assessed comps are included in the default grievance package" },
+    { label: `${labelPrefix} list`, value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}% | ${parcel?._grievanceRelevance?.badge || "Assessment signal unavailable"}`).join("; ") : "-", note: neighborResult?.grievancePackageCustom ? "This list reflects your current custom grievance selection." : "The default grievance package keeps only comps with positive grievance-support scores and sufficient quality/confidence." },
   ];
   const missing = [
-    "Select your reason for complaint on RP-524 (unequal, excessive, unlawful, or misclassification)",
+    complaintReasonGuidance.primaryCode==="manual_review"
+      ? `Review RP-524 Part Three manually before checking a complaint box. ${complaintReasonGuidance.shortWhy}`
+      : `${complaintReasonGuidance.selectionLabel} on RP-524 Part Three. ${complaintReasonGuidance.shortWhy}`,
     "Fill in owner contact information and any representative details",
     "Enter your requested value opinion - use the auto-generated narrative above as your draft",
     "Sign the form and note the filing date and any hearing attendance details required by the board",
@@ -1993,11 +2620,12 @@ const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, met
   return {
     checklist,
     missing,
-    narrative: buildGrievanceNarrative(subject, subjectProfile, neighborResult, salesByParcelId),
+    narrative: buildGrievanceNarrative(subject, subjectProfile, neighborResult, salesByParcelId, neighborhoodBenchmark),
     grievanceDayDeadline: grievanceDay.text,
     grievanceDayWarning: grievanceDay.warning,
     supportingCompCount: comps.length,
     assessedReduction,
+    complaintReasonGuidance,
   };
 };
 const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -2006,6 +2634,65 @@ const medianValue = (values=[]) => {
   if(!nums.length) return null;
   const mid = Math.floor(nums.length / 2);
   return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+};
+const percentileRankValue = (values=[], value) => {
+  const nums = values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
+  if(!nums.length || !Number.isFinite(value)) return null;
+  const count = nums.filter(entry=>entry<=value).length;
+  return roundComparableNumber((count / nums.length) * 100, 1);
+};
+const downgradeCaseStrengthLabel = label => {
+  if(label==="strong") return "moderate";
+  if(label==="moderate") return "weak";
+  if(label==="weak") return "do_not_recommend";
+  return "do_not_recommend";
+};
+const humanCaseStrengthLabel = label => {
+  if(label==="strong") return "Strong";
+  if(label==="moderate") return "Moderate";
+  if(label==="weak") return "Weak";
+  return "Do Not Recommend";
+};
+const buildCaseNormalizedMetricSupport = (selectedComps=[]) => {
+  const signalValues = [];
+  for(const comp of selectedComps || []){
+    const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
+    if(Number.isFinite(Number(metrics.equityRatioDeltaPoints))){
+      signalValues.push(clampNumber(Number(metrics.equityRatioDeltaPoints) / 6, -1, 1));
+    }
+    if(Number.isFinite(Number(metrics.assessedPerSqftAdvantagePct))){
+      signalValues.push(clampNumber(Number(metrics.assessedPerSqftAdvantagePct) / 0.12, -1, 1));
+    }
+  }
+  if(!signalValues.length){
+    return { score: 0, label: "neutral", detail: "Normalized metric support is unavailable." };
+  }
+  const avgSignal = signalValues.reduce((sum, value)=>sum+value, 0) / signalValues.length;
+  const positiveSignals = signalValues.filter(value=>value > 0.15).length;
+  const negativeSignals = signalValues.filter(value=>value < -0.15).length;
+  const label = positiveSignals && !negativeSignals
+    ? "supportive"
+    : positiveSignals > negativeSignals
+      ? "mixed_supportive"
+      : Math.abs(avgSignal) < 0.1
+        ? "neutral"
+        : negativeSignals > positiveSignals
+          ? "negative"
+          : "mixed";
+  const detail = label==="supportive"
+    ? "Normalized metrics consistently support the grievance."
+    : label==="mixed_supportive"
+      ? "Normalized metrics are mixed, but they lean supportive."
+      : label==="negative"
+        ? "Normalized metrics lean against the grievance."
+        : label==="neutral"
+          ? "Normalized metrics are broadly neutral."
+          : "Normalized metrics are mixed.";
+  return {
+    score: clampNumber(Math.max(avgSignal, 0) * 15, 0, 15),
+    label,
+    detail,
+  };
 };
 const buildNeighborhoodBenchmark = (subject, subjectProfile, parcels=[]) => {
   if(!subject || !Array.isArray(parcels)) return null;
@@ -2016,30 +2703,39 @@ const buildNeighborhoodBenchmark = (subject, subjectProfile, parcels=[]) => {
     const parcelId = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
     return parcelId !== subjectId && isResidentialPropClass(parcel?.propClass) && parcelNeighborhoodName(parcel) === subjectNeighborhood;
   });
-  let sample = neighborhoodResidential.filter(parcel=>String(parcel?.propClass || "") === String(subject?.propClass || ""));
-  let scopeLabel = "Same neighborhood and property class";
+  let sample = neighborhoodResidential.filter(parcel=>classCompatibilityTier(subject, parcel, { allowBroadClass: false }).tier !== "tier_3_incompatible");
+  let scopeLabel = "Same neighborhood compatible residential homes";
   let usedFallback = false;
   if(sample.length < 10){
-    sample = neighborhoodResidential;
-    scopeLabel = "Same neighborhood residential homes";
+    sample = neighborhoodResidential.filter(parcel=>classCompatibilityTier(subject, parcel, { allowBroadClass: true }).tier !== "tier_3_incompatible");
+    scopeLabel = "Same neighborhood residential homes (broadened class match)";
     usedFallback = true;
   }
   if(!sample.length) return null;
   const assessedMedian = medianValue(sample.map(parcel=>Number(parcel?.assessedValue)));
   const fmvMedian = medianValue(sample.map(parcel=>Number(parcel?.fullMarketValue)));
-  const equityMedian = medianValue(sample.map(parcel=>parseFloat(eqRFast(parcel))));
+  const sampleProfiles = sample.map(parcel => ({ parcel, profile: buildComparableProfile(parcel) }));
+  const assessedPerSqftMedian = medianValue(sampleProfiles.map(entry=>entry.profile?.assessedPerSqft));
+  const equityMedian = medianValue(sampleProfiles.map(entry=>entry.profile?.equity));
   const subjectEquity = subjectProfile?.equity != null ? subjectProfile.equity : (Number.isFinite(parseFloat(eqRFast(subject))) ? parseFloat(eqRFast(subject)) : null);
-  const deltaEquity = subjectEquity != null && equityMedian != null ? +(subjectEquity - equityMedian).toFixed(1) : null;
-  let interpretation = "There is not enough neighborhood evidence yet to say whether your equity ratio is materially different from the local pattern.";
-  if(deltaEquity != null){
-    if(deltaEquity >= 2){
-      interpretation = `Your property is assessed at a higher equity ratio than the ${subjectNeighborhood} median, which may support an unequal assessment argument.`;
-    }else if(deltaEquity <= -2){
-      interpretation = `Your property is assessed at a lower equity ratio than the ${subjectNeighborhood} median, which may weaken an unequal assessment argument.`;
-    }else{
-      interpretation = `Your equity ratio is close to the ${subjectNeighborhood} median, so the neighborhood benchmark is broadly neutral.`;
-    }
-  }
+  const subjectAssessedPerSqft = subjectProfile?.assessedPerSqft ?? null;
+  const deltaEquity = subjectEquity != null && equityMedian != null ? roundComparableNumber(subjectEquity - equityMedian, 1) : null;
+  const deltaAssessedPerSqft = subjectAssessedPerSqft != null && assessedPerSqftMedian != null ? roundComparableNumber(subjectAssessedPerSqft - assessedPerSqftMedian, 2) : null;
+  const assessedPerSqftDeltaPct = subjectAssessedPerSqft != null && assessedPerSqftMedian != null && assessedPerSqftMedian>0 ? (subjectAssessedPerSqft - assessedPerSqftMedian) / assessedPerSqftMedian : null;
+  const equityPercentile = percentileRankValue(sampleProfiles.map(entry=>entry.profile?.equity), subjectEquity);
+  const assessedPerSqftPercentile = percentileRankValue(sampleProfiles.map(entry=>entry.profile?.assessedPerSqft), subjectAssessedPerSqft);
+  const equitySupportive = Number(deltaEquity) >= 2 || Number(equityPercentile) >= 65;
+  const assessedPerSqftSupportive = Number(assessedPerSqftDeltaPct) >= 0.05 || Number(assessedPerSqftPercentile) >= 65;
+  const interpretationLabel = equitySupportive && assessedPerSqftSupportive
+    ? "supportive"
+    : equitySupportive || assessedPerSqftSupportive
+      ? "mild_support"
+      : "neutral";
+  const interpretation = interpretationLabel==="supportive"
+    ? `Your property sits above the ${subjectNeighborhood} neighborhood median on both equity ratio and assessed value per square foot, which supports an unequal-assessment argument.`
+    : interpretationLabel==="mild_support"
+      ? `Your property sits above the ${subjectNeighborhood} neighborhood median on one of the neighborhood benchmark metrics, which offers mild support.`
+      : `Your equity ratio and assessed value per square foot are close to the ${subjectNeighborhood} neighborhood medians, so the neighborhood benchmark is broadly neutral.`;
   return {
     neighborhood: subjectNeighborhood,
     sampleSize: sample.length,
@@ -2047,183 +2743,189 @@ const buildNeighborhoodBenchmark = (subject, subjectProfile, parcels=[]) => {
     usedFallback,
     assessedMedian,
     fmvMedian,
+    assessedPerSqftMedian,
     equityMedian,
     subjectEquity,
+    subjectAssessedPerSqft,
     deltaEquity,
+    deltaAssessedPerSqft,
+    assessedPerSqftDeltaPct,
+    equityPercentile,
+    assessedPerSqftPercentile,
+    interpretationLabel,
     interpretation,
   };
 };
-const buildAppealReadiness = ({subject, subjectProfile, neighborResult, totalComparableCount=0, salesByParcelId=null}) => {
+const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighborhoodBenchmark=null, totalComparableCount=0, salesByParcelId=null}) => {
   const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
   const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
-  const supportingSelected = selectedComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "supports");
-  const supportingVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "supports");
-  const nonSupportingVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind !== "supports");
+  const supportingSelected = selectedComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0);
+  const moderateOrBetterSelected = selectedComps.filter(parcel=>["strong_support", "moderate_support"].includes(parcel?._grievanceRelevance?.kind));
+  const supportingVisible = visibleComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0);
+  const weakensVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "weakens_case");
   const visibleCount = totalComparableCount || visibleComps.length || selectedComps.length || 0;
-  const supportShare = visibleCount > 0 ? supportingSelected.length / visibleCount : 0;
-  const supportShareScore = clampNumber(Math.round(supportShare * 30), 0, 30);
-  const avgMatchRatio = selectedComps.length
-    ? selectedComps.reduce((sum, comp)=>{
-      const possible = Number(comp?._compPhysicalFieldCountPossible || 0);
-      const used = Array.isArray(comp?._compPhysicalFieldsUsed) ? comp._compPhysicalFieldsUsed.length : 0;
-      return sum + (possible ? used / possible : 0.5);
-    }, 0) / selectedComps.length
-    : 0;
-  const matchScore = clampNumber(Math.round(avgMatchRatio * 25), 0, 25);
-  const assessedGap = Math.max(Number(neighborResult?.grievanceDeltaAssessed) || 0, 0);
-  const assessedGapRatio = subject?.assessedValue > 0 ? assessedGap / subject.assessedValue : 0;
-  let assessedGapScore = 0;
-  if(assessedGapRatio >= 0.12) assessedGapScore = 20;
-  else if(assessedGapRatio >= 0.08) assessedGapScore = 16;
-  else if(assessedGapRatio >= 0.04) assessedGapScore = 12;
-  else if(assessedGapRatio >= 0.02) assessedGapScore = 6;
   const subjectNeighborhood = subjectProfile?.neighborhood || parcelNeighborhoodName(subject);
   const sameNeighborhoodShare = selectedComps.length ? selectedComps.filter(parcel=>parcelNeighborhoodName(parcel) === subjectNeighborhood).length / selectedComps.length : 0;
-  const sameNeighborhoodScore = clampNumber(Math.round(sameNeighborhoodShare * 15), 0, 15);
-  const mixedPenalty = visibleCount > 0 ? clampNumber(Math.round((nonSupportingVisible.length / visibleCount) * 10), 0, 10) : 0;
-  let salesImpact = 0;
-  const scoreReasons = [];
-  const supportiveSalesCount = supportingSelected.filter(parcel=>{
-    const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
-    return sale && isRecentArmsLengthSale(sale, 3);
-  }).length;
-  if(supportiveSalesCount){
-    salesImpact += Math.min(6, supportiveSalesCount * 2);
-    scoreReasons.push(`${supportiveSalesCount} selected comparable home${supportiveSalesCount===1?" has":"s have"} recent arm's-length sales that add market context.`);
+  const topSupportAverage = meanComparableValue(selectedComps.map(parcel=>parcel?._grievanceSupportScore).filter(Number.isFinite).sort((a,b)=>b-a).slice(0, 3), 1) || 0;
+  const avgQuality = meanComparableValue(selectedComps.map(parcel=>parcel?._comparableQualityScore), 1) || 0;
+  const avgConfidence = meanComparableValue(selectedComps.map(parcel=>parcel?._dataConfidenceScore), 1) || 0;
+  const normalizedMetricModel = buildCaseNormalizedMetricSupport(selectedComps);
+  const benchmarkContribution = neighborhoodBenchmark?.interpretationLabel==="supportive" ? 10 : neighborhoodBenchmark?.interpretationLabel==="mild_support" ? 6 : 0;
+  const weakensShare = visibleCount > 0 ? weakensVisible.length / visibleCount : 0;
+  const score = clampNumber(Math.round(
+    clampNumber(topSupportAverage / 35, 0, 1) * 35 +
+    clampNumber(avgQuality / 100, 0, 1) * 20 +
+    clampNumber(avgConfidence / 100, 0, 1) * 15 +
+    normalizedMetricModel.score +
+    benchmarkContribution -
+    Math.min(5, weakensShare * 5)
+  ), 0, 100);
+  let caseStrengthLabel = score >= 75 ? "strong" : score >= 58 ? "moderate" : score >= 40 ? "weak" : "do_not_recommend";
+  const selectedEquityParity = selectedComps.length>0 && selectedComps.every(comp=>Math.abs(Number(comp?._selectionDiagnostics?.normalizedMetricsSummary?.equityRatioDeltaPoints) || 0) < 1);
+  const rawAdvantageOnly = selectedComps.length>0 && selectedComps.every(comp=>{
+    const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
+    return Number(metrics.assessedPctAdvantage) > 0 && Math.abs(Number(metrics.equityRatioDeltaPoints) || 0) < 1 && Math.abs(Number(metrics.assessedPerSqftAdvantagePct) || 0) < 0.02;
+  });
+  const downgradeReasons = [];
+  if(selectedEquityParity) downgradeReasons.push("All selected comps have equity ratios within 1 point of the subject.");
+  if(rawAdvantageOnly) downgradeReasons.push("Selected comps rely on raw assessed-value differences without normalized metric support.");
+  if(weakensShare > 0.25) downgradeReasons.push("More than 25% of the visible comps weaken the case.");
+  if(moderateOrBetterSelected.length < 3) downgradeReasons.push("Fewer than 3 selected comps are moderate support or better.");
+  if(downgradeReasons.length) caseStrengthLabel = downgradeCaseStrengthLabel(caseStrengthLabel);
+  if(caseStrengthLabel==="strong" && neighborhoodBenchmark?.interpretationLabel==="neutral" && selectedEquityParity){
+    caseStrengthLabel = "moderate";
+    downgradeReasons.push("A strong rating is not allowed when the neighborhood benchmark is neutral and equity ratios are at parity.");
   }
+  const recommendedAction = caseStrengthLabel==="strong"
+    ? "recommend_filing"
+    : caseStrengthLabel==="moderate"
+      ? "recommend_filing_with_caution"
+      : caseStrengthLabel==="weak"
+        ? "review_manually"
+        : "do_not_recommend";
+  const scoreReasons = [];
+  if(moderateOrBetterSelected.length){
+    scoreReasons.push(`${moderateOrBetterSelected.length} selected comps are moderate support or better.`);
+  }else if(supportingSelected.length){
+    scoreReasons.push(`${supportingSelected.length} selected comps still show some positive grievance support.`);
+  }else{
+    scoreReasons.push("No selected comps currently produce a positive grievance-support score.");
+  }
+  scoreReasons.push(`Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`);
+  scoreReasons.push(normalizedMetricModel.detail);
+  if(neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
+  if(weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length===1?" weakens":"s weaken"} the case.`);
   const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
   if(subjectSale && isRecentArmsLengthSale(subjectSale, 3) && Number(subjectSale?.sale_price) > 0 && Number(subject?.fullMarketValue) > 0){
     const ratio = Number(subjectSale.sale_price) / Number(subject.fullMarketValue);
-    if(ratio <= 0.9){
-      salesImpact += 4;
-      scoreReasons.push(`Your own recent arm's-length sale is below the app's current full market value.`);
-    }else if(ratio >= 1.05){
-      salesImpact -= 6;
-      scoreReasons.push(`Your own recent arm's-length sale is close to or above the app's current full market value.`);
-    }else{
-      salesImpact -= 3;
-      scoreReasons.push(`Your own recent arm's-length sale is broadly in line with the current full market value.`);
-    }
+    if(ratio <= 0.9) scoreReasons.push("Your own recent arm's-length sale is below the current full market value estimate.");
+    else if(ratio >= 1.05) scoreReasons.push("Your own recent arm's-length sale is close to or above the current full market value estimate.");
   }
-  const score = clampNumber(supportShareScore + matchScore + assessedGapScore + sameNeighborhoodScore - mixedPenalty + salesImpact, 0, 100);
-  const caseBand = score >= 70 ? "strong case" : score >= 40 ? "possible case" : "weak case";
-  if(supportingSelected.length){
-    scoreReasons.unshift(`${supportingSelected.length} lower-assessed comparable home${supportingSelected.length===1?"":"s"} are currently selected for the grievance package.`);
-  }else{
-    scoreReasons.unshift("No selected comparable homes currently show a lower assessment than your property.");
-  }
-  if(avgMatchRatio >= 0.85) scoreReasons.push("The selected comparable homes are close physical matches.");
-  else if(avgMatchRatio >= 0.65) scoreReasons.push("The selected comparable homes are reasonably similar, but the match quality is mixed.");
-  else if(selectedComps.length) scoreReasons.push("The selected comparable homes are only loose physical matches.");
-  if(assessedGap > 0) scoreReasons.push(`The selected assessed average is ${$f(assessedGap)} below your current assessment.`);
-  else if(selectedComps.length) scoreReasons.push("The selected assessed average is not materially below your current assessment.");
-  if(sameNeighborhoodShare >= 0.75 && selectedComps.length) scoreReasons.push("Most selected comparable homes are in the same neighborhood as your property.");
-  else if(selectedComps.length && sameNeighborhoodShare < 0.5) scoreReasons.push("Several selected comparable homes are outside your immediate neighborhood.");
-  if(nonSupportingVisible.length) scoreReasons.push(`${nonSupportingVisible.length} visible comparable home${nonSupportingVisible.length===1?" is":"s are"} equal-assessed or higher-assessed, which offsets the case.`);
+  const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
+  const caseStrengthDisplay = `${humanCaseStrengthLabel(caseStrengthLabel)} (${complaintReasonGuidance.displayLabel})`;
   return {
     score,
-    caseBand,
+    caseBand: caseStrengthLabel==="strong" ? "strong case" : caseStrengthLabel==="moderate" ? "possible case" : caseStrengthLabel==="weak" ? "weak case" : "do not recommend",
     supportingSelectedCount: supportingSelected.length,
+    moderateOrBetterCount: moderateOrBetterSelected.length,
     visibleSupportCount: supportingVisible.length,
     visibleCount,
-    avgMatchRatio,
-    assessedGap,
+    avgQuality,
+    avgConfidence,
+    assessedGap: Math.max(Number(neighborResult?.grievanceDeltaAssessed) || 0, 0),
     sameNeighborhoodShare,
-    mixedEvidenceCount: nonSupportingVisible.length,
-    caseStrength: score >= 70 ? "Strong" : score >= 40 ? "Moderate" : "Weak",
-    why: [...new Set(scoreReasons)].slice(0, 5),
+    mixedEvidenceCount: weakensVisible.length,
+    topSupportAverage,
+    normalizedMetricLabel: normalizedMetricModel.label,
+    selectedEquityParity,
+    downgradeReasons,
+    recommendedAction,
+    caseStrengthLabel,
+    caseStrength: caseStrengthDisplay,
+    caseStrengthBase: humanCaseStrengthLabel(caseStrengthLabel),
+    complaintReasonGuidance,
+    why: [...new Set(scoreReasons)].slice(0, 6),
   };
 };
 const buildAppealRecommendation = ({subject, neighborResult, readiness}) => {
   const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
-  const supportCount = selectedComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "supports").length;
-  const lowerAverage = Number.isFinite(subject?.assessedValue) && Number.isFinite(neighborResult?.grievanceAvgAssessed) && neighborResult.grievanceAvgAssessed < subject.assessedValue;
-  let recommendation = "Unlikely";
-  if(readiness.score >= 70 && supportCount >= 2 && lowerAverage) recommendation = "Yes";
-  else if((readiness.score >= 40 && supportCount >= 1) || (supportCount >= 1 && lowerAverage)) recommendation = "Maybe";
-  const potentialReduction = Number.isFinite(subject?.assessedValue) && Number.isFinite(neighborResult?.grievanceAvgAssessed)
-    ? Math.max(subject.assessedValue - neighborResult.grievanceAvgAssessed, 0)
-    : null;
-  let keyReason = "The current evidence does not clearly point to a lower supported assessment.";
-  if(recommendation === "Yes"){
-    keyReason = `You have ${supportCount} selected comparable home${supportCount===1?"":"s"} assessed below your property, and the selected average is ${potentialReduction!=null ? $f(potentialReduction) : "lower"} below your current assessment.`;
-  }else if(recommendation === "Maybe"){
-    keyReason = supportCount
-      ? `You have ${supportCount} selected comparable home${supportCount===1?"":"s"} assessed lower than your property, but the evidence is mixed.`
-      : "Some evidence points toward a grievance, but the current package is thin or mixed.";
+  const supportCount = selectedComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0).length;
+  const potentialReduction = Number.isFinite(subject?.assessedValue) && Number.isFinite(neighborResult?.suggestedRequestedAssessedValue)
+    ? Math.max(subject.assessedValue - neighborResult.suggestedRequestedAssessedValue, 0)
+    : Number.isFinite(subject?.assessedValue) && Number.isFinite(neighborResult?.grievanceAvgAssessed)
+      ? Math.max(subject.assessedValue - neighborResult.grievanceAvgAssessed, 0)
+      : null;
+  const recommendation = readiness.recommendedAction==="recommend_filing"
+    ? "Recommend filing"
+    : readiness.recommendedAction==="recommend_filing_with_caution"
+      ? "File with caution"
+      : readiness.recommendedAction==="review_manually"
+        ? "Review manually"
+        : "Do not recommend";
+  let keyReason = "The current evidence does not clearly point to a supported lower assessment.";
+  if(readiness.recommendedAction==="recommend_filing"){
+    keyReason = `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the package points toward a lower supported assessment.`;
+  }else if(readiness.recommendedAction==="recommend_filing_with_caution"){
+    keyReason = "Some selected comps support filing, but the evidence still has meaningful limitations.";
+  }else if(readiness.recommendedAction==="review_manually"){
+    keyReason = "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
   }
-  const why = [];
-  if(supportCount) why.push(`${supportCount} selected comparable home${supportCount===1?" is":"s are"} assessed below your property.`);
-  else why.push("No selected comparable home is assessed below your property.");
-  if(potentialReduction != null) why.push(`The selected assessed average is ${$f(potentialReduction)} below your current assessment.`);
-  if(readiness.mixedEvidenceCount) why.push(`${readiness.mixedEvidenceCount} visible comparable home${readiness.mixedEvidenceCount===1?" is":"s are"} equal-assessed or higher-assessed.`);
-  if(readiness.avgMatchRatio >= 0.85) why.push("The selected comparable homes are close physical matches.");
-  else if(selectedComps.length) why.push("The selected comparable homes are only moderate physical matches.");
   return {
     recommendation,
+    recommendedAction: readiness.recommendedAction,
     caseStrength: readiness.caseStrength,
+    caseStrengthBase: readiness.caseStrengthBase,
+    complaintReasonGuidance: readiness.complaintReasonGuidance,
     potentialReduction,
     supportingComparableHomes: supportCount,
     keyReason,
-    why: why.slice(0, 4),
+    why: readiness.why.slice(0, 4),
   };
 };
 const buildAppealEvidence = ({subject, subjectProfile, neighborResult, readiness, neighborhoodBenchmark, salesByParcelId=null}) => {
   const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
   const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
-  const supportingVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "supports");
-  const higherVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "does_not_support");
-  const neutralVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "neutral");
   const supportItems = [];
   const againstItems = [];
-  if(supportingVisible.length){
-    supportItems.push(`${supportingVisible.length} nearby comparable home${supportingVisible.length===1?" is":"s are"} assessed lower than your property.`);
+  if(readiness.moderateOrBetterCount){
+    supportItems.push(`${readiness.moderateOrBetterCount} selected comp${readiness.moderateOrBetterCount===1?" is":"s are"} moderate support or better.`);
   }
   if(Number(neighborResult?.grievanceDeltaAssessed) > 0){
-    supportItems.push(`The selected comparable average is ${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} below your current assessment.`);
+    supportItems.push(`The selected package average is ${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} below your current assessment.`);
   }
-  if(readiness.sameNeighborhoodShare >= 0.75 && selectedComps.length){
-    supportItems.push("Most selected comparable homes are in the same neighborhood as your property.");
+  if(readiness.normalizedMetricLabel==="supportive" || readiness.normalizedMetricLabel==="mixed_supportive"){
+    supportItems.push("Normalized metrics support the grievance more than raw assessed value alone.");
   }
-  if(Number(neighborResult?.grievanceDeltaFMV) > 0){
-    supportItems.push(`The selected comparable FMV average is ${$f(Math.abs(neighborResult.grievanceDeltaFMV))} below your property's FMV.`);
+  if(neighborhoodBenchmark?.interpretationLabel==="supportive" || neighborhoodBenchmark?.interpretationLabel==="mild_support"){
+    supportItems.push(neighborhoodBenchmark.interpretation);
   }
-  if(neighborhoodBenchmark?.deltaEquity >= 2){
-    supportItems.push(`Your equity ratio is ${neighborhoodBenchmark.deltaEquity}% above the ${neighborhoodBenchmark.neighborhood} neighborhood median.`);
-  }
-  const supportiveSales = supportingVisible.filter(parcel=>{
+  const supportiveSales = selectedComps.filter(parcel=>{
+    if(!(Number(parcel?._grievanceSupportScore) > 0)) return false;
     const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
     return sale && isRecentArmsLengthSale(sale, 3);
   });
   if(supportiveSales.length){
-    supportItems.push(`${supportiveSales.length} supporting comparable home${supportiveSales.length===1?" has":"s have"} recent arm's-length sales that add market context.`);
+    supportItems.push(`${supportiveSales.length} selected supporting comp${supportiveSales.length===1?" has":"s have"} recent arm's-length sales.`);
   }
-  if(higherVisible.length){
-    againstItems.push(`${higherVisible.length} similar home${higherVisible.length===1?" is":"s are"} assessed higher than your property.`);
+  const weakensVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "weakens_case");
+  if(weakensVisible.length){
+    againstItems.push(`${weakensVisible.length} visible comp${weakensVisible.length===1?" weakens":"s weaken"} the case and could be used as assessor counter-evidence.`);
   }
-  if(neutralVisible.length){
-    againstItems.push(`${neutralVisible.length} visible comparable home${neutralVisible.length===1?" has":"s have"} the same assessment as your property.`);
-  }
-  if(Math.abs(Number(neighborResult?.grievanceDeltaEquity) || 0) < 2 && selectedComps.length){
-    againstItems.push("The selected comparable homes have equity ratios close to yours, so the equity signal is modest.");
-  }
-  if(readiness.avgMatchRatio < 0.7 && selectedComps.length){
-    againstItems.push("The selected comparable homes are only moderate physical matches.");
-  }
-  if(Number(neighborResult?.grievanceDeltaAssessed) <= 0 && selectedComps.length){
-    againstItems.push("The selected comparable average is not clearly below your current assessment.");
-  }
+  if(readiness.selectedEquityParity) againstItems.push("Selected comps have equity ratios close to yours, which weakens the unequal-assessment argument.");
+  if(neighborhoodBenchmark?.interpretationLabel==="neutral") againstItems.push("The neighborhood benchmark is neutral.");
+  if(selectedComps.length < 3) againstItems.push("Fewer than 3 comps are selected in the package.");
+  if(neighborResult?.suggestedRequestedAssessedValueReviewManually) againstItems.push("The suggested requested value needs manual review because the selected comp values are spread out.");
   const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
   if(subjectSale && isRecentArmsLengthSale(subjectSale, 3) && Number(subjectSale?.sale_price) > 0 && Number(subject?.fullMarketValue) > 0){
     const ratio = Number(subjectSale.sale_price) / Number(subject.fullMarketValue);
     if(ratio >= 0.95){
-      againstItems.push(`A recent arm's-length sale of your own property may support the current market value estimate.`);
+      againstItems.push("A recent arm's-length sale of the subject may support the current full market value estimate.");
     }else if(ratio <= 0.9){
-      supportItems.push(`Your own recent arm's-length sale was below the current market value estimate.`);
+      supportItems.push("A recent arm's-length sale of the subject sits below the current full market value estimate.");
     }
   }
-  if(!supportItems.length) supportItems.push("The current package does not yet contain a strong lower-assessment signal.");
-  if(!againstItems.length) againstItems.push("No obvious counter-evidence appears in the current comparable set.");
+  if(!supportItems.length) supportItems.push("The current package does not yet contain a strong, well-supported filing signal.");
+  if(!againstItems.length) againstItems.push("No major counter-signals stand out in the current comparable set.");
   return {
     evidenceFor: supportItems.slice(0, 5),
     evidenceAgainst: againstItems.slice(0, 5),
@@ -2257,6 +2959,16 @@ const buildComparablePrintReportHtml = ({
     : selectedComps;
   const generatedAt = new Date().toLocaleString();
   const summaryLabelPrefix = neighborResult?.grievancePackageCustom ? "Selected grievance comp" : "Supporting comp";
+  const selectionMethodHtml = `
+    <section class="section">
+      <h2>How comparable homes are chosen</h2>
+      <ul>
+        <li>The visible comparable list starts with residential class compatibility, location, living area, year built, beds, baths, style, and full market value alignment. It keeps up to 12 physically credible matches.</li>
+        <li>The default grievance package is narrower. A home must clear the quality gate, the data-confidence gate, and a positive grievance-support score. Lower assessed value alone is not enough.</li>
+        <li>When enough evidence exists, the package usually keeps 3 to 5 homes. It favors strong or moderate support first, limits over-concentration from the same street, and avoids weaker duplicates.</li>
+        <li>The homeowner can still include or remove comps manually. The summary, narrative, and suggested requested value update from that live selection.</li>
+      </ul>
+    </section>`;
   const checklistRows = (grievanceHelper?.checklist || []).map(item => `
     <tr>
       <td>${escapePrintableHtml(item.label)}</td>
@@ -2292,22 +3004,28 @@ const buildComparablePrintReportHtml = ({
             <tr><td>Baths</td><td>${escapePrintableHtml(subjectProfile?.bathText || "-")}</td><td>${escapePrintableHtml(profile?.bathText || "-")}</td><td>${escapePrintableHtml(delta.baths != null ? formatSignedComparableCount(delta.baths) : "-")}</td></tr>
           </tbody>
         </table>
-        <div class="why-title">Why this home was selected</div>
+        <div class="why-title">Why this home was included</div>
         <ul>${reasons || "<li>No selection reasons were recorded for this comp.</li>"}</ul>
       </section>`;
   }).join("");
-  const summaryHtml = neighborResult?.grievanceSupportPool?.length ? `
+  const summaryHtml = selectedComps.length ? `
     <section>
       <h2>Grievance summary</h2>
       <div class="summary-grid">
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgFMV))}</div><div>${escapePrintableHtml(summaryLabelPrefix)} FMV average</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgAssessed))}</div><div>${escapePrintableHtml(summaryLabelPrefix)} assessed average</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgFMV))}</div><div>${escapePrintableHtml(summaryLabelPrefix)} FMV average</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.grievanceAvgEquity != null ? neighborResult.grievanceAvgEquity + "%" : "-")}</div><div>${escapePrintableHtml(summaryLabelPrefix)} equity average</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(selectedComps.length))}</div><div>Selected grievance comps</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(neighborResult.grievanceModerateOrBetterCount ?? 0))}</div><div>Moderate support or better</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Suggested requested assessed value</div></div>
       </div>
+      <p><strong>Selection method:</strong> The default grievance package keeps homes with positive grievance-support scores plus adequate quality and confidence. Lower assessed value alone does not qualify a home.</p>
+      <p><strong>Package quality:</strong> Average quality score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageQualityScore) ? Number(neighborResult.grievanceAverageQualityScore).toFixed(1) : "-")} | Average confidence score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageConfidenceScore) ? Number(neighborResult.grievanceAverageConfidenceScore).toFixed(1) : "-")}.</p>
+      <p><strong>Normalized metrics:</strong> ${escapePrintableHtml(neighborResult?.normalizedMetricSupport?.detail || "No normalized-metric summary is available.")}</p>
     </section>` : `
     <section>
       <h2>Grievance summary</h2>
-      <p>No lower-assessed comps are available in the current physical match set, so the grievance package has no supporting comp evidence yet.</p>
+      <p>No comps currently meet the grievance-package thresholds. A lower assessed value by itself is not enough; the app also requires a credible physical match, usable data, and positive normalized support.</p>
     </section>`;
   const appealSummaryHtml = appealSummary && appealReadiness ? `
     <section class="section">
@@ -2317,9 +3035,12 @@ const buildComparablePrintReportHtml = ({
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.caseStrength)}</div><div>Case strength</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")}</div><div>Potential assessed value reduction</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(appealSummary.supportingComparableHomes ?? 0))}</div><div>Supporting comparable homes found</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(`${appealReadiness.score} / 100`)}</div><div>Appeal readiness score</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(`${appealReadiness.score} / 100`)}</div><div>Case assessment score</div></div>
       </div>
       <p><strong>Key reason:</strong> ${escapePrintableHtml(appealSummary.keyReason || "")}</p>
+      <p><strong>Recommended RP-524 complaint reason:</strong> ${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.selectionLabel || "Review RP-524 Part Three manually before choosing a complaint reason.")}</p>
+      <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.why || "")}</p>
+      <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.unsupportedGroundsNote || "")}</p>
       ${(appealSummary.why || []).length ? `<div class="subhead">Why this recommendation</div><ul>${appealSummary.why.map(item=>`<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
       ${(appealReadiness.why || []).length ? `<div class="subhead">Why this score</div><ul>${appealReadiness.why.map(item=>`<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
     </section>` : "";
@@ -2348,9 +3069,14 @@ const buildComparablePrintReportHtml = ({
       <div class="summary-grid">
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.assessedMedian != null ? $f(neighborhoodBenchmark.assessedMedian) : "-")}</div><div>Neighborhood median assessed value</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.fmvMedian != null ? $f(neighborhoodBenchmark.fmvMedian) : "-")}</div><div>Neighborhood median FMV</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.assessedPerSqftMedian != null ? `$${Number(neighborhoodBenchmark.assessedPerSqftMedian).toFixed(2)}/sq ft` : "-")}</div><div>Neighborhood median assessed per sq ft</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.subjectAssessedPerSqft != null ? `$${Number(neighborhoodBenchmark.subjectAssessedPerSqft).toFixed(2)}/sq ft` : "-")}</div><div>Your assessed per sq ft</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.deltaAssessedPerSqft != null ? `${neighborhoodBenchmark.deltaAssessedPerSqft >= 0 ? "+" : ""}$${Number(neighborhoodBenchmark.deltaAssessedPerSqft).toFixed(2)}/sq ft` : "-")}</div><div>Gap from median assessed per sq ft</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.assessedPerSqftPercentile != null ? `${Number(neighborhoodBenchmark.assessedPerSqftPercentile).toFixed(1)}th` : "-")}</div><div>Your assessed per sq ft percentile</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.equityMedian != null ? neighborhoodBenchmark.equityMedian + "%" : "-")}</div><div>Neighborhood median equity ratio</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.subjectEquity != null ? neighborhoodBenchmark.subjectEquity + "%" : "-")}</div><div>Your equity ratio</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.deltaEquity != null ? `${neighborhoodBenchmark.deltaEquity >= 0 ? "+" : ""}${neighborhoodBenchmark.deltaEquity}%` : "-")}</div><div>Difference from neighborhood median</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborhoodBenchmark.equityPercentile != null ? `${Number(neighborhoodBenchmark.equityPercentile).toFixed(1)}th` : "-")}</div><div>Your equity ratio percentile</div></div>
       </div>
       <p>${escapePrintableHtml(neighborhoodBenchmark.interpretation || "")}</p>
     </section>` : "";
@@ -2383,15 +3109,17 @@ const buildComparablePrintReportHtml = ({
   th{background:#f8fafc}
   ul{margin:8px 0 0 18px}
   .comp-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:14px;page-break-inside:avoid}
-  .comp-card.supports{border-color:#86efac;background:#f0fdf4}
-  .comp-card.does_not_support{border-color:#fecaca;background:#fef2f2}
+  .comp-card.strong_support,.comp-card.moderate_support{border-color:#86efac;background:#f0fdf4}
+  .comp-card.weak_support{border-color:#fcd34d;background:#fffbeb}
+  .comp-card.weakens_case{border-color:#fecaca;background:#fef2f2}
   .comp-card.neutral{border-color:#cbd5e1;background:#f8fafc}
   .comp-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
   .comp-title{font-size:16px;font-weight:700}
   .comp-meta{font-size:12px;color:#475569;margin-top:3px}
   .status{font-size:11px;font-weight:700;border-radius:999px;padding:5px 10px;border:1px solid currentColor}
-  .status.supports{color:#166534}
-  .status.does_not_support{color:#b91c1c}
+  .status.strong_support,.status.moderate_support{color:#166534}
+  .status.weak_support{color:#b45309}
+  .status.weakens_case{color:#b91c1c}
   .status.neutral{color:#475569}
   .status-copy{font-size:12px;margin-top:10px}
   .why-title{font-weight:700;font-size:12px;margin-top:10px}
@@ -2415,12 +3143,16 @@ const buildComparablePrintReportHtml = ({
   ${appealEvidenceHtml}
   ${benchmarkHtml}
   ${summaryHtml}
+  ${selectionMethodHtml}
   <section class="section">
     <h2>Auto-generated grievance narrative</h2>
-    <p>${escapePrintableHtml(grievanceHelper?.narrative || "No grievance narrative is available because no lower-assessed supporting comp is currently in the match set.")}</p>
+    <p>${escapePrintableHtml(grievanceHelper?.narrative || "No grievance narrative is available because no comps currently meet the grievance-package thresholds.")}</p>
   </section>
   <section class="section">
     <h2>Data this app can fill for you</h2>
+    <p><strong>Recommended RP-524 complaint reason:</strong> ${escapePrintableHtml(grievanceHelper?.complaintReasonGuidance?.selectionLabel || "Review RP-524 Part Three manually before choosing a complaint reason.")}</p>
+    <p>${escapePrintableHtml(grievanceHelper?.complaintReasonGuidance?.why || "")}</p>
+    <p>${escapePrintableHtml(grievanceHelper?.complaintReasonGuidance?.unsupportedGroundsNote || "")}</p>
     <table>
       <thead><tr><th>Field</th><th>Value</th><th>How to use it</th></tr></thead>
       <tbody>${checklistRows}</tbody>
@@ -2441,22 +3173,225 @@ const buildComparablePrintReportHtml = ({
 </body>
 </html>`;
 };
+const comparableLocationContext = (subject, comp, subjectProfile, compProfile) => {
+  const distanceMiles = parcelDistanceMiles(subject, comp);
+  const sameNeighborhood = !!(subjectProfile?.neighborhood && compProfile?.neighborhood && subjectProfile.neighborhood===compProfile.neighborhood);
+  const sameStreet = !!(subjectProfile?.normalizedStreetName && compProfile?.normalizedStreetName && subjectProfile.normalizedStreetName===compProfile.normalizedStreetName);
+  const sameZip = !!(subjectProfile?.zipCode && compProfile?.zipCode && subjectProfile.zipCode===compProfile.zipCode);
+  return { distanceMiles, sameNeighborhood, sameStreet, sameZip };
+};
+const locationSimilarityScore = ({ sameNeighborhood=false, sameStreet=false, sameZip=false, distanceMiles=null }={}) => {
+  if(sameNeighborhood && Number.isFinite(distanceMiles) && distanceMiles<=0.5) return 22;
+  if(sameNeighborhood && Number.isFinite(distanceMiles) && distanceMiles<=1.0) return 20;
+  if(sameNeighborhood) return 18;
+  if(sameStreet) return 17;
+  if(sameZip && Number.isFinite(distanceMiles) && distanceMiles<=1.0) return 14;
+  if(sameZip && Number.isFinite(distanceMiles) && distanceMiles<=2.0) return 10;
+  if(sameZip && distanceMiles==null) return 10;
+  if(Number.isFinite(distanceMiles) && distanceMiles<=4.0) return 5;
+  return 0;
+};
+const buildGrievanceSupportScore = ({subject, subjectProfile, comp, compProfile, comparableQualityScore=0, dataConfidenceScore=0, ignoreScorePenalties=false}) => {
+  const subjectAssessed = Number(subject?.assessedValue);
+  const compAssessed = Number(comp?.assessedValue);
+  const assessedDelta = Number.isFinite(subjectAssessed) && Number.isFinite(compAssessed) ? subjectAssessed - compAssessed : null;
+  const assessedPctAdvantage = assessedDelta != null ? assessedDelta / Math.max(subjectAssessed, compAssessed) : null;
+  const subjectAssessedPerSqft = subjectProfile?.assessedPerSqft;
+  const compAssessedPerSqft = compProfile?.assessedPerSqft;
+  const assessedPerSqftDelta = subjectAssessedPerSqft != null && compAssessedPerSqft != null ? subjectAssessedPerSqft - compAssessedPerSqft : null;
+  const assessedPerSqftAdvantagePct = assessedPerSqftDelta != null ? assessedPerSqftDelta / Math.max(subjectAssessedPerSqft, compAssessedPerSqft) : null;
+  const equityRatioDeltaPoints = subjectProfile?.equity != null && compProfile?.equity != null ? roundComparableNumber(subjectProfile.equity - compProfile.equity, 1) : null;
+  let score = 0;
+  const supportingBecause = [];
+  if(assessedPctAdvantage != null){
+    if(assessedPctAdvantage >= 0.15){ score += 25; supportingBecause.push("Materially lower assessed value."); }
+    else if(assessedPctAdvantage >= 0.08){ score += 18; supportingBecause.push("Lower assessed value."); }
+    else if(assessedPctAdvantage >= 0.03){ score += 10; supportingBecause.push("Modestly lower assessed value."); }
+    else if(assessedPctAdvantage > 0){ score += 3; supportingBecause.push("Slightly lower assessed value."); }
+    else if(assessedPctAdvantage <= -0.08){ score -= 18; supportingBecause.push("Materially higher assessed value."); }
+    else if(assessedPctAdvantage <= -0.03){ score -= 10; supportingBecause.push("Higher assessed value."); }
+    else if(assessedPctAdvantage < 0){ score -= 4; supportingBecause.push("Slightly higher assessed value."); }
+  }
+  if(assessedPerSqftAdvantagePct != null){
+    if(assessedPerSqftAdvantagePct >= 0.12){ score += 20; supportingBecause.push("Much lower assessed value per sq ft."); }
+    else if(assessedPerSqftAdvantagePct >= 0.06){ score += 12; supportingBecause.push("Lower assessed value per sq ft."); }
+    else if(assessedPerSqftAdvantagePct >= 0.02){ score += 6; supportingBecause.push("Slightly lower assessed value per sq ft."); }
+    else if(assessedPerSqftAdvantagePct <= -0.02){ score -= 8; supportingBecause.push("Higher assessed value per sq ft."); }
+  }
+  if(equityRatioDeltaPoints != null){
+    if(equityRatioDeltaPoints >= 6){ score += 18; supportingBecause.push("Meaningfully lower equity ratio."); }
+    else if(equityRatioDeltaPoints >= 3){ score += 10; supportingBecause.push("Lower equity ratio."); }
+    else if(equityRatioDeltaPoints >= 1){ score += 4; supportingBecause.push("Slightly lower equity ratio."); }
+    else if(equityRatioDeltaPoints <= -1){ score -= 8; supportingBecause.push("Higher equity ratio."); }
+  }
+  if(assessedPctAdvantage != null && assessedPctAdvantage > 0 && Math.abs(Number(equityRatioDeltaPoints) || 0) < 1 && Math.abs(Number(assessedPerSqftAdvantagePct) || 0) < 0.02){
+    score -= 8;
+    supportingBecause.push("Raw assessed advantage is not confirmed by normalized metrics.");
+  }
+  if(assessedPctAdvantage != null && assessedPctAdvantage > 0 && assessedPctAdvantage < 0.03){
+    score -= 3;
+  }
+  if(!ignoreScorePenalties && dataConfidenceScore < 60) score -= 8;
+  if(!ignoreScorePenalties && comparableQualityScore < 55) score -= 10;
+  const finalScore = clampNumber(Math.round(score), -100, 100);
+  return {
+    score: finalScore,
+    label: grievanceSupportLabelForScore(finalScore),
+    supportingBecause,
+    normalizedMetricsSummary: {
+      assessedDelta,
+      assessedPctAdvantage,
+      assessedPerSqftDelta: assessedPerSqftDelta != null ? roundComparableNumber(assessedPerSqftDelta, 2) : null,
+      assessedPerSqftAdvantagePct,
+      equityRatioDeltaPoints,
+    },
+  };
+};
+const sortVisibleComparableCandidates = (subject, candidates=[]) => candidates
+  .slice()
+  .sort((a,b)=>
+    (Number(b?._comparableQualityScore || 0) - Number(a?._comparableQualityScore || 0)) ||
+    (Number(b?._dataConfidenceScore || 0) - Number(a?._dataConfidenceScore || 0)) ||
+    ((a?._distanceMiles ?? 999) - (b?._distanceMiles ?? 999)) ||
+    ((a?._fmvPctDiff ?? 999) - (b?._fmvPctDiff ?? 999))
+  );
+const sortGrievanceCandidatePool = (candidates=[]) => candidates
+  .slice()
+  .sort((a,b)=>
+    (Number(b?._grievanceSupportScore || 0) - Number(a?._grievanceSupportScore || 0)) ||
+    (Number(b?._comparableQualityScore || 0) - Number(a?._comparableQualityScore || 0)) ||
+    (Number(b?._dataConfidenceScore || 0) - Number(a?._dataConfidenceScore || 0)) ||
+    ((a?._distanceMiles ?? 999) - (b?._distanceMiles ?? 999))
+  );
+const comparableDominates = (a, b) => {
+  if(!a || !b) return false;
+  const qualityA = Number(a?._comparableQualityScore || 0);
+  const qualityB = Number(b?._comparableQualityScore || 0);
+  const confidenceA = Number(a?._dataConfidenceScore || 0);
+  const confidenceB = Number(b?._dataConfidenceScore || 0);
+  const supportA = Number(a?._grievanceSupportScore || 0);
+  const supportB = Number(b?._grievanceSupportScore || 0);
+  return qualityA >= qualityB && confidenceA >= confidenceB && supportA >= supportB && (qualityA > qualityB || confidenceA > confidenceB || supportA > supportB);
+};
+const buildPackageDecisionMessage = (reasonCode, candidateKind="neutral") => {
+  if(reasonCode==="included_strong_corroboration") return "Included because another nearby strong comp makes a similar point, and corroborating strong evidence can strengthen an unequal-assessment claim.";
+  if(reasonCode==="included_default") return candidateKind==="strong_support" ? "Included by default because it is one of the strongest pieces of grievance evidence in the current package." : "Included by default because it cleared the package support, quality, and confidence checks.";
+  if(reasonCode==="included_replacement") return "Included by default because it out-ranked another comp on the same street.";
+  if(reasonCode==="same_street_cap") return candidateKind==="strong_support" ? "This comp strongly supports the grievance, but the default package already includes two comps from the same street." : "Not included by default because the package already includes two comps from the same street.";
+  if(reasonCode==="package_limit") return candidateKind==="strong_support" ? "This comp strongly supports the grievance, but the default package already reached its 3 to 5 comp target with other strong evidence." : "Not included by default because the current package already reached its target size.";
+  if(reasonCode==="dominated_similar") return "Not included by default because another nearby comp was as strong or stronger on support, quality, and confidence.";
+  if(reasonCode==="replaced_by_stronger_same_street") return "Not included by default because a stronger comp on the same street replaced it in the package.";
+  if(reasonCode==="assessed_outlier") return "Not included by default because its assessed value looks like an outlier compared with the rest of the selected package.";
+  if(reasonCode==="quality_gate") return "Not included by default because it did not clear the physical-match quality gate.";
+  if(reasonCode==="confidence_gate") return "Not included by default because its comparison data were not strong enough.";
+  if(reasonCode==="support_gate") return "Not included by default because it did not support the grievance after normalized value checks.";
+  return "Not included by default under the current package rules.";
+};
+const buildPackageDecisionRecord = (status, reasonCode, candidateKind="neutral") => ({
+  status,
+  reasonCode,
+  message: buildPackageDecisionMessage(reasonCode, candidateKind),
+});
+const selectGrievancePackage = (candidatePool=[]) => {
+  const strongOrModerate = candidatePool.filter(comp=>["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind));
+  const weakSupport = candidatePool.filter(comp=>comp?._grievanceRelevance?.kind === "weak_support");
+  const targetCount = strongOrModerate.length >= 3 ? Math.min(5, strongOrModerate.length) : Math.min(5, strongOrModerate.length + Math.min(2, weakSupport.length));
+  const pool = strongOrModerate.length >= 3 ? strongOrModerate : strongOrModerate.concat(weakSupport.slice(0, 2));
+  const selected = [];
+  const decisionById = new Map();
+  for(const candidate of pool){
+    const candidateId = normalizeParcelId(candidate?.parcelIdNorm || candidate?.parcelId || candidate?.printKey || candidate?.pinSbl);
+    const streetKey = streetNameKeyForComp(candidate?.address);
+    const candidateKind = candidate?._grievanceRelevance?.kind || "neutral";
+    const candidateNeighborhood = parcelNeighborhoodName(candidate);
+    if(selected.length >= targetCount){
+      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "package_limit", candidateKind));
+      continue;
+    }
+    if(streetKey && selected.filter(comp=>streetNameKeyForComp(comp?.address)===streetKey).length >= 2) continue;
+    if(streetKey && selected.filter(comp=>streetNameKeyForComp(comp?.address)===streetKey).length >= 2){
+      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "same_street_cap", candidateKind));
+      continue;
+    }
+    const dominatedBySelected = candidateKind==="strong_support" ? false : selected.some(other=>comparableDominates(other, candidate) && (streetNameKeyForComp(other?.address)===streetKey || parcelNeighborhoodName(other)===candidateNeighborhood));
+    if(dominatedBySelected){
+      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "dominated_similar", candidateKind));
+      continue;
+    }
+    const selectedAssessed = selected.map(comp=>Number(comp?.assessedValue)).filter(Number.isFinite);
+    if(selectedAssessed.length >= 2 && Number.isFinite(Number(candidate?.assessedValue))){
+      const medianAssessed = medianValue(selectedAssessed);
+      if(Number.isFinite(medianAssessed) && Number(candidate.assessedValue) < medianAssessed * 0.8){
+        if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "assessed_outlier", candidateKind));
+        continue;
+      }
+    }
+    const replaceIndex = candidateKind==="strong_support" ? -1 : selected.findIndex(other=>comparableDominates(candidate, other) && streetNameKeyForComp(other?.address)===streetKey);
+    const corroboratingStrong = candidateKind==="strong_support" && selected.some(other=>(other?._grievanceRelevance?.kind==="strong_support") && (streetNameKeyForComp(other?.address)===streetKey || parcelNeighborhoodName(other)===candidateNeighborhood));
+    if(replaceIndex >= 0){
+      const replaced = selected[replaceIndex];
+      const replacedId = normalizeParcelId(replaced?.parcelIdNorm || replaced?.parcelId || replaced?.printKey || replaced?.pinSbl);
+      if(replacedId) decisionById.set(replacedId, buildPackageDecisionRecord("excluded", "replaced_by_stronger_same_street", replaced?._grievanceRelevance?.kind || "neutral"));
+      selected.splice(replaceIndex, 1, candidate);
+      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", "included_replacement", candidateKind));
+    }else{
+      selected.push(candidate);
+      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", corroboratingStrong ? "included_strong_corroboration" : "included_default", candidateKind));
+    }
+  }
+  return { selected, decisionById, targetCount };
+};
+const annotateComparablePackageDecisions = (visibleComps=[], grievanceCandidatePool=[], decisionById=new Map()) => {
+  const selectedIdSet = new Set();
+  for(const [id, decision] of decisionById.entries()){
+    if(decision?.status==="included") selectedIdSet.add(id);
+  }
+  const gatePoolIdSet = new Set((grievanceCandidatePool || []).map(comp=>normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)).filter(Boolean));
+  return (visibleComps || []).map(comp => {
+    if(!comp) return comp;
+    const id = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
+    const decision = (id && decisionById.get(id)) || (!gatePoolIdSet.has(id)
+      ? buildPackageDecisionRecord(
+          selectedIdSet.has(id) ? "included" : "excluded",
+          Number(comp?._grievanceSupportScore) <= 0 ? "support_gate" : Number(comp?._dataConfidenceScore) < 60 ? "confidence_gate" : Number(comp?._comparableQualityScore) < 50 ? "quality_gate" : "package_limit",
+          comp?._grievanceRelevance?.kind || "neutral"
+        )
+      : buildPackageDecisionRecord(selectedIdSet.has(id) ? "included" : "excluded", selectedIdSet.has(id) ? "included_default" : "package_limit", comp?._grievanceRelevance?.kind || "neutral"));
+    comp._packageDecision = decision;
+    comp._selectionDiagnostics = {
+      ...(comp._selectionDiagnostics || {}),
+      packageDecision: decision,
+    };
+    return comp;
+  });
+};
 const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
-  const candidate = buildComparableCandidate(subject, comp);
+  const candidate = buildComparableCandidate(subject, comp, { subjectProfile });
   if(candidate) return candidate;
   const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
   const compProfile = buildComparableProfile(comp);
-  const subjectNeighborhood = baseSubjectProfile.neighborhood;
-  const compNeighborhood = compProfile.neighborhood;
-  const subjectStreet = streetNameKeyForComp(subject.address);
-  const compStreet = streetNameKeyForComp(comp.address);
-  return {
+  const location = comparableLocationContext(subject, comp, baseSubjectProfile, compProfile);
+  const supportModel = buildGrievanceSupportScore({
+    subject,
+    subjectProfile: baseSubjectProfile,
+    comp,
+    compProfile,
+    comparableQualityScore: 60,
+    dataConfidenceScore: 60,
+    ignoreScorePenalties: true,
+  });
+  const snapshotCandidate = {
     ...comp,
     _compScore: 0,
+    _comparableQualityScore: 0,
+    _dataConfidenceScore: 0,
+    _dataConfidenceLabel: "low",
+    _grievanceSupportScore: supportModel.score,
+    _grievanceSupportLabel: supportModel.label,
     _compReasons: [
       "Included from shared comparable snapshot",
-      subjectNeighborhood && compNeighborhood && subjectNeighborhood===compNeighborhood ? "Same neighborhood: " + subjectNeighborhood : null,
-      subjectStreet && compStreet && subjectStreet===compStreet ? "Same street: " + subjectStreet : null,
+      location.sameNeighborhood ? "Same neighborhood: " + baseSubjectProfile.neighborhood : null,
+      location.sameStreet ? "Same street: " + baseSubjectProfile.normalizedStreetName : null,
       comp.propClass===subject.propClass ? "Same residential class: " + propClassLabel(subject) : null
     ].filter(Boolean),
     _compSignals: ["Snapshot"],
@@ -2466,107 +3401,215 @@ const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
     _compPhysicalFieldCountPossible: baseSubjectProfile.availablePhysicalFields.length,
     _compProfile: compProfile,
     _compDelta: buildComparableDelta(subject, comp, baseSubjectProfile, compProfile),
+    _distanceMiles: location.distanceMiles,
+    _fmvPctDiff: comparePctDelta(subject?.fullMarketValue, comp?.fullMarketValue),
+    _selectionDiagnostics: {
+      selectedBecause: ["Included from a shared snapshot and preserved exactly as shared."],
+      supportingBecause: supportModel.supportingBecause,
+      confidenceNotes: ["Snapshot mode bypasses normal quality and confidence scoring."],
+      disqualifyingConcerns: ["Snapshot comps may fall outside the normal comparable-selection rules."],
+      normalizedMetricsSummary: supportModel.normalizedMetricsSummary,
+    },
     _compSnapshotIncluded: true,
   };
+  snapshotCandidate._grievanceRelevance = classifyGrievanceComparable(subject, snapshotCandidate);
+  return snapshotCandidate;
 };
 
-const buildComparableCandidate = (subject, comp) => {
-  if(!subject || !comp || comp.parcelId===subject.parcelId) return null;
-  if(!isResidentialPropClass(subject.propClass) || comp.propClass!==subject.propClass) return null;
-  const subjectProfile = buildComparableProfile(subject);
-  const compProfile = buildComparableProfile(comp);
-  let score = 18;
-  const reasons = [];
+const buildComparableCandidate = (subject, comp, options={}) => {
+  if(!subject || !comp || normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)===normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl)) return null;
+  if(!isResidentialPropClass(subject?.propClass)) return null;
+  const subjectProfile = options?.subjectProfile || buildComparableProfile(subject);
+  const compProfile = options?.compProfile || buildComparableProfile(comp);
+  const classCompatibility = classCompatibilityTier(subject, comp, { allowBroadClass: !!options?.allowBroadClass });
+  if(classCompatibility.tier==="tier_3_incompatible") return null;
+  if(!Number.isFinite(Number(comp?.assessedValue)) && !Number.isFinite(Number(comp?.fullMarketValue))) return null;
+  const location = comparableLocationContext(subject, comp, subjectProfile, compProfile);
+  if(Number.isFinite(location.distanceMiles) && location.distanceMiles > (options?.maxDistanceMiles ?? 4)) return null;
+  const reasons = [classCompatibility.label];
   const allSignals = [];
   const physicalFieldsUsed = [];
-  let evidenceCount = 0;
-  const subjectNeighborhood = subjectProfile.neighborhood;
-  const compNeighborhood = compProfile.neighborhood;
-  if(subjectNeighborhood && compNeighborhood && subjectNeighborhood===compNeighborhood){
-    score += 28;
-    reasons.push("Same neighborhood: " + subjectNeighborhood);
-    allSignals.push("Neighborhood");
-  }else if(subject.zip && comp.zip===subject.zip){
-    score += 10;
-    reasons.push("Same ZIP: " + subject.zip);
-    allSignals.push("ZIP");
-  }
-  const subjectStreet = streetNameKeyForComp(subject.address);
-  const compStreet = streetNameKeyForComp(comp.address);
-  if(subjectStreet && compStreet && subjectStreet===compStreet){
-    score += 8;
-    reasons.push("Same street: " + subjectStreet);
-    allSignals.push("Street");
-  }
+  const confidenceNotes = [];
+  const disqualifyingConcerns = [];
   const subjectSqft = subjectProfile.livingArea;
   const compSqft = compProfile.livingArea;
-  if(subjectSqft && compSqft){
-    const pct = comparePctDelta(subjectSqft, compSqft);
-    if(pct!=null && pct>0.6) return null;
-    score += Math.max(0, 28 - ((pct || 0) * 40));
-    reasons.push("Living area within " + Math.round((pct || 0) * 100) + "% (" + compSqft.toLocaleString() + " sq ft)");
-    physicalFieldsUsed.push("Living area");
-    evidenceCount += 1;
-  }
+  const livingAreaPct = comparePctDelta(subjectSqft, compSqft);
+  if(livingAreaPct!=null && livingAreaPct>0.6) return null;
   const subjectYear = subjectProfile.yearBuilt;
   const compYear = compProfile.yearBuilt;
-  if(subjectYear && compYear){
-    const diff = Math.abs(compYear-subjectYear);
-    if(diff>80) return null;
-    score += diff<=10 ? 16 : diff<=25 ? 10 : diff<=40 ? 5 : 1;
-    reasons.push(diff===0 ? "Year built matches (" + compYear + ")" : "Year built within " + diff + " years (" + compYear + ")");
-    physicalFieldsUsed.push("Year built");
-    evidenceCount += 1;
-  }
+  const yearDiff = subjectYear!=null && compYear!=null ? Math.abs(compYear - subjectYear) : null;
+  if(yearDiff!=null && yearDiff>100) return null;
   const subjectBeds = subjectProfile.bedrooms;
   const compBeds = compProfile.bedrooms;
-  if(subjectBeds!=null && compBeds!=null){
-    const diff = Math.abs(compBeds-subjectBeds);
-    if(diff>2) return null;
-    score += diff===0 ? 12 : diff===1 ? 6 : 2;
-    reasons.push(diff===0 ? compBeds + " bedrooms, same count" : compBeds + " bedrooms, within " + diff);
-    physicalFieldsUsed.push("Bedrooms");
-    evidenceCount += 1;
-  }
+  const bedDiff = subjectBeds!=null && compBeds!=null ? Math.abs(compBeds - subjectBeds) : null;
+  if(bedDiff!=null && bedDiff>3) return null;
   const subjectBaths = subjectProfile.bathCount;
   const compBaths = compProfile.bathCount;
-  if(subjectBaths!=null && compBaths!=null){
-    const diff = Math.abs(compBaths-subjectBaths);
-    if(diff>2) return null;
-    score += diff===0 ? 10 : diff<=0.5 ? 8 : diff<=1 ? 4 : 1;
-    reasons.push(diff===0 ? compBaths + " baths, same count" : compBaths + " baths, within " + diff);
+  const bathDiff = subjectBaths!=null && compBaths!=null ? Math.abs(compBaths - subjectBaths) : null;
+  if(bathDiff!=null && bathDiff>2.5) return null;
+
+  const locationScore = locationSimilarityScore(location);
+  if(location.sameNeighborhood) allSignals.push("Neighborhood");
+  else if(location.sameZip) allSignals.push("ZIP");
+  if(location.sameStreet) allSignals.push("Street");
+  if(location.sameNeighborhood && Number.isFinite(location.distanceMiles)) reasons.push(`Same neighborhood within ${location.distanceMiles.toFixed(2)} mi`);
+  else if(location.sameStreet) reasons.push("Same street");
+  else if(location.sameZip) reasons.push(`Same ZIP${Number.isFinite(location.distanceMiles) ? ` within ${location.distanceMiles.toFixed(2)} mi` : ""}`);
+  else if(Number.isFinite(location.distanceMiles)) reasons.push(`Within ${location.distanceMiles.toFixed(2)} mi`);
+
+  let livingAreaScore = 0;
+  if(livingAreaPct != null){
+    physicalFieldsUsed.push("Living area");
+    if(livingAreaPct <= 0.05) livingAreaScore = 18;
+    else if(livingAreaPct <= 0.10) livingAreaScore = 16;
+    else if(livingAreaPct <= 0.15) livingAreaScore = 13;
+    else if(livingAreaPct <= 0.25) livingAreaScore = 9;
+    else if(livingAreaPct <= 0.40) livingAreaScore = 4;
+    reasons.push(`Living area within ${Math.round(livingAreaPct * 100)}%`);
+  }else{
+    confidenceNotes.push("Living area is missing on one side.");
+  }
+
+  let yearScore = 0;
+  if(yearDiff != null){
+    physicalFieldsUsed.push("Year built");
+    if(yearDiff === 0) yearScore = 10;
+    else if(yearDiff <= 5) yearScore = 9;
+    else if(yearDiff <= 10) yearScore = 7;
+    else if(yearDiff <= 20) yearScore = 5;
+    else if(yearDiff <= 40) yearScore = 2;
+    reasons.push(yearDiff===0 ? `Same year built (${compYear})` : `Year built within ${yearDiff} years`);
+  }else{
+    confidenceNotes.push("Year built is missing on one side.");
+  }
+
+  let bedroomScore = 0;
+  if(bedDiff != null){
+    physicalFieldsUsed.push("Bedrooms");
+    bedroomScore = bedDiff===0 ? 8 : bedDiff===1 ? 6 : bedDiff===2 ? 3 : 1;
+    reasons.push(bedDiff===0 ? "Same bedroom count" : `Bedroom count within ${bedDiff}`);
+  }else{
+    confidenceNotes.push("Bedroom count is missing on one side.");
+  }
+
+  let bathroomScore = 0;
+  if(bathDiff != null){
     physicalFieldsUsed.push("Baths");
-    evidenceCount += 1;
+    if(bathDiff === 0) bathroomScore = 8;
+    else if(bathDiff <= 0.5) bathroomScore = 7;
+    else if(bathDiff <= 1.0) bathroomScore = 5;
+    else if(bathDiff <= 1.5) bathroomScore = 2;
+    else bathroomScore = 1;
+    reasons.push(bathDiff===0 ? "Same bath count" : `Bath count within ${bathDiff}`);
+  }else{
+    confidenceNotes.push("Bath count is missing on one side.");
   }
-  const subjectStyle = (subjectProfile.style || "").toLowerCase();
-  const compStyle = (compProfile.style || "").toLowerCase();
-  if(subjectStyle && compStyle && subjectStyle===compStyle){
-    score += 8;
-    reasons.push("Same building style: " + subjectProfile.style);
-    physicalFieldsUsed.push("Style");
-    evidenceCount += 1;
+
+  let styleScore = 0;
+  if(subjectProfile?.style || compProfile?.style) physicalFieldsUsed.push("Style");
+  if(subjectProfile?.styleFamily==="unknown" || compProfile?.styleFamily==="unknown"){
+    styleScore = 2;
+    reasons.push("Style match is uncertain");
+  }else if(subjectProfile?.styleFamily && compProfile?.styleFamily && subjectProfile.styleFamily===compProfile.styleFamily){
+    styleScore = 6;
+    reasons.push(`Same style family (${subjectProfile.styleFamily.replace(/_/g, " ")})`);
   }
-  const valuePct = comparePctDelta(subject.fullMarketValue, comp.fullMarketValue);
-  if(valuePct!=null && valuePct<=0.35){
-    score += 6;
-    reasons.push("Market value within " + Math.round(valuePct * 100) + "%");
-    allSignals.push("Market value");
+
+  const valuePct = comparePctDelta(subject?.fullMarketValue, comp?.fullMarketValue);
+  let fmvScore = 0;
+  if(valuePct != null){
+    if(valuePct <= 0.05) fmvScore = 10;
+    else if(valuePct <= 0.10) fmvScore = 8;
+    else if(valuePct <= 0.20) fmvScore = 5;
+    else if(valuePct <= 0.35) fmvScore = 2;
+    if(fmvScore > 0){
+      reasons.push(`Market value within ${Math.round(valuePct * 100)}%`);
+      allSignals.push("Market value");
+    }
+  }else{
+    confidenceNotes.push("Full market value is missing on one side.");
   }
-  if(hasInventoryProfile(subject) && evidenceCount===0) score -= 12;
+
+  const usablePhysicalFieldCount = physicalFieldsUsed.length;
+  let qualityPenalty = 0;
+  if(usablePhysicalFieldCount < 2) qualityPenalty -= 20;
+  else if(usablePhysicalFieldCount < 3) qualityPenalty -= 12;
+  if(subjectSqft==null || compSqft==null) qualityPenalty -= 6;
+  if(subjectYear==null || compYear==null) qualityPenalty -= 3;
+  if((subjectBeds==null || compBeds==null) && (subjectBaths==null || compBaths==null)) qualityPenalty -= 5;
+  const missingHardCheckPairs = [livingAreaPct==null, yearDiff==null, bedDiff==null, bathDiff==null].filter(Boolean).length;
+  if(missingHardCheckPairs >= 2 && usablePhysicalFieldCount < 2) qualityPenalty -= 8;
+
+  const comparableQualityScore = clampNumber(Math.round(
+    classCompatibility.score +
+    locationScore +
+    livingAreaScore +
+    yearScore +
+    bedroomScore +
+    bathroomScore +
+    styleScore +
+    fmvScore +
+    qualityPenalty
+  ), 0, 100);
+
+  let dataConfidenceScore = 100;
+  if(subjectSqft==null || compSqft==null){ dataConfidenceScore -= 18; }
+  if(!Number.isFinite(Number(subject?.assessedValue)) || !Number.isFinite(Number(comp?.assessedValue))){ dataConfidenceScore -= 12; confidenceNotes.push("Assessed value is missing on one side."); }
+  if(!Number.isFinite(Number(subject?.fullMarketValue)) || !Number.isFinite(Number(comp?.fullMarketValue))){ dataConfidenceScore -= 8; }
+  if(subjectYear==null || compYear==null){ dataConfidenceScore -= 8; }
+  if(subjectBeds==null || compBeds==null){ dataConfidenceScore -= 6; }
+  if(subjectBaths==null || compBaths==null){ dataConfidenceScore -= 6; }
+  if(subjectProfile?.styleFamily==="unknown" || compProfile?.styleFamily==="unknown"){ dataConfidenceScore -= 5; confidenceNotes.push("Style-family normalization is incomplete."); }
+  if(location.distanceMiles==null){ dataConfidenceScore -= 5; confidenceNotes.push("Distance could not be calculated from parcel coordinates."); }
+  if(physicalFieldsUsed.length < 3){ dataConfidenceScore -= 10; }
+  dataConfidenceScore = clampNumber(Math.round(dataConfidenceScore), 0, 100);
+  const dataConfidenceLabel = dataConfidenceScore >= 80 ? "high" : dataConfidenceScore >= 60 ? "medium" : "low";
+
+  if(classCompatibility.tier!=="tier_0_exact") disqualifyingConcerns.push(classCompatibility.label + ".");
+  if(Number.isFinite(location.distanceMiles) && location.distanceMiles > 1) disqualifyingConcerns.push(`Comp is ${location.distanceMiles.toFixed(2)} miles away.`);
+  if(livingAreaPct != null && livingAreaPct > 0.25) disqualifyingConcerns.push("Living area gap is wider than ideal.");
+  if(yearDiff != null && yearDiff > 20) disqualifyingConcerns.push("Year-built gap is wider than ideal.");
+  if(dataConfidenceLabel==="low") disqualifyingConcerns.push("Data confidence is low.");
+
+  const supportModel = buildGrievanceSupportScore({
+    subject,
+    subjectProfile,
+    comp,
+    compProfile,
+    comparableQualityScore,
+    dataConfidenceScore,
+  });
   const delta = buildComparableDelta(subject, comp, subjectProfile, compProfile);
   const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter(label => !physicalFieldsUsed.includes(label));
-  return {
+  const candidate = {
     ...comp,
-    _compScore: score,
+    _compScore: comparableQualityScore,
+    _comparableQualityScore: comparableQualityScore,
+    _dataConfidenceScore: dataConfidenceScore,
+    _dataConfidenceLabel: dataConfidenceLabel,
+    _grievanceSupportScore: supportModel.score,
+    _grievanceSupportLabel: supportModel.label,
+    _classCompatibility: classCompatibility,
+    _distanceMiles: location.distanceMiles,
+    _fmvPctDiff: valuePct,
     _compReasons: reasons,
     _compSignals: allSignals.concat(physicalFieldsUsed),
-    _compEvidenceCount: evidenceCount,
+    _compEvidenceCount: physicalFieldsUsed.length,
     _compPhysicalFieldsUsed: physicalFieldsUsed,
     _compUnusedPhysicalFields: unusedPhysicalFields,
     _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
     _compProfile: compProfile,
-    _compDelta: delta
+    _compDelta: delta,
+    _selectionDiagnostics: {
+      selectedBecause: reasons,
+      supportingBecause: supportModel.supportingBecause,
+      confidenceNotes,
+      disqualifyingConcerns,
+      normalizedMetricsSummary: supportModel.normalizedMetricsSummary,
+    },
   };
+  candidate._grievanceRelevance = classifyGrievanceComparable(subject, candidate);
+  return candidate;
 };
 const buildComparableResult = (subject, parcels, options={}) => {
   if(!subject) return null;
@@ -2610,98 +3653,120 @@ const buildComparableResult = (subject, parcels, options={}) => {
     snapshot.resolvedCompIds = neighbors.map(comp=>normalizeParcelId(comp.parcelIdNorm || comp.parcelId || comp.printKey || comp.pinSbl)).filter(Boolean);
     snapshot.missingCompIds = exactCompIds.filter(compId=>!snapshot.resolvedCompIds.includes(compId));
   }else if(residential){
-    neighbors = parcels
-      .map(comp => buildComparableCandidate(subject, comp))
+    const collectVisible = (allowBroadClass=false) => sortVisibleComparableCandidates(subject, (parcels || [])
+      .map(comp => buildComparableCandidate(subject, comp, { subjectProfile, allowBroadClass, maxDistanceMiles: 4 }))
       .filter(Boolean)
-      .sort((a,b)=>(b._compScore-a._compScore) || (Math.abs((a.fullMarketValue||0)-(subject.fullMarketValue||0)) - Math.abs((b.fullMarketValue||0)-(subject.fullMarketValue||0))))
-      .slice(0,8);
+      .filter(comp => Number(comp?._comparableQualityScore) >= 40)
+    ).slice(0, 12);
+    neighbors = collectVisible(false);
+    let defaultPool = sortGrievanceCandidatePool(neighbors.filter(comp =>
+      Number(comp?._comparableQualityScore) >= 50 &&
+      Number(comp?._dataConfidenceScore) >= 60 &&
+      Number(comp?._grievanceSupportScore) > 0
+    ));
+    if(defaultPool.length < 3){
+      const fallbackNeighbors = collectVisible(true);
+      const fallbackPool = sortGrievanceCandidatePool(fallbackNeighbors.filter(comp =>
+        Number(comp?._comparableQualityScore) >= 50 &&
+        Number(comp?._dataConfidenceScore) >= 60 &&
+        Number(comp?._grievanceSupportScore) > 0
+      ));
+      if(fallbackNeighbors.length > neighbors.length || fallbackPool.length > defaultPool.length){
+        neighbors = fallbackNeighbors;
+        comparableMode = "fallback";
+        defaultPool = fallbackPool;
+      }
+    }
+    const grievancePackageSelection = selectGrievancePackage(defaultPool);
+    const grievanceCandidates = grievancePackageSelection.selected;
+    neighbors = annotateComparablePackageDecisions(neighbors, defaultPool, grievancePackageSelection.decisionById);
+    const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates);
+    const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/neighbors.length) : null;
+    const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/neighbors.length) : null;
+    const avgEquity = neighbors.length ? meanComparableValue(neighbors.map(comp=>comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
+    const subjectEquity = subjectProfile.equity;
+    const deltaFMV = avgFMV!=null ? subject.fullMarketValue-avgFMV : null;
+    const deltaFMVPct = (avgFMV && deltaFMV!=null) ? (deltaFMV/avgFMV)*100 : null;
+    const deltaAssessed = avgAssessed!=null ? subject.assessedValue-avgAssessed : null;
+    const deltaEquity = (avgEquity!=null && subjectEquity!=null) ? roundComparableNumber(subjectEquity-avgEquity, 1) : null;
+    const fairnessSignal = deltaEquity==null ? null : (deltaEquity>=3 ? "Assessed above physically similar homes" : deltaEquity<=-3 ? "Assessed below physically similar homes" : "Assessment is broadly in line with similar homes");
+    const selectionDiagnostics = {
+      excludedNearMisses: neighbors
+        .filter(comp=>Number(comp?._comparableQualityScore) >= 45 && !grievanceCandidates.some(sel=>normalizeParcelId(sel?.parcelIdNorm || sel?.parcelId || sel?.printKey || sel?.pinSbl)===normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)))
+        .map(comp=>({
+          parcelId: comp?.parcelId,
+          address: comp?.address,
+          excludedReason: comp?._packageDecision?.message || (Number(comp?._grievanceSupportScore) <= 0 ? "Did not clear the grievance-support gate." : Number(comp?._dataConfidenceScore) < 60 ? "Did not clear the confidence gate." : "Was out-ranked by stronger or more diverse package comps."),
+          wouldHaveBeenSelectedIf: Number(comp?._grievanceSupportScore) <= 0 ? "its normalized support metrics were stronger" : Number(comp?._dataConfidenceScore) < 60 ? "its data were more complete" : comp?._packageDecision?.reasonCode==="same_street_cap" ? "fewer same-street comps had already been selected" : comp?._packageDecision?.reasonCode==="package_limit" ? "the default package had more room" : "the selected package had fewer stronger comps on the same street or with similar scores",
+        })),
+    };
+    return {
+      p: subject,
+      neighbors,
+      avgFMV,
+      avgAssessed,
+      avgEquity,
+      deltaFMV,
+      deltaFMVPct,
+      deltaAssessed,
+      deltaEquity,
+      fairnessSignal,
+      comparableMode,
+      usedInventory: residential && hasInventoryProfile(subject),
+      scopeNeighborhood: subjectProfile.neighborhood || null,
+      streetKey: streetNameKeyForComp(subject.address),
+      subjectProfile,
+      snapshot,
+      selectionDiagnostics,
+      ...summary,
+      grievanceSupportPool: defaultPool,
+      grievanceCandidatePool: defaultPool,
+      grievanceCandidates,
+      grievancePackage: grievanceCandidates,
+    };
   }
-  if(!exactCompIds.length && !neighbors.length){
-    comparableMode = "fallback";
-    const streetKey = streetNameKeyForComp(subject.address);
-    const subjectNeighborhood = subjectProfile.neighborhood;
-    neighbors = parcels
-      .filter(comp => comp.parcelId!==subject.parcelId)
-      .filter(comp => comp.propClass===subject.propClass)
-      .filter(comp => {
-        if(subjectNeighborhood && parcelNeighborhoodName(comp)===subjectNeighborhood) return true;
-        return streetKey && streetNameKeyForComp(comp.address)===streetKey;
-      })
-      .slice(0,8)
-      .map(comp => {
-        const compProfile = buildComparableProfile(comp);
-        return {
-          ...comp,
-          _compScore: 0,
-          _compEvidenceCount: 0,
-          _compSignals: ["Neighborhood", "Street", "Class"],
-          _compPhysicalFieldsUsed: [],
-          _compUnusedPhysicalFields: subjectProfile.availablePhysicalFields,
-          _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
-          _compProfile: compProfile,
-          _compDelta: buildComparableDelta(subject, comp, subjectProfile, compProfile),
-          _compReasons: [
-            subjectNeighborhood && parcelNeighborhoodName(comp)===subjectNeighborhood ? "Same neighborhood: " + subjectNeighborhood : null,
-            streetKey && streetNameKeyForComp(comp.address)===streetKey ? "Same street: " + streetKey : null,
-            "Same residential class: " + propClassLabel(subject)
-          ].filter(Boolean)
-        };
-      });
-  }
-  neighbors = neighbors.map(comp => ({
-    ...comp,
-    _grievanceRelevance: classifyGrievanceComparable(subject, comp),
-  }));
-  const grievanceSupportPool = neighbors.filter(comp => comp._grievanceRelevance?.kind === "supports");
-  const grievanceCandidates = grievanceSupportPool.slice(0,4);
+  const grievanceCandidatePool = exactCompIds.length
+    ? sortGrievanceCandidatePool(neighbors.filter(comp => Number(comp?._grievanceSupportScore) > 0))
+    : [];
+  const grievancePackageSelection = exactCompIds.length ? selectGrievancePackage(grievanceCandidatePool) : { selected: [], decisionById: new Map(), targetCount: 0 };
+  const grievanceCandidates = grievancePackageSelection.selected;
+  neighbors = annotateComparablePackageDecisions(neighbors, grievanceCandidatePool, grievancePackageSelection.decisionById);
+  const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates);
   const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/neighbors.length) : null;
   const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/neighbors.length) : null;
-  const avgEquity = neighbors.length ? +(neighbors.reduce((sum, comp)=>sum+(parseFloat(eqRFast(comp))||0),0)/neighbors.length).toFixed(1) : null;
-  const grievanceAvgFMV = grievanceSupportPool.length ? Math.round(grievanceSupportPool.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/grievanceSupportPool.length) : null;
-  const grievanceAvgAssessed = grievanceSupportPool.length ? Math.round(grievanceSupportPool.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/grievanceSupportPool.length) : null;
-  const grievanceAvgEquity = grievanceSupportPool.length ? +(grievanceSupportPool.reduce((sum, comp)=>sum+(parseFloat(eqRFast(comp))||0),0)/grievanceSupportPool.length).toFixed(1) : null;
+  const avgEquity = neighbors.length ? meanComparableValue(neighbors.map(comp=>comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
   const subjectEquity = subjectProfile.equity;
   const deltaFMV = avgFMV!=null ? subject.fullMarketValue-avgFMV : null;
   const deltaFMVPct = (avgFMV && deltaFMV!=null) ? (deltaFMV/avgFMV)*100 : null;
   const deltaAssessed = avgAssessed!=null ? subject.assessedValue-avgAssessed : null;
-  const deltaEquity = (avgEquity!=null && subjectEquity!=null) ? +(subjectEquity-avgEquity).toFixed(1) : null;
-  const grievanceDeltaFMV = grievanceAvgFMV!=null ? subject.fullMarketValue-grievanceAvgFMV : null;
-  const grievanceDeltaFMVPct = (grievanceAvgFMV && grievanceDeltaFMV!=null) ? (grievanceDeltaFMV/grievanceAvgFMV)*100 : null;
-  const grievanceDeltaAssessed = grievanceAvgAssessed!=null ? subject.assessedValue-grievanceAvgAssessed : null;
-  const grievanceDeltaEquity = (grievanceAvgEquity!=null && subjectEquity!=null) ? +(subjectEquity-grievanceAvgEquity).toFixed(1) : null;
-  const fairnessSignal = deltaEquity==null ? null : (deltaEquity>8 ? "Assessed above physically similar homes" : deltaEquity<-8 ? "Assessed below physically similar homes" : "Assessment is broadly in line with similar homes");
-  const grievanceSignal = grievanceDeltaEquity==null ? null : (grievanceDeltaEquity>8 ? "Supporting grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity<-8 ? "Supporting grievance comps carry higher equity ratios than your home." : "Supporting grievance comps show equity ratios in line with your home.");
+  const deltaEquity = (avgEquity!=null && subjectEquity!=null) ? roundComparableNumber(subjectEquity-avgEquity, 1) : null;
+  const fairnessSignal = deltaEquity==null ? null : (deltaEquity>=3 ? "Assessed above physically similar homes" : deltaEquity<=-3 ? "Assessed below physically similar homes" : "Assessment is broadly in line with similar homes");
   return {
     p: subject,
     neighbors,
     avgFMV,
     avgAssessed,
     avgEquity,
-    grievanceAvgFMV,
-    grievanceAvgAssessed,
-    grievanceAvgEquity,
     deltaFMV,
     deltaFMVPct,
     deltaAssessed,
     deltaEquity,
-    grievanceDeltaFMV,
-    grievanceDeltaFMVPct,
-    grievanceDeltaAssessed,
-    grievanceDeltaEquity,
     fairnessSignal,
-    grievanceSignal,
     comparableMode,
     usedInventory: residential && hasInventoryProfile(subject),
     scopeNeighborhood: subjectProfile.neighborhood || null,
     streetKey: streetNameKeyForComp(subject.address),
     subjectProfile,
-    grievanceSupportPool,
-    grievanceCandidates,
     snapshot,
+    ...summary,
+    grievanceSupportPool: grievanceCandidatePool,
+    grievanceCandidatePool,
+    grievanceCandidates,
+    grievancePackage: grievanceCandidates,
   };
 };
 
-const grievanceRelevanceSortRank = (kind="") => kind==="supports" ? 0 : kind==="neutral" ? 1 : 2;
+const grievanceRelevanceSortRank = (kind="") => kind==="strong_support" ? 0 : kind==="moderate_support" ? 1 : kind==="weak_support" ? 2 : kind==="neutral" ? 3 : 4;
 const parcelDistanceMiles = (a, b) => {
   const ax = Number(a?.eastCoord), ay = Number(a?.nrthCoord), bx = Number(b?.eastCoord), by = Number(b?.nrthCoord);
   if(!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(bx) || !Number.isFinite(by) || ax<=0 || ay<=0 || bx<=0 || by<=0) return null;
@@ -2725,10 +3790,19 @@ const buildBroadenedComparableResult = (subject, parcels, options={}) => {
   const subjectNeighborhood = subjectProfile.neighborhood || "";
   const subjectStreet = streetNameKeyForComp(subject.address);
   const maxTier = Number.isFinite(options?.maxTier) ? options.maxTier : 1;
+  const exactClassCount = (parcels || []).filter(parcel=>
+    normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)!==normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl) &&
+    String(parcel?.propClass || "")===String(subject?.propClass || "")
+  ).length;
+  const allowBroadClass = options?.allowBroadClass ?? (exactClassCount < 3);
   const candidates = parcels.map(comp => {
     const compId = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
     if(!compId || compId===normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl) || existingIds.has(compId)) return null;
-    const candidate = buildComparableCandidate(subject, comp);
+    const candidate = buildComparableCandidate(subject, comp, {
+      subjectProfile,
+      allowBroadClass,
+      maxDistanceMiles: 4,
+    });
     if(!candidate) return null;
     const distanceMiles = parcelDistanceMiles(subject, comp);
     const compNeighborhood = parcelNeighborhoodName(comp) || candidate?._compProfile?.neighborhood || "";
@@ -2742,14 +3816,19 @@ const buildBroadenedComparableResult = (subject, parcels, options={}) => {
     if(tier > maxTier) return null;
     return {
       ...candidate,
-      _grievanceRelevance: classifyGrievanceComparable(subject, comp),
       _broadenDistanceMiles: distanceMiles,
       _broadenTier: tier,
       _broadenTierLabel: broadenTierLabel(tier),
     };
   }).filter(Boolean);
   return candidates
-    .sort((a,b)=>(grievanceRelevanceSortRank(a?._grievanceRelevance?.kind)-grievanceRelevanceSortRank(b?._grievanceRelevance?.kind)) || ((a?._broadenTier||0)-(b?._broadenTier||0)) || ((b?._compScore||0)-(a?._compScore||0)) || ((a?._broadenDistanceMiles ?? 999) - (b?._broadenDistanceMiles ?? 999)) || (Math.abs((a?.fullMarketValue||0)-(subject?.fullMarketValue||0)) - Math.abs((b?.fullMarketValue||0)-(subject?.fullMarketValue||0))))
+    .sort((a,b)=>
+      (Number(b?._grievanceSupportScore || 0) - Number(a?._grievanceSupportScore || 0)) ||
+      (Number(b?._comparableQualityScore || 0) - Number(a?._comparableQualityScore || 0)) ||
+      ((a?._broadenTier||0)-(b?._broadenTier||0)) ||
+      ((a?._broadenDistanceMiles ?? 999) - (b?._broadenDistanceMiles ?? 999)) ||
+      ((a?._fmvPctDiff ?? 999) - (b?._fmvPctDiff ?? 999))
+    )
     .slice(0, options?.limit || 8);
 };
 function pointInRingXY(x,y,ring){
@@ -4331,7 +5410,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
       return true;
     });
   }, [broadenedComparables, displayNeighborResult]);
-  const defaultGrievanceCompIdSet = useMemo(() => new Set((displayNeighborResult?.neighbors || []).filter(parcel=>parcel?._grievanceRelevance?.kind === "supports").map(parcel=>normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)).filter(Boolean)), [displayNeighborResult]);
+  const defaultGrievanceCompIdSet = useMemo(() => new Set((displayNeighborResult?.grievanceCandidates || []).map(parcel=>normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)).filter(Boolean)), [displayNeighborResult]);
   const isParcelIncludedInGrievance = useCallback(parcel => {
     const id = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
     if(!id) return false;
@@ -4426,16 +5505,18 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     if(!effectiveNeighborResult?.p) return null;
     return buildNeighborhoodBenchmark(effectiveNeighborResult.p, effectiveNeighborResult.subjectProfile || buildComparableProfile(effectiveNeighborResult.p), parcels);
   }, [effectiveNeighborResult, parcels]);
+  const equityUniformityNotice = useMemo(() => buildEquityUniformityNotice(parcels), [parcels]);
   const appealReadiness = useMemo(() => {
     if(!effectiveNeighborResult?.p) return null;
     return buildAppealReadiness({
       subject: effectiveNeighborResult.p,
       subjectProfile: effectiveNeighborResult.subjectProfile || buildComparableProfile(effectiveNeighborResult.p),
       neighborResult: effectiveNeighborResult,
+      neighborhoodBenchmark,
       totalComparableCount,
       salesByParcelId,
     });
-  }, [effectiveNeighborResult, salesByParcelId, totalComparableCount]);
+  }, [effectiveNeighborResult, neighborhoodBenchmark, salesByParcelId, totalComparableCount]);
   const appealSummary = useMemo(() => {
     if(!effectiveNeighborResult?.p || !appealReadiness) return null;
     return buildAppealRecommendation({
@@ -4460,7 +5541,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     if(!effectiveNeighborResult?.p) return;
     const subject = effectiveNeighborResult.p;
     const subjectProfile = effectiveNeighborResult.subjectProfile || buildComparableProfile(subject);
-    const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId);
+    const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId, neighborhoodBenchmark);
     const reportHtml = buildComparablePrintReportHtml({
       subject,
       subjectProfile,
@@ -4484,13 +5565,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     printWindow.document.close();
     printWindow.focus();
     printWindow.onload = () => printWindow.print();
-    setPrintMessage(includeContextComps ? "Opened a printable report with both grievance-supporting and context comps. Use the print destination to print or Save as PDF." : "Opened a grievance-only print package. Use the print destination to print or Save as PDF.");
+    setPrintMessage(includeContextComps ? "Opened a printable report with the current grievance package plus context comps. Use the print destination to print or Save as PDF." : "Opened a print package for the current grievance selection. Use the print destination to print or Save as PDF.");
   }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult, meta, neighborhoodBenchmark, salesByParcelId, shareLink]);
   const downloadGrievancePacket = useCallback((includeContextComps=false) => {
     if(!effectiveNeighborResult?.p || typeof window==="undefined") return;
     const subject = effectiveNeighborResult.p;
     const subjectProfile = effectiveNeighborResult.subjectProfile || buildComparableProfile(subject);
-    const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId);
+    const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId, neighborhoodBenchmark);
     const reportHtml = buildComparablePrintReportHtml({
       subject,
       subjectProfile,
@@ -4515,7 +5596,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     link.click();
     document.body.removeChild(link);
     setTimeout(()=>URL.revokeObjectURL(href), 1000);
-    setPrintMessage(includeContextComps ? "Downloaded a packet with supporting and context comps." : "Downloaded a grievance packet with supporting comps only.");
+    setPrintMessage(includeContextComps ? "Downloaded a packet with the current grievance package plus context comps." : "Downloaded a packet for the current grievance selection.");
   }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult, meta, neighborhoodBenchmark, salesByParcelId, shareLink]);
 
 
@@ -4813,9 +5894,10 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
             const grievanceComparisons = [{kind:"subject", parcel:subject, label:"Your parcel"}].concat(
               (effectiveNeighborResult.grievanceCandidates||[]).map((parcel, idx)=>({kind:"comp", parcel, label:"Comp " + (idx+1)}))
             );
-            const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId);
+            const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId, neighborhoodBenchmark);
             const grievanceStrength = buildGrievanceStrengthAssessment(subject, effectiveNeighborResult, grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0);
             const subjectSaleBadge = buildSaleHeaderBadge(subject, salesByParcelId);
+            const recommendationTheme = appealSummary ? appealRecommendationTheme(appealSummary.recommendedAction) : null;
             const renderPacketActions = ({title, description, note="", marginBottom=12}={}) => <div className="print-hide" style={{background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:10,padding:"12px 14px",marginBottom}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
                 <div>
@@ -4828,19 +5910,19 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   <button onClick={copyShareLink} disabled={!shareLink} style={{background:shareLink?"var(--blue)":"rgba(148,163,184,.18)",color:shareLink?"white":"var(--gray3)",border:"none",borderRadius:8,padding:"8px 14px",cursor:shareLink?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Copy share link</button>
                   <div style={{display:"grid",gap:4}}>
                     <button onClick={()=>downloadGrievancePacket(false)} disabled={!neighborResult?.p} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download My Grievance Packet</button>
-                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Supporting comps only - downloadable HTML packet</div>
+                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Current grievance package only - downloadable HTML packet</div>
                   </div>
                   <div style={{display:"grid",gap:4}}>
                     <button onClick={()=>downloadGrievancePacket(true)} disabled={!neighborResult?.p} style={{background:"rgba(139,92,246,.12)",color:"var(--purple)",border:"1px solid rgba(139,92,246,.24)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download with context comps</button>
-                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Optional packet with higher-assessed context comps</div>
+                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Optional packet with added context comps</div>
                   </div>
                   <div style={{display:"grid",gap:4}}>
-                    <button title="Supporting comps only - for filing" onClick={()=>openPrintableReport(false)} disabled={!neighborResult?.p} style={{background:"var(--green2)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Print grievance package</button>
-                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Supporting comps only - for filing</div>
+                    <button title="Current grievance package only - for filing" onClick={()=>openPrintableReport(false)} disabled={!neighborResult?.p} style={{background:"var(--green2)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Print grievance package</button>
+                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Current grievance package only - for filing</div>
                   </div>
                   <div style={{display:"grid",gap:4}}>
-                    <button title="All comps including higher-assessed - for research" onClick={()=>openPrintableReport(true)} disabled={!neighborResult?.p} style={{background:"rgba(15,23,42,.06)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Print with context comps</button>
-                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>All comps including higher-assessed - for research</div>
+                    <button title="Current grievance package plus context comps - for research" onClick={()=>openPrintableReport(true)} disabled={!neighborResult?.p} style={{background:"rgba(15,23,42,.06)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Print with context comps</button>
+                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Current grievance package plus context comps</div>
                   </div>
                 </div>
               </div>
@@ -4856,10 +5938,18 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               const usingFields = parcel._compPhysicalFieldsUsed || [];
               const unusedFields = parcel._compUnusedPhysicalFields || [];
               const isIncludedInGrievance = isParcelIncludedInGrievance(parcel);
-              const cardAccentColor = isIncludedInGrievance ? "rgba(22,163,74,.82)" : parcel._grievanceRelevance.kind==="does_not_support" ? "rgba(220,38,38,.30)" : "rgba(148,163,184,.42)";
+              const relevanceKind = parcel?._grievanceRelevance?.kind || "neutral";
+              const grievanceExplanation = parcel?._grievanceRelevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevanceKind);
+              const packageDecision = parcel?._packageDecision || parcel?._selectionDiagnostics?.packageDecision || null;
+              const distanceLabel = Number.isFinite(parcel?._distanceMiles) ? formatComparableMiles(parcel._distanceMiles) : null;
+              const cardAccentColor = grievanceRelevanceAccentColor(relevanceKind);
+              const cardBorderColor = isIncludedInGrievance ? "rgba(22,163,74,.24)" : "var(--border)";
+              const { border: ignoredContainerBorder, borderLeft: ignoredContainerBorderLeft, ...safeContainerStyle } = options.containerStyle || {};
               const baseComparableCardStyle = {
                 background: isIncludedInGrievance ? "linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)" : "var(--card)",
-                border: isIncludedInGrievance ? "1px solid rgba(22,163,74,.24)" : "1px solid var(--border)",
+                borderTop: `1px solid ${cardBorderColor}`,
+                borderRight: `1px solid ${cardBorderColor}`,
+                borderBottom: `1px solid ${cardBorderColor}`,
                 borderLeft: `6px solid ${cardAccentColor}`,
                 borderRadius: 12,
                 padding: "16px 18px",
@@ -4870,9 +5960,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               };
               const containerStyle = {
                 ...baseComparableCardStyle,
-                ...(options.containerStyle || {}),
-                background: isIncludedInGrievance ? baseComparableCardStyle.background : ((options.containerStyle && options.containerStyle.background) || baseComparableCardStyle.background),
-                border: isIncludedInGrievance ? baseComparableCardStyle.border : ((options.containerStyle && options.containerStyle.border) || baseComparableCardStyle.border),
+                ...safeContainerStyle,
+                background: isIncludedInGrievance ? baseComparableCardStyle.background : ((safeContainerStyle && safeContainerStyle.background) || baseComparableCardStyle.background),
+                borderTop: isIncludedInGrievance ? baseComparableCardStyle.borderTop : ((safeContainerStyle && safeContainerStyle.borderTop) || baseComparableCardStyle.borderTop),
+                borderRight: isIncludedInGrievance ? baseComparableCardStyle.borderRight : ((safeContainerStyle && safeContainerStyle.borderRight) || baseComparableCardStyle.borderRight),
+                borderBottom: isIncludedInGrievance ? baseComparableCardStyle.borderBottom : ((safeContainerStyle && safeContainerStyle.borderBottom) || baseComparableCardStyle.borderBottom),
                 borderLeft: `6px solid ${cardAccentColor}`,
                 boxShadow: isIncludedInGrievance ? baseComparableCardStyle.boxShadow : ((options.containerStyle && options.containerStyle.boxShadow) || baseComparableCardStyle.boxShadow),
               };
@@ -4883,8 +5975,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 fontSize: 11,
                 color: isIncludedInGrievance ? "var(--green2)" : "var(--gray)",
                 cursor: "pointer",
-                padding: "8px 10px",
-                borderRadius: 999,
+                padding: "9px 10px",
+                borderRadius: 10,
                 border: isIncludedInGrievance ? "1px solid rgba(22,163,74,.24)" : "1px solid rgba(148,163,184,.22)",
                 background: isIncludedInGrievance ? "rgba(22,163,74,.08)" : "rgba(148,163,184,.08)",
                 boxShadow: isIncludedInGrievance ? "0 8px 18px rgba(22,163,74,.10)" : "none",
@@ -4895,47 +5987,90 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 lineHeight: 1.5,
                 fontWeight: isIncludedInGrievance ? 700 : 600,
               };
+              const grievanceToggleControl = options.showGrievanceToggle!==false ? <div className="print-hide" style={{display:"grid",gap:6}}>
+                <label style={grievanceToggleLabelStyle} onClick={e=>e.stopPropagation()}>
+                  <input type="checkbox" checked={isIncludedInGrievance} onClick={e=>e.stopPropagation()} onChange={e=>toggleGrievanceComp(parcel, e.target.checked)} style={{accentColor:"#15803d",cursor:"pointer",width:15,height:15}} />
+                  <span style={{fontWeight:800,color:isIncludedInGrievance?"var(--green2)":"var(--gray2)"}}>Include in grievance</span>
+                </label>
+                <span style={grievanceToggleNoteStyle}>{isIncludedInGrievance ? "Included in the live grievance package summary below." : "Excluded from the live grievance package summary below."}</span>
+              </div> : null;
+              const packageDecisionCurrentIncluded = packageDecision?.status==="included";
+              const packageDecisionOverrideNote = packageDecision && options.showGrievanceToggle!==false && packageDecisionCurrentIncluded!==isIncludedInGrievance ? "Current checkbox state reflects your manual override." : null;
+              const packageDecisionBox = packageDecision ? <div style={{display:"grid",gap:4,padding:"9px 10px",borderRadius:10,background:packageDecision.status==="included" ? "rgba(37,99,235,.08)" : "rgba(148,163,184,.10)",border:`1px solid ${packageDecision.status==="included" ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.18)"}`}}>
+                <div style={{fontSize:10,fontWeight:800,letterSpacing:.4,textTransform:"uppercase",color:packageDecision.status==="included" ? "var(--blue3)" : "var(--gray2)"}}>Default package</div>
+                <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{packageDecision.message}</div>
+                {packageDecisionOverrideNote&&<div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5}}>{packageDecisionOverrideNote}</div>}
+              </div> : null;
+              const collapseFadeColor = isIncludedInGrievance ? "rgba(255,255,255,.98)" : "var(--card)";
+              const detailsToggleControl = isCollapsible ? <div className="print-hide" style={isExpanded ? {display:"flex",justifyContent:"center",paddingTop:8} : {position:"absolute",left:"50%",bottom:10,transform:"translateX(-50%)",zIndex:2}}>
+                <button type="button" onClick={e=>{ e.stopPropagation(); options.onToggle&&options.onToggle(parcel.parcelId); }} style={{background:"rgba(248,250,252,.92)",border:"1px solid rgba(148,163,184,.24)",color:"var(--gray2)",borderRadius:999,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",boxShadow:"0 10px 20px rgba(15,23,42,.08)"}}>
+                  {isExpanded ? "− Hide details" : "+ Show details"}
+                </button>
+              </div> : null;
               const header = <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+                <div style={{display:"grid",gap:10,alignContent:"start",background:"rgba(248,250,252,.72)",border:"1px solid rgba(148,163,184,.18)",borderRadius:12,padding:"12px",minWidth:142,flex:"0 0 150px"}}>
+                  <div style={{background:"rgba(99,102,241,.10)",border:"1px solid rgba(99,102,241,.18)",borderRadius:10,padding:"10px 11px",display:"grid",gap:3}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:.45,textTransform:"uppercase",color:"var(--gray2)"}}>Comparable</div>
+                    <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:"#6366f1"}}>{options.compLabel || ("Comp " + (idx+1))}</div>
+                  </div>
+                  {grievanceToggleControl}
+                  {packageDecisionBox}
+                </div>
                 <div style={{minWidth:0,flex:"1 1 320px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <div style={{fontSize:15,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} parcelId={parcel.parcelId} parcel={parcel} showStreetView streetViewLatLng={streetViewLatLngForParcel(parcel)}>{parcel.address}</AddrLink></div>
-                    <Badge color="#8b5cf6" small>{options.compLabel || ("Comp " + (idx+1))}</Badge>
-                    <Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge><span title={MATCHED_HOME_DETAILS_INFO} style={{fontFamily:"var(--fm)",fontSize:10,fontWeight:700,color:"var(--gray2)",border:"1px solid var(--border)",borderRadius:999,padding:"1px 6px",cursor:"help"}}>(i)</span>
-                    <ComparableOwnershipBadges parcel={parcel} small />
-                    {saleBadge&&<Badge color={saleBadge.color} small title={saleBadge.title}>{saleBadge.label}</Badge>}
+                  <div style={{display:"grid",gap:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <div style={{fontSize:15,fontWeight:700,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} parcelId={parcel.parcelId} parcel={parcel} showStreetView streetViewLatLng={streetViewLatLngForParcel(parcel)}>{parcel.address}</AddrLink></div>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      <Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge>
+                      <span title={MATCHED_HOME_DETAILS_INFO} style={{fontFamily:"var(--fm)",fontSize:10,fontWeight:700,color:"var(--gray2)",border:"1px solid var(--border)",borderRadius:999,padding:"1px 6px",cursor:"help"}}>(i)</span>
+                      <ComparableOwnershipBadges parcel={parcel} small />
+                      {saleBadge&&<Badge color={saleBadge.color} small title={saleBadge.title}>{saleBadge.label}</Badge>}
+                    </div>
+                    <div style={{fontSize:11,color:"var(--gray2)",overflowWrap:"anywhere",wordBreak:"break-word"}}>{parcel.owner1} | {parcel.parcelId} | {parcelNeighborhoodName(parcel)||"Neighborhood unknown"}{distanceLabel ? <> | {distanceLabel} away</> : null}</div>
+                    {options.metaLine&&<div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{options.metaLine}</div>}
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      <Badge color="#6366f1" small>{propClassLabel(parcel)}</Badge>
+                      {comparableProfileBadgeItems(parcel).map(item=><Badge key={parcel.parcelId + item} color="#64748b" small>{item}</Badge>)}
+                    </div>
                   </div>
                   <div style={{background:parcel._grievanceRelevance.background,border:`1px solid ${parcel._grievanceRelevance.border}`,borderRadius:8,padding:"9px 10px",marginTop:10,display:"grid",gap:4}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      <Badge color={parcel._grievanceRelevance.kind==="supports"?"#16a34a":parcel._grievanceRelevance.kind==="does_not_support"?"#dc2626":"#64748b"} small>{parcel._grievanceRelevance.badge}</Badge>
+                      <Badge color={grievanceRelevanceBadgeColor(relevanceKind)} small>{parcel._grievanceRelevance.badge}</Badge>
                       <span style={{fontSize:11,fontWeight:700,color:parcel._grievanceRelevance.tone}}>{parcel._grievanceRelevance.headline}</span>
                     </div>
-                    <div style={{fontSize:10,color:parcel._grievanceRelevance.tone,lineHeight:1.5}}>{parcel._grievanceRelevance.detail}</div>
-                  </div>
-                  <div style={{fontSize:11,color:"var(--gray2)",marginTop:4,overflowWrap:"anywhere",wordBreak:"break-word"}}>{parcel.owner1} | {parcel.parcelId} | {parcelNeighborhoodName(parcel)||"Neighborhood unknown"}</div>
-                  {options.metaLine&&<div style={{fontSize:11,color:"var(--gray2)",marginTop:5,lineHeight:1.6}}>{options.metaLine}</div>}
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-                    <Badge color="#6366f1" small>{propClassLabel(parcel)}</Badge>
-                    {comparableProfileBadgeItems(parcel).map(item=><Badge key={parcel.parcelId + item} color="#64748b" small>{item}</Badge>)}
+                    <div style={{fontSize:11,fontWeight:700,color:parcel._grievanceRelevance.tone,lineHeight:1.5}}>{grievanceExplanation.summaryHeadline}</div>
+                    <div style={{fontSize:10,color:parcel._grievanceRelevance.tone,lineHeight:1.55}}>{grievanceExplanation.summaryText}</div>
+                    <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}><b style={{color:"var(--gray2)"}}>Main reason:</b> {grievanceExplanation.primaryReason}</div>
+                    <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>{grievanceExplanation.trustNote}</div>
+                    <details style={{background:"rgba(255,255,255,.58)",border:"1px solid rgba(255,255,255,.48)",borderRadius:8,padding:"8px 9px",marginTop:4}}>
+                      <summary style={{cursor:"pointer",fontSize:10,fontWeight:700,color:"var(--gray2)",letterSpacing:.35,textTransform:"uppercase"}}>Why this support level?</summary>
+                      <div style={{display:"grid",gap:7,marginTop:8}}>
+                        {grievanceExplanation.breakdownRows.map((row, rowIdx)=>{
+                          const tone = explanationStatusTone(row.status);
+                          return <div key={`${parcel.parcelId}-support-row-${rowIdx}`} style={{background:tone.background,border:`1px solid ${tone.border}`,borderRadius:8,padding:"8px 9px",display:"grid",gap:3}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                              <span style={{fontSize:10,fontWeight:700,color:"var(--gray2)"}}>{row.label}</span>
+                              <span style={{fontSize:10,fontWeight:700,color:tone.color}}>{row.valueText}</span>
+                            </div>
+                            <div style={{fontSize:10,color:"var(--gray)",lineHeight:1.5}}>{row.explanation}</div>
+                          </div>;
+                        })}
+                      </div>
+                    </details>
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8,flex:"1 1 320px",minWidth:260}}>
-                  <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)",fontWeight:700}}>{$f(parcel.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV</div></div>
-                  <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700}}>{$f(parcel.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp assessed</div></div>
-                  <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:FC[eqFlagFast(parcel)]}}>{eqRFast(parcel)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp equity</div></div>
+                <div style={{display:"grid",gap:10,flex:"1 1 320px",minWidth:260}}>
+                  <StreetViewPreview address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} streetViewLatLng={streetViewLatLngForParcel(parcel)} />
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+                    <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)",fontWeight:700}}>{$f(parcel.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV</div></div>
+                    <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700}}>{$f(parcel.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp assessed</div></div>
+                    <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:FC[eqFlagFast(parcel)]}}>{eqRFast(parcel)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp equity</div></div>
+                  </div>
                 </div>
               </div>;
-              return <div key={cardKey} style={containerStyle}>
-                {isCollapsible ? <div role="button" tabIndex={0} onClick={()=>options.onToggle&&options.onToggle(parcel.parcelId)} onKeyDown={e=>{ if(e.key==="Enter" || e.key===" "){ e.preventDefault(); options.onToggle&&options.onToggle(parcel.parcelId); } }} style={{width:"100%",cursor:"pointer",textAlign:"left",display:"grid",gap:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,fontSize:11,fontWeight:700,color:"var(--gray2)"}}><span style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--gray)",minWidth:12}}>{isExpanded ? "v" : ">"}</span><span>{isExpanded ? "Collapse property details" : "Expand property details"}</span></div>
-                  {header}
-                </div> : header}
-                {options.showGrievanceToggle!==false&&<div className="print-hide" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",paddingTop:4}}>
-                  <label style={grievanceToggleLabelStyle} onClick={e=>e.stopPropagation()}>
-                    <input type="checkbox" checked={isIncludedInGrievance} onClick={e=>e.stopPropagation()} onChange={e=>toggleGrievanceComp(parcel, e.target.checked)} style={{accentColor:"#15803d",cursor:"pointer",width:15,height:15}} />
-                    <span style={{fontWeight:800,color:isIncludedInGrievance?"var(--green2)":"var(--gray2)"}}>Include in grievance</span>
-                  </label>
-                  <span style={grievanceToggleNoteStyle}>{isIncludedInGrievance ? "Included in the live grievance package summary below." : "Excluded from the live grievance package summary below."}</span>
-                </div>}
+              return <div key={cardKey} style={{...containerStyle,position:"relative",overflow:"hidden"}}>
+                <div style={{display:"grid",gap:10}}>{header}</div>
                 {isExpanded&&<div style={{display:"grid",gap:12}}>
                   {isAbsenteeFast(parcel)&&<AbsenteeExplain parcel={parcel} compact />}
                   <OwnerPortfolioSection parcel={parcel} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={focusNeighborParcel} />
@@ -4966,7 +6101,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   </div>
                   {renderSaleHistorySection(parcel, compProfile.livingArea, { title: "Sale history" })}
                   <details style={{background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.14)",borderRadius:8,padding:"10px 12px",minWidth:0}}>
-                    <summary style={{cursor:"pointer",fontSize:10,fontWeight:700,color:"var(--blue3)",letterSpacing:.4,textTransform:"uppercase"}}>{`Why this home was selected${reasons.length ? ` (${reasons.length} reasons)` : ""}`}</summary>
+                    <summary style={{cursor:"pointer",fontSize:10,fontWeight:700,color:"var(--blue3)",letterSpacing:.4,textTransform:"uppercase"}}>{`Why this home was included${reasons.length ? ` (${reasons.length} reasons)` : ""}`}</summary>
                     <div style={{display:"grid",gap:6,marginTop:8}}>
                       {reasons.length ? reasons.map((reason, reasonIdx)=><div key={parcel.parcelId + "-reason-" + reasonIdx} style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55,overflowWrap:"anywhere"}}>- {reason}</div>) : <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>No additional selection notes were recorded for this comparable.</div>}
                       <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>
@@ -4977,27 +6112,42 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </div>
                   </details>
                 </div>}
+                {!isExpanded&&isCollapsible&&<div className="print-hide" aria-hidden="true" style={{position:"absolute",left:6,right:0,bottom:0,height:56,background:`linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`,pointerEvents:"none",zIndex:1}} />}
+                {detailsToggleControl}
               </div>;
             };
             return <>
               <div ref={compareResultRef} className="fi">
               {appealSummary&&appealReadiness&&<WorkflowStepCard step="Step 2 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
                 <div style={{display:"grid",gap:12}}>
-                  <div style={{background:appealSummary.recommendation==="Yes"?"rgba(22,163,74,.10)":appealSummary.recommendation==="Maybe"?"rgba(245,158,11,.10)":"rgba(148,163,184,.12)",border:`1px solid ${appealSummary.recommendation==="Yes"?"rgba(22,163,74,.24)":appealSummary.recommendation==="Maybe"?"rgba(245,158,11,.22)":"rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
+                  <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Recommendation</div><div style={{fontSize:20,fontWeight:800,color:appealSummary.recommendation==="Yes"?"var(--green2)":appealSummary.recommendation==="Maybe"?"var(--amber2)":"var(--gray2)"}}>{appealSummary.recommendation}</div></div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Case strength</div><div style={{fontSize:20,fontWeight:800,color:appealReadiness.caseStrength==="Strong"?"var(--green2)":appealReadiness.caseStrength==="Moderate"?"var(--blue3)":"var(--red2)"}}>{appealReadiness.caseStrength}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Recommendation</div><div style={{fontSize:20,fontWeight:800,color:recommendationTheme?.color || "var(--gray2)"}}>{appealSummary.recommendation}</div></div>
+                      <div>
+                        <div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Case strength</div>
+                        <div style={{display:"grid",gap:3}}>
+                          <div style={{fontSize:20,fontWeight:800,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel),lineHeight:1.15}}>{appealReadiness.caseStrengthBase}</div>
+                          <div style={{fontSize:12,fontWeight:700,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel),lineHeight:1.35}}>{appealReadiness.complaintReasonGuidance.displayLabel}</div>
+                        </div>
+                      </div>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Potential assessed value reduction</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.potentialReduction!=null ? $f(appealSummary.potentialReduction) : '-'}</div></div>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Supporting comparable homes found</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.supportingComparableHomes}</div></div>
                     </div>
                     <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}><b style={{color:"var(--gray2)"}}>Key reason:</b> {appealSummary.keyReason}</div>
+                    <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(255,255,255,.24)",borderRadius:10,padding:"12px 14px",display:"grid",gap:6}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Recommended RP-524 complaint reason</div>
+                      <div style={{fontSize:13,fontWeight:800,color:"var(--gray2)"}}>{appealReadiness.complaintReasonGuidance.selectionLabel}</div>
+                      <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{appealReadiness.complaintReasonGuidance.why}</div>
+                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote}</div>
+                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote}</div>
+                    </div>
                     <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.4fr) minmax(260px,.9fr)",gap:12}}>
                       <div style={{background:"rgba(255,255,255,.68)",border:"1px solid rgba(255,255,255,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                          <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Appeal Readiness Score</div>
-                          <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:appealReadiness.score>=70?"var(--green2)":appealReadiness.score>=40?"var(--amber2)":"var(--red2)"}}>{appealReadiness.score} / 100</div>
+                          <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Case assessment score</div>
+                          <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel)}}>{appealReadiness.score} / 100</div>
                         </div>
-                        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{appealReadiness.score>=70?"70-100 = strong case":appealReadiness.score>=40?"40-69 = possible case":"0-39 = weak case"}. This is a decision aid, not a guarantee.</div>
+                        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>75-100 usually supports filing, 58-74 suggests filing with caution, 40-57 needs manual review, and 0-39 usually does not support filing. Downgrade rules can still lower the final recommendation. This is a decision aid, not a guarantee.</div>
                         <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Why this score?</div>
                         <div style={{display:"grid",gap:6}}>
                           {appealReadiness.why.map((item, idx)=><div key={`score-why-${idx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.55}}>- {item}</div>)}
@@ -5033,9 +6183,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       <div style={{display:"grid",gap:6}}>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median assessed value</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.assessedMedian!=null ? $f(neighborhoodBenchmark.assessedMedian) : '-'}</span></div>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median FMV</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.fmvMedian!=null ? $f(neighborhoodBenchmark.fmvMedian) : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median assessed per sq ft</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.assessedPerSqftMedian!=null ? `$${Number(neighborhoodBenchmark.assessedPerSqftMedian).toFixed(2)}/sq ft` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your assessed per sq ft</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.subjectAssessedPerSqft!=null ? `$${Number(neighborhoodBenchmark.subjectAssessedPerSqft).toFixed(2)}/sq ft` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Gap from median assessed per sq ft</span><span style={{fontWeight:700,color:(neighborhoodBenchmark.deltaAssessedPerSqft||0)>0?"var(--red2)":(neighborhoodBenchmark.deltaAssessedPerSqft||0)<0?"var(--green2)":"var(--gray)"}}>{neighborhoodBenchmark.deltaAssessedPerSqft!=null ? `${neighborhoodBenchmark.deltaAssessedPerSqft>=0?'+':''}$${Number(neighborhoodBenchmark.deltaAssessedPerSqft).toFixed(2)}/sq ft` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your assessed per sq ft percentile</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.assessedPerSqftPercentile!=null ? `${Number(neighborhoodBenchmark.assessedPerSqftPercentile).toFixed(1)}th` : '-'}</span></div>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="equityRatio">Neighborhood median equity ratio</TermWithHelp></span><span style={{fontWeight:700}}>{neighborhoodBenchmark.equityMedian!=null ? neighborhoodBenchmark.equityMedian + '%' : '-'}</span></div>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="equityRatio">Your equity ratio</TermWithHelp></span><span style={{fontWeight:700}}>{neighborhoodBenchmark.subjectEquity!=null ? neighborhoodBenchmark.subjectEquity + '%' : '-'}</span></div>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Difference from neighborhood median</span><span style={{fontWeight:700,color:(neighborhoodBenchmark.deltaEquity||0)>0?"var(--red2)":(neighborhoodBenchmark.deltaEquity||0)<0?"var(--green2)":"var(--gray)"}}>{neighborhoodBenchmark.deltaEquity!=null ? `${neighborhoodBenchmark.deltaEquity>=0?'+':''}${neighborhoodBenchmark.deltaEquity}%` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your equity ratio percentile</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.equityPercentile!=null ? `${Number(neighborhoodBenchmark.equityPercentile).toFixed(1)}th` : '-'}</span></div>
                       </div>
                       <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{neighborhoodBenchmark.interpretation}</div>
                     </> : <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>A neighborhood benchmark could not be calculated from the current parcel set.</div>}
@@ -5053,8 +6208,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
 
               <div className="cols-2" style={{display:"grid",gap:14,marginBottom:14}}>
                 <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px",minWidth:0,display:"grid",gap:12}}>
-                  <div role="button" tabIndex={0} onClick={()=>setSubjectCardExpanded(v=>!v)} onKeyDown={e=>{ if(e.key==="Enter" || e.key===" "){ e.preventDefault(); setSubjectCardExpanded(v=>!v); } }} style={{width:"100%",cursor:"pointer",textAlign:"left",display:"grid",gap:10}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,fontSize:11,fontWeight:700,color:"var(--blue3)"}}><span style={{fontFamily:"var(--fm)",fontSize:13,minWidth:12}}>{subjectCardExpanded ? "v" : ">"}</span><span>{subjectCardExpanded ? "Collapse property details" : "Expand property details"}</span></div>
+                  <div style={{width:"100%",textAlign:"left",display:"grid",gap:10}}>
+                    <button type="button" onClick={()=>setSubjectCardExpanded(v=>!v)} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.20)",color:"var(--blue3)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer",width:"fit-content"}}>
+                      <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:999,background:subjectCardExpanded ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.55)",fontFamily:"var(--fm)",fontSize:14,lineHeight:1}}>{subjectCardExpanded ? "-" : "+"}</span>
+                      <span>{subjectCardExpanded ? "Hide full property details" : "Show full property details"}</span>
+                    </button>
                     <div style={{fontSize:11,color:"var(--blue3)",marginBottom:4,fontWeight:600}}>Your Property</div>
                     <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={subject.address} zip={subject.zip} neighborhood={subject.neighborhood} parcelId={subject.parcelId} parcel={subject} showStreetView streetViewLatLng={streetViewLatLngForParcel(subject)}>{subject.address}</AddrLink></div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
@@ -5095,8 +6253,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     {displayNeighborResult.usedInventory&&<><br/>Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.</>}
                   </div>
                   <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>{effectiveNeighborResult.grievanceSupportCount
-                    ? <>Only <b style={{color:"var(--green2)"}}>{effectiveNeighborResult.grievanceSupportCount}</b> of the <b style={{color:"var(--gray2)"}}>{grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0}</b> currently visible comps support an RP-524 grievance because they are assessed lower than your home. The rest remain available for context or custom inclusion.</>
-                    : <>These are physical matches for research, but none of the currently selected comps are assessed lower than your home, so the grievance package will stay empty until a supportive comp is included.</>}
+                    ? <>The default grievance package currently keeps <b style={{color:"var(--green2)"}}>{effectiveNeighborResult.grievanceCandidates.length}</b> of the <b style={{color:"var(--gray2)"}}>{grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0}</b> visible comps because they clear the support, quality, and confidence checks. Lower assessed value alone is not enough; the rest stay available for context or custom inclusion.</>
+                    : <>These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically.</>}
                   </div>
                   {customGrievanceSelectionActive&&<div className="print-hide" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.18)",borderRadius:8,padding:"9px 10px",marginBottom:10}}>
                     <div style={{fontSize:11,color:"var(--blue3)",lineHeight:1.55,fontWeight:600}}>Custom comp selection ({effectiveNeighborResult.grievanceCandidates.length} of {grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0} included)</div>
@@ -5125,9 +6283,27 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               <div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:"var(--gray2)",marginBottom:6}}>How To Read These Numbers</div>
                 <div style={{fontSize:11,color:"var(--gray3)",lineHeight:1.65}}>
-                  <TermWithHelp termKey="comparableHome" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Comparable homes</b></TermWithHelp> are the strongest matches in the current dataset for your parcel's residential class and home details. Each card now shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> together so you can judge whether a lower-<TermWithHelp termKey="assessedValue" tone="var(--gray2)">assessed value</TermWithHelp> home is truly similar to yours. <TermWithHelp termKey="equityRatio" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Equity %</b></TermWithHelp> = <TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed value</TermWithHelp> / <TermWithHelp termKey="fmv" tone="var(--gray2)">FMV</TermWithHelp> x 100.
+                  <TermWithHelp termKey="comparableHome" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Comparable homes</b></TermWithHelp> are the strongest matches in the current dataset for your parcel's residential class and home details. Each card shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> together so you can judge both similarity and assessment fairness. <TermWithHelp termKey="equityRatio" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Equity %</b></TermWithHelp> = <TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed value</TermWithHelp> / <TermWithHelp termKey="fmv" tone="var(--gray2)">FMV</TermWithHelp> x 100.
                 </div>
+                {equityUniformityNotice&&<div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,padding:"10px 12px",marginTop:8,display:"grid",gap:5}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--amber2)"}}>Equity % warning</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{equityUniformityNotice.detail}</div>
+                  <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>Average {equityUniformityNotice.average}% | Standard deviation {equityUniformityNotice.stdDev}%</div>
+                </div>}
                 <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginTop:8}}>Albany style codes use historic assessment terminology. The style name (for example, "Mansion" or "Colonial") refers to architectural classification, not property size or value.</div>
+                <div style={{display:"grid",gap:6,marginTop:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>How the app chooses comparables</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>1. The visible list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>2. The default grievance package is narrower: a comp must also clear a data-confidence check and earn a positive grievance-support score from normalized value metrics.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>3. Lower assessed value alone does not qualify a comp. The app also looks at equity ratio and assessed value per square foot so the comparison is fairer.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>4. When enough evidence exists, the default package usually keeps 3 to 5 homes. Multiple strong comps from the same neighborhood may now stay together as corroborating evidence, although the package can still fill up before every strong comp is included.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>5. The card's Default package note explains why a visible comp was included or left out under the package rules. You can still override that package with the Include in grievance checkbox on any comp.</div>
+                </div>
+                <div style={{display:"grid",gap:6,marginTop:10,padding:"10px 12px",background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--blue3)"}}>Example: lower assessed value, but still not strong evidence</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>A comp can be assessed lower than your home and still end up as only weak support if its equity ratio and assessed value per sq ft are about the same as yours. If its full market value is also lower, that usually means it is simply a lower-value or smaller home overall, not clear proof that the assessor treated it more favorably.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>A lower assessed value does not automatically mean better grievance evidence if the comp is also proportionally lower in full market value or size.</div>
+                </div>
               </div>
 
               {effectiveNeighborResult.grievanceCandidates.length>0&&<>
@@ -5165,7 +6341,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </div>
               </>}
               {(displayNeighborResult?.neighbors?.length || 0)>0 ? (
-                <div style={{display:"grid",gap:16,padding:"4px 2px"}}>
+                <div style={{display:"grid",gap:32,padding:"8px 2px"}}>
                   <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These parcels drive the comparable-home summary above.">Best Comparable Parcels ({displayNeighborResult?.neighbors?.length || 0} comps)</div>
                   {displayNeighborResult.neighbors.map((parcel, idx)=>renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx===0, onToggle: toggleComparableCard }))}
                 </div>
@@ -5190,18 +6366,22 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               </div>}
               {(displayNeighborResult?.neighbors?.length || 0)>0 && broadenedSearchRan && showBroadenedResults && broadenedComparables.length>0 && <div className="print-hide" style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)",marginBottom:6}}>Broadened search results</div>
-                <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence.</div>
-                <div style={{display:"grid",gap:14,padding:"4px 2px"}}>
+                <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:8}}>These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence.</div>
+                <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.18)",borderRadius:8,padding:"9px 10px",fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Ordered by <b style={{color:"var(--blue3)"}}>best grievance support first</b>, then overall comparable quality, then broadened area, distance, and FMV closeness.</div>
+                <div style={{display:"grid",gap:28,padding:"8px 2px"}}>
                   {broadenedComparables.map((parcel, idx)=>{
                     const expanded = !!expandedBroadenedIds[parcel.parcelId];
                     const distanceLabel = formatComparableMiles(parcel._broadenDistanceMiles);
                     const isIncluded = isParcelIncludedInGrievance(parcel);
-                    const broadenedAccentColor = isIncluded ? "rgba(22,163,74,.82)" : parcel._grievanceRelevance.kind==="does_not_support" ? "rgba(220,38,38,.30)" : "rgba(148,163,184,.42)";
-                    return <div key={"broadened-" + parcel.parcelId} style={{background:isIncluded?"linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)":"rgba(255,255,255,.88)",border:isIncluded?"1px solid rgba(22,163,74,.24)":"1px solid var(--border)",borderLeft:`6px solid ${broadenedAccentColor}`,borderRadius:12,overflow:"hidden",boxShadow:isIncluded?"0 16px 34px rgba(22,163,74,.08)":"0 12px 28px rgba(15,23,42,.05)"}}>
+                    const broadenedAccentColor = grievanceRelevanceAccentColor(parcel?._grievanceRelevance?.kind || "neutral");
+                    return <div key={"broadened-" + parcel.parcelId} style={{background:isIncluded?"linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)":"rgba(255,255,255,.88)",borderTop:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderRight:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderBottom:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderLeft:`6px solid ${broadenedAccentColor}`,borderRadius:12,overflow:"hidden",boxShadow:isIncluded?"0 16px 34px rgba(22,163,74,.08)":"0 12px 28px rgba(15,23,42,.05)"}}>
                       <button onClick={()=>toggleBroadenedComp(parcel.parcelId)} style={{width:"100%",background:"transparent",border:"none",color:"inherit",padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left"}}>
                         <div style={{display:"grid",gap:6,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-                            <span style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:"var(--gray2)",minWidth:12}}>{expanded ? "v" : ">"}</span>
+                            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(15,23,42,.05)",border:"1px solid rgba(148,163,184,.24)",color:"var(--gray2)",borderRadius:999,padding:"6px 10px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
+                              <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:999,background:expanded ? "rgba(37,99,235,.12)" : "rgba(148,163,184,.16)",color:expanded ? "var(--blue3)" : "var(--gray2)",fontFamily:"var(--fm)",fontSize:13,lineHeight:1}}>{expanded ? "-" : "+"}</span>
+                              <span>{expanded ? "Hide details" : "Show details"}</span>
+                            </span>
                             <span style={{fontSize:11,fontWeight:700,color:"var(--gray)",overflowWrap:"anywhere",wordBreak:"break-word"}}>{`Comp ${idx + 1} | ${parcel.address || parcel.parcelId} | ${parcelNeighborhoodName(parcel) || "Neighborhood unknown"} | Assessed ${$f(parcel.assessedValue)} (${formatSignedComparableMoney(parcel._compDelta?.assessed)}) | ${parcel._grievanceRelevance.badge}`}</span>
                           </div>
                           <div style={{fontSize:11,color:"var(--gray2)",paddingLeft:20}}>{parcel._broadenTierLabel} | {distanceLabel}</div>
@@ -5259,14 +6439,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><div style={{fontSize:12,fontWeight:800,color:"var(--green2)"}}>RP-524 filing helper</div><InlineInfoIcon text={TERM_HELP.rp524} tone="var(--green2)" small /></div>
-                    <span style={{background:grievanceHelper.supportingCompCount>0?"rgba(21,128,61,.14)":"rgba(245,158,11,.16)",border:`1px solid ${grievanceHelper.supportingCompCount>0?"rgba(21,128,61,.26)":"rgba(245,158,11,.28)"}`,color:grievanceHelper.supportingCompCount>0?"var(--green2)":"var(--amber2)",borderRadius:999,padding:"5px 10px",fontSize:10,fontWeight:700}}>{grievanceHelper.supportingCompCount>0 ? `${grievanceHelper.supportingCompCount} ${customGrievanceSelectionActive ? "selected" : "supporting"} comps` : "0 supporting comps - grievance may be difficult to support"}</span>
+                    <span style={{background:grievanceHelper.supportingCompCount>0?"rgba(21,128,61,.14)":"rgba(245,158,11,.16)",border:`1px solid ${grievanceHelper.supportingCompCount>0?"rgba(21,128,61,.26)":"rgba(245,158,11,.28)"}`,color:grievanceHelper.supportingCompCount>0?"var(--green2)":"var(--amber2)",borderRadius:999,padding:"5px 10px",fontSize:10,fontWeight:700}}>{grievanceHelper.supportingCompCount>0 ? `${grievanceHelper.supportingCompCount} ${customGrievanceSelectionActive ? "selected" : "supporting"} comps` : `0 ${customGrievanceSelectionActive ? "selected" : "supporting"} comps - grievance may be difficult to support`}</span>
                   </div>
                 </div>
                 <div style={{background:"rgba(245,158,11,.16)",border:"1px solid rgba(245,158,11,.30)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
                   <div style={{fontSize:11,fontWeight:800,color:"var(--amber2)",marginBottom:4}}>Filing Deadline: Grievance Day - 4th Tuesday of May</div>
                   <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{grievanceHelper.grievanceDayDeadline}</div>{grievanceHelper.grievanceDayWarning&&<div style={{fontSize:10,color:"var(--amber2)",lineHeight:1.55,marginTop:6}}>{grievanceHelper.grievanceDayWarning}</div>}
                 </div>
-                <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,maxWidth:920,marginBottom:10}}>{customGrievanceSelectionActive ? "This grievance helper is now using your custom comp selection. The filing helper, narrative, suggested value, and table below all update live from the comps you included." : "Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and only the lower-assessed comparable evidence below. Higher-assessed comps stay visible later for research, but they are excluded from the grievance package automatically."}</div>
+                <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,maxWidth:920,marginBottom:10}}>{customGrievanceSelectionActive ? "This grievance helper is now using your custom comp selection. The filing helper, narrative, suggested value, and table below all update live from the comps you included." : "Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and the default grievance package below. That package keeps only comps that clear the support, quality, and confidence checks. Extra visible comps remain available for research or manual inclusion."}</div>
                 <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,maxWidth:920,marginBottom:10}}><TermWithHelp termKey="armLengthSale" tone="var(--gray2)">Arm's-length sales</TermWithHelp> are highlighted in this grievance workflow because they are stronger market evidence.</div>
                 <div className="print-hide" style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
                   <a href={grievanceHelperLinks.rp524FormUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.14)",border:"1px solid rgba(21,128,61,.26)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open RP-524 form</a>
@@ -5280,10 +6460,17 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   <div className="print-hide" style={{marginTop:10}}>
                     <button onClick={()=>copyNarrative(grievanceHelper.narrative)} style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>{copiedNarrative?"Copied!":"Copy Narrative"}</button>
                   </div>
-                </div> : <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.55,marginBottom:12}}>{customGrievanceSelectionActive ? "No narrative is generated yet because your current grievance selection does not contain any included comps." : "No narrative is generated yet because the current physical match set does not contain a lower-assessed comp that supports your grievance."}</div>}
+                </div> : <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.55,marginBottom:12}}>{customGrievanceSelectionActive ? "No narrative is generated yet because your current grievance selection does not contain any included comps." : "No narrative is generated yet because no visible comp currently clears the grievance-package thresholds."}</div>}
                 <div className="cols-2" style={{display:"grid",gap:12}}>
                   <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px"}}>
                     <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Data this app can fill for you</div>
+                    <div style={{background:"rgba(21,128,61,.08)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",marginBottom:10,display:"grid",gap:5}}>
+                      <div style={{fontSize:10,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6}}>Which RP-524 reason should you select?</div>
+                      <div style={{fontSize:12,fontWeight:800,color:"var(--gray2)"}}>{grievanceHelper.complaintReasonGuidance.selectionLabel}</div>
+                      <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{grievanceHelper.complaintReasonGuidance.why}</div>
+                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{grievanceHelper.complaintReasonGuidance.unlawfulNotSupportedNote}</div>
+                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{grievanceHelper.complaintReasonGuidance.misclassificationNotSupportedNote}</div>
+                    </div>
                     <div style={{display:"grid",gap:6}}>
                       {grievanceHelper.checklist.map((item, idx)=><div key={item.label + idx} style={{display:"grid",gap:2}}>
                         <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,alignItems:"flex-start"}}><span style={{color:"var(--gray)"}}>{item.label}</span><span style={{fontWeight:700,textAlign:"right",maxWidth:"62%",overflowWrap:"anywhere",wordBreak:"break-word"}}>{item.action==="open_estimator" ? <button className="print-hide" onClick={openSavingsEstimator} style={{background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.22)",color:"var(--blue3)",borderRadius:999,padding:"6px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Open Savings Estimator</button> : item.value}</span></div>

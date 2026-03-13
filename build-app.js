@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const childProcess = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const esbuild = require("./__build_perf/node_modules/esbuild");
@@ -53,6 +54,7 @@ esbuild.buildSync({
 
 const bundleVersion = crypto.createHash("sha256").update(fs.readFileSync(outfile)).digest("hex").slice(0, 12);
 for (const htmlFile of htmlFiles) rewriteHtmlBundleReference(htmlFile, bundleVersion);
+childProcess.execFileSync(process.execPath, [path.join(root, "stage-pages.js")], { stdio: "inherit" });
 
 console.log("Built " + path.relative(root, outfile) + " from " + path.relative(root, sourceFile));
 console.log("Updated HTML bundle version to " + bundleVersion);

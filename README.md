@@ -45,6 +45,7 @@ The current app auto-loads these local files when they are present in the repo r
 ## Important files
 
 - `albany-full-dashboard.jsx` - main React source
+- `COMPARABLE_PROPERTY_SELECTION.md` - code-level explanation of how comparable properties are selected and filtered for grievance use
 - `bundle.js` - compiled browser bundle
 - `index.html` - app entry point
 - `albany-dashboard.html` - alternate app entry point
