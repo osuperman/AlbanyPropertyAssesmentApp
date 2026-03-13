@@ -60,6 +60,11 @@ const GS = () => (
     .metric-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
     .cols-2{grid-template-columns:1fr 1fr}
     .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .workflow-shell{display:grid;grid-template-columns:minmax(180px,220px) minmax(0,1fr);gap:20px;align-items:start}
+    .workflow-rail{min-width:0;align-self:stretch}
+    .workflow-rail-sticky{position:sticky;top:18px}
+    .workflow-main{min-width:0}
+    .workflow-step-anchor{scroll-margin-top:104px}
     @media (max-width: 1100px){
       .leaflet-layout,.panel-split{grid-template-columns:1fr}
     }
@@ -72,6 +77,8 @@ const GS = () => (
       .tab-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .tab-chip{width:100%;white-space:normal;min-height:44px}
       .hero-title{font-size:30px}
+      .workflow-shell{grid-template-columns:1fr}
+      .workflow-rail{display:none}
     }
     @media (max-width: 760px){
       .cols-2,.cols-3{grid-template-columns:1fr}
@@ -93,6 +100,135 @@ const GS = () => (
     }
   `}</style>
 );
+
+const GRIEVANCE_WORKFLOW_STEPS = [
+  { id: "step-1-find-property", label: "Find Property", stepNumber: 1 },
+  { id: "step-2-appeal-summary", label: "Appeal Summary", stepNumber: 2 },
+  { id: "step-3-review-evidence", label: "Evidence", stepNumber: 3 },
+  { id: "step-4-build-grievance", label: "Build Packet", stepNumber: 4 },
+  { id: "step-5-print-packet", label: "Print Packet", stepNumber: 5 },
+  { id: "step-6-file", label: "File", stepNumber: 6 },
+];
+const GRIEVANCE_WORKFLOW_SCROLL_OFFSET = 104;
+const GRIEVANCE_WORKFLOW_MOBILE_BREAKPOINT = 980;
+
+const StickyStepNavigator = ({
+  steps,
+  activeStepId,
+  availableStepIds,
+  onSelectStep,
+  isMobile = false,
+  mobileOpen = false,
+  onToggleMobile = () => {},
+}) => {
+  const activeStep = steps.find(step => step.id === activeStepId) || steps[0] || null;
+  const totalSteps = steps.length;
+  const renderStepButton = (step, compact = false) => {
+    const isActive = step.id === activeStepId;
+    const isAvailable = availableStepIds instanceof Set ? availableStepIds.has(step.id) : true;
+    return (
+      <button
+        key={step.id}
+        type="button"
+        onClick={() => { if(isAvailable) onSelectStep(step.id); }}
+        disabled={!isAvailable}
+        aria-current={isActive ? "step" : undefined}
+        aria-disabled={!isAvailable || undefined}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          display: "grid",
+          gridTemplateColumns: compact ? "auto 1fr" : "auto 1fr auto",
+          gap: 10,
+          alignItems: "center",
+          background: isActive ? "rgba(37,99,235,.10)" : "rgba(255,255,255,.88)",
+          border: `1px solid ${isActive ? "rgba(37,99,235,.22)" : "rgba(148,163,184,.20)"}`,
+          borderLeft: `4px solid ${isActive ? "var(--blue3)" : "rgba(148,163,184,.28)"}`,
+          borderRadius: 12,
+          padding: compact ? "11px 12px" : "10px 12px",
+          color: isActive ? "var(--blue3)" : "var(--gray)",
+          cursor: isAvailable ? "pointer" : "not-allowed",
+          opacity: isAvailable ? 1 : 0.48,
+          fontWeight: isActive ? 800 : 700,
+          boxShadow: "none",
+          transition: "none",
+        }}
+      >
+        <span style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 26,
+          height: 26,
+          borderRadius: 999,
+          background: isActive ? "rgba(37,99,235,.14)" : "rgba(148,163,184,.14)",
+          color: isActive ? "var(--blue3)" : "var(--gray2)",
+          fontFamily: "var(--fm)",
+          fontSize: 12,
+          fontWeight: 800,
+          flexShrink: 0,
+        }}>{step.stepNumber}</span>
+        <span style={{display:"grid",gap:2,minWidth:0}}>
+          <span style={{fontSize:12,lineHeight:1.25}}>{`${step.stepNumber}. ${step.label}`}</span>
+        </span>
+        {!compact && <span aria-hidden="true" style={{
+          width: 8,
+          height: 8,
+          borderRadius: 999,
+          background: isActive ? "var(--blue3)" : "rgba(148,163,184,.45)",
+          justifySelf: "end",
+        }} />}
+      </button>
+    );
+  };
+
+  if(isMobile){
+    return (
+      <div className="print-hide">
+        {mobileOpen && <button
+          type="button"
+          aria-label="Close step list"
+          onClick={() => onToggleMobile(false)}
+          style={{position:"fixed",inset:0,zIndex:59,background:"rgba(15,23,42,.20)",border:"none",padding:0,cursor:"pointer"}}
+        />}
+        {mobileOpen && <div style={{position:"fixed",left:12,right:12,bottom:78,zIndex:60,background:"rgba(255,255,255,.98)",border:"1px solid rgba(148,163,184,.24)",borderRadius:16,padding:"12px 12px 10px",boxShadow:"0 18px 36px rgba(15,23,42,.18)",display:"grid",gap:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+            <div style={{display:"grid",gap:2}}>
+              <div style={{fontSize:10,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7}}>{activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`}</div>
+              <div style={{fontSize:13,fontWeight:800,color:"var(--gray)"}}>{activeStep?.label || "Workflow steps"}</div>
+            </div>
+            <button type="button" onClick={() => onToggleMobile(false)} style={{background:"rgba(148,163,184,.12)",border:"1px solid rgba(148,163,184,.22)",color:"var(--gray2)",borderRadius:999,padding:"7px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Close</button>
+          </div>
+          <div style={{display:"grid",gap:8}}>
+            {steps.map(step => renderStepButton(step, true))}
+          </div>
+        </div>}
+        <div style={{position:"fixed",left:12,right:12,bottom:12,zIndex:58,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,background:"rgba(255,255,255,.96)",border:"1px solid rgba(148,163,184,.22)",borderRadius:999,padding:"10px 12px",boxShadow:"0 14px 28px rgba(15,23,42,.12)"}}>
+          <div style={{display:"grid",gap:2,minWidth:0}}>
+            <div style={{fontSize:10,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7}}>{activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`}</div>
+            <div style={{fontSize:12,fontWeight:800,color:"var(--gray)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeStep?.label || "Workflow steps"}</div>
+          </div>
+          <button type="button" onClick={() => onToggleMobile(!mobileOpen)} aria-expanded={mobileOpen} aria-haspopup="dialog" style={{background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.20)",color:"var(--blue3)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:800,cursor:"pointer",flexShrink:0}}>{mobileOpen ? "Hide steps" : "Show steps"}</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <nav className="workflow-rail-sticky print-hide" aria-label="Grievance workflow steps">
+      <div style={{background:"rgba(255,255,255,.78)",border:"1px solid rgba(148,163,184,.20)",borderRadius:16,padding:"14px 14px 12px",display:"grid",gap:12,boxShadow:"0 12px 28px rgba(15,23,42,.06)"}}>
+        <div style={{display:"grid",gap:3}}>
+          <div style={{fontSize:10,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.8}}>{activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`}</div>
+          <div style={{fontSize:14,fontWeight:800,color:"var(--gray)"}}>{activeStep?.label || "Workflow steps"}</div>
+          <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.5}}>Jump to any major step in the grievance workflow.</div>
+        </div>
+        <div style={{display:"grid",gap:8}}>
+          {steps.map(step => renderStepButton(step, false))}
+        </div>
+      </div>
+    </nav>
+  );
+};
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ INFO BOX ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â contextual description blocks used throughout ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
 const InfoBox = ({icon="Info", title, children, color="#3b82f6"}) => (
@@ -2680,7 +2816,7 @@ const buildCaseNormalizedMetricSupport = (selectedComps=[]) => {
           ? "negative"
           : "mixed";
   const detail = label==="supportive"
-    ? "Normalized metrics consistently support the grievance."
+    ? "Normalized metrics support the selected grievance comps."
     : label==="mixed_supportive"
       ? "Normalized metrics are mixed, but they lean supportive."
       : label==="negative"
@@ -2812,7 +2948,10 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
     scoreReasons.push("No selected comps currently produce a positive grievance-support score.");
   }
   scoreReasons.push(`Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`);
-  scoreReasons.push(normalizedMetricModel.detail);
+  const normalizedMetricReason = normalizedMetricModel.label==="supportive" && moderateOrBetterSelected.length < 3 && weakensVisible.length > 0
+    ? "The selected comp's normalized metrics support the grievance, but the overall case is still limited by thin support and opposing visible comps."
+    : normalizedMetricModel.detail;
+  scoreReasons.push(normalizedMetricReason);
   if(neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
   if(weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length===1?" weakens":"s weaken"} the case.`);
   const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
@@ -5297,6 +5436,9 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   const [expandedBroadenedIds,setExpandedBroadenedIds]=useState({});
   const [grievanceCompOverrides,setGrievanceCompOverrides]=useState({});
   const [compareScrollTick,setCompareScrollTick]=useState(0);
+  const [activeWorkflowStepId,setActiveWorkflowStepId]=useState(GRIEVANCE_WORKFLOW_STEPS[0].id);
+  const [workflowNavMobileOpen,setWorkflowNavMobileOpen]=useState(false);
+  const [isWorkflowNavMobile,setIsWorkflowNavMobile]=useState(()=>typeof window!=="undefined" ? window.innerWidth<=GRIEVANCE_WORKFLOW_MOBILE_BREAKPOINT : false);
   const requestedSnapshotRef = useRef(parseComparableSnapshotSearch(typeof window!=="undefined" ? window.location.search : ""));
   const hydratedSnapshotRef = useRef(false);
   const compareResultRef = useRef(null);
@@ -5537,6 +5679,27 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     });
   }, [appealReadiness, effectiveNeighborResult, neighborhoodBenchmark, salesByParcelId]);
   const grievanceWorkflowChecklistItems = useMemo(() => TAX_APPEAL_NEXT_STEPS.map((label, idx) => ({ key: `next-step-${idx}`, label })), []);
+  const availableWorkflowStepIds = useMemo(() => {
+    const ids = new Set([GRIEVANCE_WORKFLOW_STEPS[0].id]);
+    if(appealSummary && appealReadiness) ids.add("step-2-appeal-summary");
+    if(appealEvidence) ids.add("step-3-review-evidence");
+    if(effectiveNeighborResult?.p){
+      ids.add("step-4-build-grievance");
+      ids.add("step-5-print-packet");
+      ids.add("step-6-file");
+    }
+    return ids;
+  }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult]);
+  const scrollToWorkflowStep = useCallback((stepId) => {
+    if(typeof window==="undefined") return;
+    const node = document.getElementById(stepId);
+    if(!node) return;
+    setActiveWorkflowStepId(stepId);
+    setWorkflowNavMobileOpen(false);
+    const rect = node.getBoundingClientRect();
+    const top = window.scrollY + rect.top - GRIEVANCE_WORKFLOW_SCROLL_OFFSET;
+    window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
+  }, []);
   const openPrintableReport = useCallback((includeContextComps=false) => {
     if(!effectiveNeighborResult?.p) return;
     const subject = effectiveNeighborResult.p;
@@ -5659,6 +5822,70 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
       else clearTimeout(id);
     };
   }, [compareScrollTick, neighborResult]);
+
+  useEffect(()=>{
+    if(typeof window==="undefined") return;
+    const media = window.matchMedia(`(max-width: ${GRIEVANCE_WORKFLOW_MOBILE_BREAKPOINT}px)`);
+    const sync = (event)=>setIsWorkflowNavMobile(!!event.matches);
+    sync(media);
+    if(typeof media.addEventListener==="function") media.addEventListener("change", sync);
+    else if(typeof media.addListener==="function") media.addListener(sync);
+    return ()=>{
+      if(typeof media.removeEventListener==="function") media.removeEventListener("change", sync);
+      else if(typeof media.removeListener==="function") media.removeListener(sync);
+    };
+  }, []);
+
+  useEffect(()=>{
+    if(!isWorkflowNavMobile) setWorkflowNavMobileOpen(false);
+  }, [isWorkflowNavMobile]);
+
+  useEffect(()=>{
+    if(view!=="neighbor"){
+      setWorkflowNavMobileOpen(false);
+      setActiveWorkflowStepId(GRIEVANCE_WORKFLOW_STEPS[0].id);
+    }
+  }, [view]);
+
+  useEffect(()=>{
+    if(view!=="neighbor" || typeof window==="undefined") return;
+    let ticking = false;
+    const updateActiveStep = () => {
+      ticking = false;
+      const availableSteps = GRIEVANCE_WORKFLOW_STEPS.filter(step => availableWorkflowStepIds.has(step.id));
+      if(!availableSteps.length){
+        setActiveWorkflowStepId(GRIEVANCE_WORKFLOW_STEPS[0].id);
+        return;
+      }
+      const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 56;
+      let nextId = availableSteps[0].id;
+      if(nearBottom){
+        nextId = availableSteps[availableSteps.length - 1].id;
+      }else{
+        for(const step of availableSteps){
+          const node = document.getElementById(step.id);
+          if(!node) continue;
+          const rect = node.getBoundingClientRect();
+          if(rect.top <= GRIEVANCE_WORKFLOW_SCROLL_OFFSET + 28) nextId = step.id;
+          else break;
+        }
+      }
+      setActiveWorkflowStepId(prev => prev===nextId ? prev : nextId);
+    };
+    const requestUpdate = () => {
+      if(ticking) return;
+      ticking = true;
+      if(typeof window.requestAnimationFrame==="function") window.requestAnimationFrame(updateActiveStep);
+      else setTimeout(updateActiveStep, 0);
+    };
+    updateActiveStep();
+    window.addEventListener("scroll", requestUpdate, { passive: true });
+    window.addEventListener("resize", requestUpdate);
+    return ()=>{
+      window.removeEventListener("scroll", requestUpdate);
+      window.removeEventListener("resize", requestUpdate);
+    };
+  }, [availableWorkflowStepIds, effectiveNeighborResult, view]);
 
   useEffect(()=>{
     if(!checklistStorageKey || typeof window==="undefined"){
@@ -5882,12 +6109,24 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
           <div style={{fontSize:10,color:"var(--gray3)",marginTop:10}}>Document URLs are managed in <b style={{color:"var(--gray2)"}}>grievance-settings.json</b>.</div>
         </InfoBox>
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 1 - Find your property</div><div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:6}}>Enter Your Address to Compare</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12}}>Search by address or parcel ID to start the tax appeal assistant workflow for a specific property.</div>
-          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setCopiedNarrative(false);setPrintMessage("");setBroadenedComparables([]);setBroadenedSearchRan(false);setBroadenedSearchTier(0);setShowBroadenedResults(false);setShowNeighborhoodSales(false);setSubjectCardExpanded(true);setExpandedComparableIds({});setExpandedBroadenedIds({});}}} label="Load My Home"/>
-          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-            <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
-            <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Compare</button>
-          </div>
+          <div className="workflow-shell">
+            <div className="workflow-rail">
+              <StickyStepNavigator
+                steps={GRIEVANCE_WORKFLOW_STEPS}
+                activeStepId={activeWorkflowStepId}
+                availableStepIds={availableWorkflowStepIds}
+                onSelectStep={scrollToWorkflowStep}
+              />
+            </div>
+            <div className="workflow-main" style={{paddingBottom:isWorkflowNavMobile ? 92 : 0}}>
+              <section id="step-1-find-property" className="workflow-step-anchor" data-workflow-step-id="step-1-find-property" style={{marginBottom:14}}>
+                <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 1 - Find your property</div><div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:6}}>Enter Your Address to Compare</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12}}>Search by address or parcel ID to start the tax appeal assistant workflow for a specific property.</div>
+                <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setCopiedNarrative(false);setPrintMessage("");setBroadenedComparables([]);setBroadenedSearchRan(false);setBroadenedSearchTier(0);setShowBroadenedResults(false);setShowNeighborhoodSales(false);setSubjectCardExpanded(true);setExpandedComparableIds({});setExpandedBroadenedIds({});}}} label="Load My Home"/>
+                <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                  <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
+                  <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Compare</button>
+                </div>
+              </section>
           {neighborResult&&(()=>{
             const subject = effectiveNeighborResult.p;
             const subjectProfile = effectiveNeighborResult.subjectProfile || buildComparableProfile(subject);
@@ -5956,7 +6195,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 display: "grid",
                 gap: 14,
                 minWidth: 0,
-                boxShadow: isIncludedInGrievance ? "0 16px 34px rgba(22,163,74,.08)" : "0 12px 28px rgba(15,23,42,.05)",
+                boxShadow: isIncludedInGrievance ? "0 8px 18px rgba(22,163,74,.06)" : "0 6px 16px rgba(15,23,42,.04)",
               };
               const containerStyle = {
                 ...baseComparableCardStyle,
@@ -6117,8 +6356,9 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               </div>;
             };
             return <>
-              <div ref={compareResultRef} className="fi">
-              {appealSummary&&appealReadiness&&<WorkflowStepCard step="Step 2 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
+              <div ref={compareResultRef} className="fi" style={{display:"grid",gap:14}}>
+              {appealSummary&&appealReadiness&&<div id="step-2-appeal-summary" className="workflow-step-anchor" data-workflow-step-id="step-2-appeal-summary">
+                <WorkflowStepCard step="Step 2 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
                 <div style={{display:"grid",gap:12}}>
                   <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
@@ -6162,9 +6402,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </div>
                   </div>
                 </div>
-              </WorkflowStepCard>}
+                </WorkflowStepCard>
+              </div>}
 
-              {appealEvidence&&<WorkflowStepCard step="Step 3 - Review evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
+              {appealEvidence&&<div id="step-3-review-evidence" className="workflow-step-anchor" data-workflow-step-id="step-3-review-evidence">
+                <WorkflowStepCard step="Step 3 - Review evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:12}}>
                   <div style={{background:"rgba(22,163,74,.08)",border:"1px solid rgba(22,163,74,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                     <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Evidence that supports your grievance</div>
@@ -6200,11 +6442,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     {appealEvidence.assessorPushback.map((item, idx)=><div key={`pushback-${idx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>- {item}</div>)}
                   </div>
                 </div>
-              </WorkflowStepCard>}
+                </WorkflowStepCard>
+              </div>}
 
-              <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 4 - Build your grievance</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Packet actions and selected comparable evidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use the packet tools, selected comps, narrative, and side-by-side table to assemble the <TermWithHelp termKey="grievancePackage" tone="var(--gray2)">grievance package</TermWithHelp> materials you may use when filing. These packet actions appear here and again at the end of the workflow.</div>
-              {renderPacketActions({ title: "Shareable comparable snapshot", description: "Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.", note: "You will see these same print and download actions again at the bottom of the page." })}
-              {(compareSnapshotMessage || printMessage)&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12,display:"grid",gap:6}}>{compareSnapshotMessage&&<div>{compareSnapshotMessage}</div>}{printMessage&&<div>{printMessage}</div>}</div>}
+              <section id="step-4-build-grievance" className="workflow-step-anchor" data-workflow-step-id="step-4-build-grievance">
+              <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 4 - Build your grievance</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Selected comparable evidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use selected comps, narrative context, and side-by-side table evidence to build the <TermWithHelp termKey="grievancePackage" tone="var(--gray2)">grievance package</TermWithHelp> you may use when filing.</div>
 
               <div className="cols-2" style={{display:"grid",gap:14,marginBottom:14}}>
                 <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px",minWidth:0,display:"grid",gap:12}}>
@@ -6293,11 +6535,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginTop:8}}>Albany style codes use historic assessment terminology. The style name (for example, "Mansion" or "Colonial") refers to architectural classification, not property size or value.</div>
                 <div style={{display:"grid",gap:6,marginTop:10}}>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>How the app chooses comparables</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>1. The visible list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>2. The default grievance package is narrower: a comp must also clear a data-confidence check and earn a positive grievance-support score from normalized value metrics.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>1. The full list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>2. A narrower set is then suggested for the grievance. A comp must also clear a data-confidence check and earn a positive grievance-support score from normalized value metrics.</div>
                   <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>3. Lower assessed value alone does not qualify a comp. The app also looks at equity ratio and assessed value per square foot so the comparison is fairer.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>4. When enough evidence exists, the default package usually keeps 3 to 5 homes. Multiple strong comps from the same neighborhood may now stay together as corroborating evidence, although the package can still fill up before every strong comp is included.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>5. The card's Default package note explains why a visible comp was included or left out under the package rules. You can still override that package with the Include in grievance checkbox on any comp.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>4. When enough evidence exists, that suggested grievance set usually keeps 3 to 5 homes. Multiple strong comps from the same neighborhood may now stay together as corroborating evidence, although the set can still fill up before every strong comp is included.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>5. Each card's Default package note explains why a home was suggested or not suggested for the grievance. You can still override that suggestion with the Include in grievance checkbox on any comp.</div>
                 </div>
                 <div style={{display:"grid",gap:6,marginTop:10,padding:"10px 12px",background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:8}}>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--blue3)"}}>Example: lower assessed value, but still not strong evidence</div>
@@ -6348,7 +6590,6 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               ) : (
                 <div style={{fontSize:12,color:"var(--gray2)",textAlign:"center",padding:20}}>No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set.</div>
               )}
-              </div>
               {(displayNeighborResult?.neighbors?.length || 0)>0&&<div className="print-hide" style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px",marginTop:12,marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
                   <div>
@@ -6374,7 +6615,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     const distanceLabel = formatComparableMiles(parcel._broadenDistanceMiles);
                     const isIncluded = isParcelIncludedInGrievance(parcel);
                     const broadenedAccentColor = grievanceRelevanceAccentColor(parcel?._grievanceRelevance?.kind || "neutral");
-                    return <div key={"broadened-" + parcel.parcelId} style={{background:isIncluded?"linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)":"rgba(255,255,255,.88)",borderTop:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderRight:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderBottom:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderLeft:`6px solid ${broadenedAccentColor}`,borderRadius:12,overflow:"hidden",boxShadow:isIncluded?"0 16px 34px rgba(22,163,74,.08)":"0 12px 28px rgba(15,23,42,.05)"}}>
+                    return <div key={"broadened-" + parcel.parcelId} style={{background:isIncluded?"linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)":"rgba(255,255,255,.88)",borderTop:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderRight:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderBottom:`1px solid ${isIncluded?"rgba(22,163,74,.24)":"var(--border)"}`,borderLeft:`6px solid ${broadenedAccentColor}`,borderRadius:12,overflow:"hidden",boxShadow:isIncluded?"0 8px 18px rgba(22,163,74,.06)":"0 6px 16px rgba(15,23,42,.04)"}}>
                       <button onClick={()=>toggleBroadenedComp(parcel.parcelId)} style={{width:"100%",background:"transparent",border:"none",color:"inherit",padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left"}}>
                         <div style={{display:"grid",gap:6,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
@@ -6435,7 +6676,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   </div> : <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>No recent arm's-length neighborhood sales were found in the last 3 years.</div>}
                 </div>}
               </div>}
-              <div style={{fontSize:10,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 5 - File</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>RP-524 guidance and next steps</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use this section to gather the form details the app can provide, track what you still need to do, and prepare to file before Grievance Day.</div><div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+              </section>
+              <section id="step-5-print-packet" className="workflow-step-anchor" data-workflow-step-id="step-5-print-packet">
+              <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 5 - Print packet</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Share, download, and print your packet</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use these actions to share this comparable set, download your packet, or print it for filing and review.</div>
+              {renderPacketActions({ title: "Shareable comparable snapshot", description: "Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.", note: "These print and download actions are grouped here as their own workflow step." })}
+              {(compareSnapshotMessage || printMessage)&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12,display:"grid",gap:6}}>{compareSnapshotMessage&&<div>{compareSnapshotMessage}</div>}{printMessage&&<div>{printMessage}</div>}</div>}
+              </section>
+              <section id="step-6-file" className="workflow-step-anchor" data-workflow-step-id="step-6-file">
+              <div style={{fontSize:10,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 6 - File</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>RP-524 guidance and next steps</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use this section to gather the form details the app can provide, track what you still need to do, and prepare to file before Grievance Day.</div><div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><div style={{fontSize:12,fontWeight:800,color:"var(--green2)"}}>RP-524 filing helper</div><InlineInfoIcon text={TERM_HELP.rp524} tone="var(--green2)" small /></div>
@@ -6507,13 +6755,25 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     })}
                   </div>
                 </div>
-                {renderPacketActions({ title: "Final packet actions", description: "You reached the end of the grievance workflow. Use these actions to print or download the materials you just reviewed.", note: "Print and download actions are repeated here so you do not need to scroll back up.", marginBottom: 0 })}
+              </div>
+              </section>
               </div>
 
 
             </>;
           })()}
           {neighborAddr&&!neighborResult&&<div style={{fontSize:12,color:"var(--gray2)",marginTop:8}}>No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".</div>}
+            </div>
+          </div>
+          {isWorkflowNavMobile && <StickyStepNavigator
+            steps={GRIEVANCE_WORKFLOW_STEPS}
+            activeStepId={activeWorkflowStepId}
+            availableStepIds={availableWorkflowStepIds}
+            onSelectStep={scrollToWorkflowStep}
+            isMobile
+            mobileOpen={workflowNavMobileOpen}
+            onToggleMobile={setWorkflowNavMobileOpen}
+          />}
         </Card>
       </div>}
 
