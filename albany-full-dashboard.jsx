@@ -6361,7 +6361,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 <WorkflowStepCard step="Step 2 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
                 <div style={{display:"grid",gap:12}}>
                   <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+                    <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Recommendation</div><div style={{fontSize:20,fontWeight:800,color:recommendationTheme?.color || "var(--gray2)"}}>{appealSummary.recommendation}</div></div>
                       <div>
                         <div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Case strength</div>
@@ -6381,7 +6381,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote}</div>
                       <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote}</div>
                     </div>
-                    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.4fr) minmax(260px,.9fr)",gap:12}}>
+                    <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "minmax(0,1.4fr) minmax(260px,.9fr)",gap:12}}>
                       <div style={{background:"rgba(255,255,255,.68)",border:"1px solid rgba(255,255,255,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                           <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Case assessment score</div>
