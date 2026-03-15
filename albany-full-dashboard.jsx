@@ -102,12 +102,14 @@ const GS = () => (
 );
 
 const GRIEVANCE_WORKFLOW_STEPS = [
-  { id: "step-1-find-property", label: "Find Property", stepNumber: 1 },
-  { id: "step-2-appeal-summary", label: "Appeal Summary", stepNumber: 2 },
-  { id: "step-3-review-evidence", label: "Evidence", stepNumber: 3 },
-  { id: "step-4-build-grievance", label: "Build Packet", stepNumber: 4 },
-  { id: "step-5-print-packet", label: "Print Packet", stepNumber: 5 },
-  { id: "step-6-file", label: "File", stepNumber: 6 },
+  { id: "step-1-how-to-read", label: "How to Read", stepNumber: 1 },
+  { id: "step-2-terminology", label: "Terminology", stepNumber: 2 },
+  { id: "step-3-find-property", label: "Find Property", stepNumber: 3 },
+  { id: "step-4-appeal-summary", label: "Appeal Summary", stepNumber: 4 },
+  { id: "step-5-review-evidence", label: "Evidence", stepNumber: 5 },
+  { id: "step-6-build-grievance", label: "Build Packet", stepNumber: 6 },
+  { id: "step-7-print-packet", label: "Print Packet", stepNumber: 7 },
+  { id: "step-8-file", label: "File", stepNumber: 8 },
 ];
 const GRIEVANCE_WORKFLOW_SCROLL_OFFSET = 104;
 const GRIEVANCE_WORKFLOW_MOBILE_BREAKPOINT = 980;
@@ -449,8 +451,8 @@ const SALE_CONDITION_LABELS = {
   cond_signif_pers: "Significant personal property",
   cond_uniformed_party: "Uniformed services party",
 };
-const ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal open-market sale between unrelated buyers and sellers. This kind of sale is called an 'arm's-length' sale and this tool does use it when judging your market value.";
-const NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER = "Some past transfers on this home were gifts or family moves, not normal market sales. These are called 'non-arm's-length' transfers, so this tool shows them for history but does not treat their prices as market value.";
+const ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal open-market sale between unrelated buyers and sellers. This kind of sale is called an 'arm's-length' sale. The tool uses arm's-length sales to anchor market-value checks, compare assessed value against real sale prices, and add or reduce support in the grievance summary.";
+const NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER = "Some past transfers on this home were gifts or family moves, not normal market sales. These are called 'non-arm's-length' transfers. The tool keeps them in history, but it does not use those transfer prices as market-value evidence in the grievance scoring.";
 const ARM_LENGTH_DEFINITION = "Arm's-length means a normal open-market sale between unrelated buyers and sellers.";
 const SALES_DATA_SOURCE_NOTE = "Sales data source: Office of Real Property Tax Services (ORPTS) Municipal Data Portal.";
 const MATCHED_HOME_DETAILS_INFO = 'See "Why this home was included" for details.';
@@ -1687,13 +1689,6 @@ const StreetViewPreview = ({address, zip, neighborhood, streetViewLatLng=null, s
       <div style={{fontSize:11,lineHeight:1.5}}>
         {metadataState==="loading" ? "Loading property photo..." : "Street View image unavailable for this property."}
       </div>
-      {canOpenModal && metadataState!=="loading" && <button
-        type="button"
-        onClick={e=>{ if(stopPropagation) e.stopPropagation(); setStreetViewOpen(true); }}
-        style={{justifySelf:"center",background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.22)",color:"var(--blue3)",borderRadius:999,padding:"7px 11px",fontSize:10,fontWeight:700,cursor:"pointer"}}
-      >
-        Open Street View
-      </button>}
     </div>
   </div>;
   return <>
@@ -1714,55 +1709,38 @@ const StreetViewPreview = ({address, zip, neighborhood, streetViewLatLng=null, s
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
           />
-          <div style={{position:"absolute",left:10,bottom:10,display:"inline-flex",alignItems:"center",gap:6,background:"rgba(15,23,42,.72)",color:"#fff",borderRadius:999,padding:"6px 10px",fontSize:10,fontWeight:700}}>
-            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:999,background:"rgba(255,255,255,.16)",fontFamily:"var(--fm)",fontSize:12}}>+</span>
-            Open Street View
-          </div>
         </div> : placeholder}
       </button>
-      <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.45}}>Static Street View preview. Click to open the full Street View panel.</div>
+      <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.45}}>Static Street View preview from Google Maps.</div>
     </div>
     <StreetViewModal open={streetViewOpen} onClose={()=>setStreetViewOpen(false)} address={address} zip={zip} neighborhood={neighborhood} streetViewSrc={streetViewSrc} />
   </>;
 };
-const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, children, stopPropagation=true, style={}, showStreetView=false, streetViewLatLng=null}) => {
+const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, children, stopPropagation=true, style={}}) => {
   const label = children ?? address ?? "(no address)";
-  const [streetViewOpen, setStreetViewOpen] = useState(false);
-  const streetViewSrc = useMemo(() => showStreetView ? googleStreetViewEmbedSrc(address, zip, neighborhood, streetViewLatLng) : "", [address, neighborhood, showStreetView, streetViewLatLng, zip]);
   if(!address) return <>{label}</>;
   return (
-    <>
-      <span style={{display:"inline-flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
-        <a
-          href={googleMapsHref(address, zip, neighborhood)}
-          target="_blank"
-          rel="noreferrer"
-          onClick={e=>{ if(stopPropagation) e.stopPropagation(); }}
-          title={`Open ${address}${neighborhood?` (${neighborhood})`:""}${zip?` ${zip}`:""} in Google Maps`}
-          style={{color:"inherit",textDecoration:"underline",textDecorationColor:"rgba(59,130,246,.55)",textUnderlineOffset:2,...style}}
-        >
-          {label}
-          {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` | ${neighborhood}`}</span>}
-        </a>
-        <button
-          type="button"
-          onClick={e=>{ if(stopPropagation) e.stopPropagation(); dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel }); }}
-          title={`Open ${address} in Application Map`}
-          style={{background:"transparent",border:"none",padding:0,color:"var(--teal2)",fontSize:"0.85em",fontWeight:700,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}
-        >
-          Application Map
-        </button>
-        {showStreetView && streetViewSrc && <button
-          type="button"
-          onClick={e=>{ if(stopPropagation) e.stopPropagation(); setStreetViewOpen(true); }}
-          title={`Open Street View for ${address}`}
-          style={{background:"transparent",border:"none",padding:0,color:"var(--orange2)",fontSize:"0.85em",fontWeight:700,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}
-        >
-          {streetViewSettings.buttonLabel}
-        </button>}
-      </span>
-      <StreetViewModal open={streetViewOpen} onClose={()=>setStreetViewOpen(false)} address={address} zip={zip} neighborhood={neighborhood} streetViewSrc={streetViewSrc} />
-    </>
+    <span style={{display:"inline-flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+      <a
+        href={googleMapsHref(address, zip, neighborhood)}
+        target="_blank"
+        rel="noreferrer"
+        onClick={e=>{ if(stopPropagation) e.stopPropagation(); }}
+        title={`Open ${address}${neighborhood?` (${neighborhood})`:""}${zip?` ${zip}`:""} in Google Maps`}
+        style={{color:"inherit",textDecoration:"underline",textDecorationColor:"rgba(59,130,246,.55)",textUnderlineOffset:2,...style}}
+      >
+        {label}
+        {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` | ${neighborhood}`}</span>}
+      </a>
+      <button
+        type="button"
+        onClick={e=>{ if(stopPropagation) e.stopPropagation(); dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel }); }}
+        title={`Open ${address} in Application Map`}
+        style={{background:"transparent",border:"none",padding:0,color:"var(--teal2)",fontSize:"0.85em",fontWeight:700,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}
+      >
+        Application Map
+      </button>
+    </span>
   );
 };
 const PROP_CLASSIFICATION_MAP = (propertyTypeClassificationCodes || []).reduce((acc, row) => {
@@ -5681,12 +5659,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   const grievanceWorkflowChecklistItems = useMemo(() => TAX_APPEAL_NEXT_STEPS.map((label, idx) => ({ key: `next-step-${idx}`, label })), []);
   const availableWorkflowStepIds = useMemo(() => {
     const ids = new Set([GRIEVANCE_WORKFLOW_STEPS[0].id]);
-    if(appealSummary && appealReadiness) ids.add("step-2-appeal-summary");
-    if(appealEvidence) ids.add("step-3-review-evidence");
+    ids.add("step-2-terminology");
+    ids.add("step-3-find-property");
+    if(appealSummary && appealReadiness) ids.add("step-4-appeal-summary");
+    if(appealEvidence) ids.add("step-5-review-evidence");
     if(effectiveNeighborResult?.p){
-      ids.add("step-4-build-grievance");
-      ids.add("step-5-print-packet");
-      ids.add("step-6-file");
+      ids.add("step-6-build-grievance");
+      ids.add("step-7-print-packet");
+      ids.add("step-8-file");
     }
     return ids;
   }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult]);
@@ -5943,7 +5923,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     <div style={{background:"rgba(255,255,255,.03)",border:`1px solid ${accent}`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:10}}>
         <div>
-          <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>{step}</div>
+          <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>{step}</div>
           <div style={{fontSize:15,fontWeight:800,color:"var(--gray)"}}>{title}</div>
           {subtitle&&<div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginTop:5,maxWidth:960}}>{subtitle}</div>}
         </div>
@@ -6119,8 +6099,46 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               />
             </div>
             <div className="workflow-main" style={{paddingBottom:isWorkflowNavMobile ? 92 : 0}}>
-              <section id="step-1-find-property" className="workflow-step-anchor" data-workflow-step-id="step-1-find-property" style={{marginBottom:14}}>
-                <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 1 - Find your property</div><div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:6}}>Enter Your Address to Compare</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12}}>Search by address or parcel ID to start the tax appeal assistant workflow for a specific property.</div>
+              <section id="step-1-how-to-read" className="workflow-step-anchor" data-workflow-step-id="step-1-how-to-read" style={{marginBottom:14}}>
+                <WorkflowStepCard step="Step 1 - How to read these numbers" title="How to read the comparison numbers" subtitle="This step explains how the app evaluates fairness so you can interpret comp results correctly.">
+                  <div style={{display:"grid",gap:8}}>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>
+                      <TermWithHelp termKey="comparableHome" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Comparable homes</b></TermWithHelp> are the strongest matches for your parcel's class, location, and home details. Each comp card shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> so you can see similarity and fairness together.
+                    </div>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>
+                      <TermWithHelp termKey="equityRatio" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Equity %</b></TermWithHelp> = <TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed value</TermWithHelp> / <TermWithHelp termKey="fmv" tone="var(--gray2)">FMV</TermWithHelp> x 100. Lower assessed value alone is not enough. The app also checks equity ratio and assessed value per sq ft so the comparison is apples-to-apples.
+                    </div>
+                    <div style={{display:"grid",gap:6,marginTop:2,padding:"10px 12px",background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:8}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--blue3)"}}>Example: lower assessed value, but still not strong evidence</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Just because a comp has a lower assessed value than your home does not mean the assessor was more generous with it. What matters is how the assessed value compares to the home&apos;s full market value. That ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same.</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp&apos;s assessed value might be lower simply because it is a smaller or lower-value home overall, not because it got a better deal from the assessor.</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>For a comp to be strong grievance evidence, you want to see that it was assessed at a <i>lower proportion</i> of its market value than your home, meaning the assessor undervalued it relative to what it is actually worth, compared to how they valued yours.</div>
+                    </div>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Albany style codes use historic assessment terminology. Style labels (for example, "Mansion" or "Colonial") describe architecture, not home size or value.</div>
+                    {equityUniformityNotice&&<div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--amber2)"}}>Equity % warning</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{equityUniformityNotice.detail}</div>
+                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>Average {equityUniformityNotice.average}% | Standard deviation {equityUniformityNotice.stdDev}%</div>
+                    </div>}
+                  </div>
+                </WorkflowStepCard>
+              </section>
+              <section id="step-2-terminology" className="workflow-step-anchor" data-workflow-step-id="step-2-terminology" style={{marginBottom:14}}>
+                <WorkflowStepCard step="Step 2 - Terminology" title="Key terms used in this app" subtitle="These are the exact terms used across the grievance workflow and comp cards.">
+                  <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(2,minmax(0,1fr))",gap:10}}>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="fmv" tone="var(--gray2)">FMV (Fair Market Value)</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Estimated market value of the property.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed Value</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Taxable value used by the assessor.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="equityRatio" tone="var(--gray2)">Equity Ratio Percentage</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Assessed value divided by FMV, expressed as a percent.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="rp524" tone="var(--gray2)">RP-524</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>New York assessment grievance form.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Neighborhood Fairness</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Comparison against neighborhood medians/percentiles to see if your parcel is unusually high.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Normalized Metrics</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Fairness checks that adjust for size/value differences, especially equity ratio and assessed value per sq ft.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="armLengthSale" tone="var(--gray2)">Arm's-length sale</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A normal market sale between unrelated parties. The tool uses these sales as stronger FMV evidence.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Non-arm's-length transfer</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A transfer such as family/gift/related-party deal. The tool shows it in history but does not treat its price as reliable market value evidence.</div></div>
+                  </div>
+                </WorkflowStepCard>
+              </section>
+              <section id="step-3-find-property" className="workflow-step-anchor" data-workflow-step-id="step-3-find-property" style={{marginBottom:14}}>
+                <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 3 - Find your property</div><div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:6}}>Enter Your Address to Compare</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12}}>Search by address or parcel ID to start the tax appeal assistant workflow for a specific property.</div>
                 <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setCopiedNarrative(false);setPrintMessage("");setBroadenedComparables([]);setBroadenedSearchRan(false);setBroadenedSearchTier(0);setShowBroadenedResults(false);setShowNeighborhoodSales(false);setSubjectCardExpanded(true);setExpandedComparableIds({});setExpandedBroadenedIds({});}}} label="Load My Home"/>
                 <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
                   <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
@@ -6134,7 +6152,6 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               (effectiveNeighborResult.grievanceCandidates||[]).map((parcel, idx)=>({kind:"comp", parcel, label:"Comp " + (idx+1)}))
             );
             const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId, neighborhoodBenchmark);
-            const grievanceStrength = buildGrievanceStrengthAssessment(subject, effectiveNeighborResult, grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0);
             const subjectSaleBadge = buildSaleHeaderBadge(subject, salesByParcelId);
             const recommendationTheme = appealSummary ? appealRecommendationTheme(appealSummary.recommendedAction) : null;
             const renderPacketActions = ({title, description, note="", marginBottom=12}={}) => <div className="print-hide" style={{background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:10,padding:"12px 14px",marginBottom}}>
@@ -6357,8 +6374,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
             };
             return <>
               <div ref={compareResultRef} className="fi" style={{display:"grid",gap:14}}>
-              {appealSummary&&appealReadiness&&<div id="step-2-appeal-summary" className="workflow-step-anchor" data-workflow-step-id="step-2-appeal-summary">
-                <WorkflowStepCard step="Step 2 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
+              {appealSummary&&appealReadiness&&<div id="step-4-appeal-summary" className="workflow-step-anchor" data-workflow-step-id="step-4-appeal-summary">
+                <WorkflowStepCard step="Step 4 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
                 <div style={{display:"grid",gap:12}}>
                   <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
                     <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
@@ -6405,8 +6422,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </WorkflowStepCard>
               </div>}
 
-              {appealEvidence&&<div id="step-3-review-evidence" className="workflow-step-anchor" data-workflow-step-id="step-3-review-evidence">
-                <WorkflowStepCard step="Step 3 - Review evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
+              {appealEvidence&&<div id="step-5-review-evidence" className="workflow-step-anchor" data-workflow-step-id="step-5-review-evidence">
+                <WorkflowStepCard step="Step 5 - Review evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:12}}>
                   <div style={{background:"rgba(22,163,74,.08)",border:"1px solid rgba(22,163,74,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                     <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Evidence that supports your grievance</div>
@@ -6445,8 +6462,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </WorkflowStepCard>
               </div>}
 
-              <section id="step-4-build-grievance" className="workflow-step-anchor" data-workflow-step-id="step-4-build-grievance">
-              <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 4 - Build your grievance</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Selected comparable evidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use selected comps, narrative context, and side-by-side table evidence to build the <TermWithHelp termKey="grievancePackage" tone="var(--gray2)">grievance package</TermWithHelp> you may use when filing.</div>
+              <section id="step-6-build-grievance" className="workflow-step-anchor" data-workflow-step-id="step-6-build-grievance">
+              <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 6 - Build your grievance</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Selected comparable evidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use selected comps, narrative context, and side-by-side table evidence to build the <TermWithHelp termKey="grievancePackage" tone="var(--gray2)">grievance package</TermWithHelp> you may use when filing.</div>
 
               <div className="cols-2" style={{display:"grid",gap:14,marginBottom:14}}>
                 <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px",minWidth:0,display:"grid",gap:12}}>
@@ -6517,43 +6534,12 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </div>
               </div>
 
-              <div style={{background:"rgba(59,130,246,.07)",border:"1px solid rgba(59,130,246,.18)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:700,color:grievanceStrength.color,marginBottom:6}}>Grievance strength: {grievanceStrength.label}</div>
-                <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>{grievanceStrength.detail}</div>
-              </div>
-
-              <div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:600,color:"var(--gray2)",marginBottom:6}}>How To Read These Numbers</div>
-                <div style={{fontSize:11,color:"var(--gray3)",lineHeight:1.65}}>
-                  <TermWithHelp termKey="comparableHome" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Comparable homes</b></TermWithHelp> are the strongest matches in the current dataset for your parcel's residential class and home details. Each card shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> together so you can judge both similarity and assessment fairness. <TermWithHelp termKey="equityRatio" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Equity %</b></TermWithHelp> = <TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed value</TermWithHelp> / <TermWithHelp termKey="fmv" tone="var(--gray2)">FMV</TermWithHelp> x 100.
-                </div>
-                {equityUniformityNotice&&<div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,padding:"10px 12px",marginTop:8,display:"grid",gap:5}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--amber2)"}}>Equity % warning</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{equityUniformityNotice.detail}</div>
-                  <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>Average {equityUniformityNotice.average}% | Standard deviation {equityUniformityNotice.stdDev}%</div>
-                </div>}
-                <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginTop:8}}>Albany style codes use historic assessment terminology. The style name (for example, "Mansion" or "Colonial") refers to architectural classification, not property size or value.</div>
-                <div style={{display:"grid",gap:6,marginTop:10}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>How the app chooses comparables</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>1. The full list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>2. A narrower set is then suggested for the grievance. A comp must also clear a data-confidence check and earn a positive grievance-support score from normalized value metrics.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>3. Lower assessed value alone does not qualify a comp. The app also looks at equity ratio and assessed value per square foot so the comparison is fairer.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>4. When enough evidence exists, that suggested grievance set usually keeps 3 to 5 homes. Multiple strong comps from the same neighborhood may now stay together as corroborating evidence, although the set can still fill up before every strong comp is included.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>5. Each card's Default package note explains why a home was suggested or not suggested for the grievance. You can still override that suggestion with the Include in grievance checkbox on any comp.</div>
-                </div>
-                <div style={{display:"grid",gap:6,marginTop:10,padding:"10px 12px",background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:8}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--blue3)"}}>Example: lower assessed value, but still not strong evidence</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>A comp can be assessed lower than your home and still end up as only weak support if its equity ratio and assessed value per sq ft are about the same as yours. If its full market value is also lower, that usually means it is simply a lower-value or smaller home overall, not clear proof that the assessor treated it more favorably.</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>A lower assessed value does not automatically mean better grievance evidence if the comp is also proportionally lower in full market value or size.</div>
-                </div>
-              </div>
-
-              {effectiveNeighborResult.grievanceCandidates.length>0&&<>
-                <div style={{background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+              {effectiveNeighborResult.grievanceCandidates.length>0&&<div style={{background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,padding:"12px 14px",marginBottom:14,display:"grid",gap:10}}>
+                <div>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--purple)",marginBottom:5}}>Side-by-Side Grievance Table</div>
                   <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Subject parcel plus the comps currently included in the grievance package. This table updates live when you include or remove comps.</div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:14}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
                   {grievanceComparisons.map(entry=>{
                     const parcel = entry.parcel;
                     const isSubject = entry.kind==="subject";
@@ -6581,10 +6567,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </div>;
                   })}
                 </div>
-              </>}
+              </div>}
               {(displayNeighborResult?.neighbors?.length || 0)>0 ? (
                 <div style={{display:"grid",gap:32,padding:"8px 2px"}}>
-                  <div style={{fontSize:11,color:"var(--gray2)",marginBottom:2}} title="These parcels drive the comparable-home summary above.">Best Comparable Parcels ({displayNeighborResult?.neighbors?.length || 0} comps)</div>
+                  <div style={{display:"grid",gap:4}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--gray2)"}}>Detailed comparables</div>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}} title="These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package.">Best Comparable Parcels ({displayNeighborResult?.neighbors?.length || 0} comps)</div>
+                  </div>
                   {displayNeighborResult.neighbors.map((parcel, idx)=>renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx===0, onToggle: toggleComparableCard }))}
                 </div>
               ) : (
@@ -6677,13 +6666,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </div>}
               </div>}
               </section>
-              <section id="step-5-print-packet" className="workflow-step-anchor" data-workflow-step-id="step-5-print-packet">
-              <div style={{fontSize:10,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 5 - Print packet</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Share, download, and print your packet</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use these actions to share this comparable set, download your packet, or print it for filing and review.</div>
+              <section id="step-7-print-packet" className="workflow-step-anchor" data-workflow-step-id="step-7-print-packet">
+              <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 7 - Print packet</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Share, download, and print your packet</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use these actions to share this comparable set, download your packet, or print it for filing and review.</div>
               {renderPacketActions({ title: "Shareable comparable snapshot", description: "Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.", note: "These print and download actions are grouped here as their own workflow step." })}
               {(compareSnapshotMessage || printMessage)&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12,display:"grid",gap:6}}>{compareSnapshotMessage&&<div>{compareSnapshotMessage}</div>}{printMessage&&<div>{printMessage}</div>}</div>}
               </section>
-              <section id="step-6-file" className="workflow-step-anchor" data-workflow-step-id="step-6-file">
-              <div style={{fontSize:10,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 6 - File</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>RP-524 guidance and next steps</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use this section to gather the form details the app can provide, track what you still need to do, and prepare to file before Grievance Day.</div><div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+              <section id="step-8-file" className="workflow-step-anchor" data-workflow-step-id="step-8-file">
+              <div style={{fontSize:12,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 8 - File</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>RP-524 guidance and next steps</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use this section to gather the form details the app can provide, track what you still need to do, and prepare to file before Grievance Day.</div><div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><div style={{fontSize:12,fontWeight:800,color:"var(--green2)"}}>RP-524 filing helper</div><InlineInfoIcon text={TERM_HELP.rp524} tone="var(--green2)" small /></div>
