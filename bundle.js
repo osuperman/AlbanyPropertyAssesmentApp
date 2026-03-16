@@ -27720,6 +27720,1545 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }
   });
 
+  // grievance-engine.js
+  var require_grievance_engine = __commonJS({
+    "grievance-engine.js"(exports, module) {
+      "use strict";
+      function clampNumber2(value, min3, max3) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return min3;
+        return Math.min(max3, Math.max(min3, num));
+      }
+      function roundNumber(value, digits = 1) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return null;
+        const factor = 10 ** digits;
+        return Math.round(num * factor) / factor;
+      }
+      function asNumber(value) {
+        if (value == null) return null;
+        if (typeof value === "string" && value.trim() === "") return null;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+      }
+      function safeDivide(numerator, denominator) {
+        const a2 = Number(numerator);
+        const b = Number(denominator);
+        if (!Number.isFinite(a2) || !Number.isFinite(b) || b <= 0) return null;
+        return a2 / b;
+      }
+      function comparePctDelta2(a2, b) {
+        if (!(Number.isFinite(a2) && a2 > 0 && Number.isFinite(b) && b > 0)) return null;
+        return Math.abs(a2 - b) / Math.max(a2, b);
+      }
+      function meanValue(values) {
+        const nums = (Array.isArray(values) ? values : []).map(asNumber).filter(Number.isFinite);
+        if (!nums.length) return null;
+        return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+      }
+      function formatWholeDollar(value) {
+        const num = asNumber(value);
+        if (!Number.isFinite(num)) return "-";
+        return `$${Math.round(num).toLocaleString("en-US")}`;
+      }
+      function medianValue2(values) {
+        const nums = (Array.isArray(values) ? values : []).map(asNumber).filter(Number.isFinite).sort((a2, b) => a2 - b);
+        if (!nums.length) return null;
+        const mid = Math.floor(nums.length / 2);
+        if (nums.length % 2) return nums[mid];
+        return (nums[mid - 1] + nums[mid]) / 2;
+      }
+      function percentileRankValue2(subjectValue, values) {
+        const nums = (Array.isArray(values) ? values : []).map(asNumber).filter(Number.isFinite).sort((a2, b) => a2 - b);
+        const subjectNum = asNumber(subjectValue);
+        if (!nums.length || !Number.isFinite(subjectNum)) return null;
+        const count = nums.filter((value) => value <= subjectNum).length;
+        return count / nums.length * 100;
+      }
+      function normalizeParcelId2(raw) {
+        return (raw || "").toString().trim().replace(/[\u2010-\u2015\u2212]/g, "-").replace(/\s+/g, "").replace(/^(?:sbl|pin|printkey)[:\s-]*/i, "");
+      }
+      function normalizeStreetKeyForCompare2(raw) {
+        if (!raw) return "";
+        const DIR = { n: "n", north: "n", s: "s", south: "s", e: "e", east: "e", w: "w", west: "w", ne: "ne", northeast: "ne", nw: "nw", northwest: "nw", se: "se", southeast: "se", sw: "sw", southwest: "sw" };
+        const SUF = { street: "st", st: "st", avenue: "ave", ave: "ave", road: "rd", rd: "rd", boulevard: "blvd", blvd: "blvd", drive: "dr", dr: "dr", lane: "ln", ln: "ln", court: "ct", ct: "ct", terrace: "ter", ter: "ter", place: "pl", pl: "pl", circle: "cir", cir: "cir", way: "way", highway: "hwy", hwy: "hwy", parkway: "pkwy", pkwy: "pkwy" };
+        const STOP = /* @__PURE__ */ new Set(["apt", "apartment", "unit", "ste", "suite", "fl", "floor", "rm", "room"]);
+        const ROLL_NOISE = /* @__PURE__ */ new Set(["frnt", "dpth", "taxable", "value", "county", "city", "school"]);
+        const tokens = raw.toString().toLowerCase().replace(/[\r\n,]+/g, " ").replace(/[^\w\s#-]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+        const isNumTok = (token) => /^\d+[a-z]?$/i.test(token);
+        const scoreCandidate = (startIdx) => {
+          for (let j = startIdx + 1; j < Math.min(tokens.length, startIdx + 7); j += 1) {
+            const token = tokens[j];
+            if (/^\d{5}(?:-\d{4})?$/.test(token) || token === "ny") break;
+            if (SUF[token]) {
+              const middle = tokens.slice(startIdx + 1, j);
+              const alphaCount = middle.filter((x2) => /[a-z]/.test(x2) && !DIR[x2] && !SUF[x2]).length;
+              const numNoise = middle.filter((x2) => /^\d+$/.test(x2) || isNumTok(x2)).length;
+              if (alphaCount < 1) return null;
+              return { score: numNoise * 10 + (j - startIdx), j };
+            }
+          }
+          return null;
+        };
+        let startIndex = -1;
+        let best = null;
+        for (let i = 0; i < tokens.length; i += 1) {
+          if (!isNumTok(tokens[i])) continue;
+          const candidate = scoreCandidate(i);
+          if (!candidate) continue;
+          if (!best || candidate.score < best.score || candidate.score === best.score && i > startIndex) {
+            best = candidate;
+            startIndex = i;
+          }
+        }
+        if (startIndex < 0) startIndex = tokens.findIndex(isNumTok);
+        const output = [];
+        let started = startIndex >= 0;
+        for (let i = started ? startIndex : 0; i < tokens.length; i += 1) {
+          let token = tokens[i];
+          if (!started) {
+            if (isNumTok(token)) {
+              started = true;
+              output.push(token.replace(/^0+(?=\d)/, ""));
+            }
+            continue;
+          }
+          if (/^\d{5}(?:-\d{4})?$/.test(token) || token === "ny") break;
+          if (token === "albany" && output.length >= 2) break;
+          if (token === "new" && tokens[i + 1] === "york") break;
+          if (/^east-?\d+$/i.test(token) || /^nrth-?\d+$/i.test(token) || ROLL_NOISE.has(token)) break;
+          if (token.startsWith("#") || STOP.has(token)) break;
+          token = DIR[token] || SUF[token] || token;
+          output.push(token);
+          if (output.length >= 5) break;
+        }
+        return output.join(" ");
+      }
+      function streetNameKeyForComp2(address) {
+        const normalized = normalizeStreetKeyForCompare2(address || "");
+        if (!normalized) return "";
+        const parts = normalized.split(" ").filter(Boolean);
+        return parts.length > 1 && /^\d+[a-z]?$/i.test(parts[0]) ? parts.slice(1).join(" ") : parts.join(" ");
+      }
+      function isResidentialPropClass2(code) {
+        return /^2\d\d$/.test((code || "").toString().trim());
+      }
+      var STYLE_FAMILY_KEYWORDS2 = [
+        { family: "old_style", match: /(old style|mansion|victorian|row|town house|townhouse)/i },
+        { family: "colonial", match: /colonial/i },
+        { family: "cape", match: /cape/i },
+        { family: "ranch", match: /(raised ranch|ranch)/i },
+        { family: "bungalow", match: /(bungalow|cottage)/i },
+        { family: "split_level", match: /(split level|split-level|split)/i },
+        { family: "contemporary", match: /(contemporary|a-frame|log home|log)/i },
+        { family: "two_family_converted", match: /(duplex|converted)/i }
+      ];
+      function normalizeStyleFamily2(rawStyle) {
+        const normalized = (rawStyle || "").toString().trim();
+        if (!normalized) return "unknown";
+        const match = STYLE_FAMILY_KEYWORDS2.find((entry) => entry.match.test(normalized));
+        return match ? match.family : "unknown";
+      }
+      var RESIDENTIAL_CLASS_CLOSE_PAIRS2 = /* @__PURE__ */ new Set([
+        "210|215",
+        "215|210",
+        "220|221",
+        "221|220",
+        "230|231",
+        "231|230",
+        "240|241",
+        "241|240"
+      ]);
+      function residentialUnitCountForClass2(code, desc = "") {
+        const raw = `${code || ""} ${desc || ""}`.trim();
+        const familyMatch = raw.match(/(\d)\s*family/i);
+        if (familyMatch) return Number(familyMatch[1]);
+        const codeKey = String(code || "").trim();
+        if (codeKey === "210" || codeKey === "215") return 1;
+        if (codeKey === "220" || codeKey === "221") return 2;
+        if (codeKey === "230" || codeKey === "231") return 3;
+        if (codeKey === "240" || codeKey === "241") return 4;
+        return null;
+      }
+      function residentialFamilyForClass2(code, desc = "") {
+        const unitCount = residentialUnitCountForClass2(code, desc);
+        if (unitCount === 1) return "single_family";
+        if (unitCount === 2) return "two_family";
+        if (unitCount === 3) return "three_family";
+        if (unitCount === 4) return "four_family";
+        if (isResidentialPropClass2(code)) return "residential";
+        return "non_residential";
+      }
+      function classCompatibilityTier2(subject, comp, { allowBroadClass = false } = {}) {
+        const subjectCode = String(subject?.propClass || "").trim();
+        const compCode = String(comp?.propClass || "").trim();
+        if (!subjectCode || !compCode) return { tier: "tier_3_incompatible", score: 0, label: "Class unavailable" };
+        if (subjectCode === compCode) return { tier: "tier_0_exact", score: 18, label: "Exact class match" };
+        if (!isResidentialPropClass2(subjectCode) || !isResidentialPropClass2(compCode)) return { tier: "tier_3_incompatible", score: 0, label: "Incompatible class" };
+        if (RESIDENTIAL_CLASS_CLOSE_PAIRS2.has(`${subjectCode}|${compCode}`)) {
+          return { tier: "tier_1_close", score: 11, label: "Close residential class match" };
+        }
+        const subjectUnits = residentialUnitCountForClass2(subjectCode, subject?.propClassDesc || "");
+        const compUnits = residentialUnitCountForClass2(compCode, comp?.propClassDesc || "");
+        if (subjectUnits != null && compUnits != null && subjectUnits === compUnits) {
+          return { tier: "tier_1_close", score: 11, label: "Close residential class match" };
+        }
+        if (allowBroadClass && residentialFamilyForClass2(subjectCode, subject?.propClassDesc || "") === residentialFamilyForClass2(compCode, comp?.propClassDesc || "")) {
+          return { tier: "tier_2_broad", score: 4, label: "Broad residential class match" };
+        }
+        return { tier: "tier_3_incompatible", score: 0, label: "Incompatible class" };
+      }
+      function parseSalesDate2(value) {
+        if (!value) return null;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      function isArmLengthSale2(sale) {
+        return (sale?.arms_length_flag || "").toString().trim().toUpperCase() === "Y";
+      }
+      function getParcelSales2(parcel, salesByParcelId) {
+        const key = normalizeParcelId2(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+        return key && salesByParcelId instanceof Map ? salesByParcelId.get(key) || [] : [];
+      }
+      function getMostRecentArmsLengthSale2(parcel, salesByParcelId) {
+        return getParcelSales2(parcel, salesByParcelId).find((sale) => isArmLengthSale2(sale) && Number(sale?.sale_price) > 0) || null;
+      }
+      function isRecentArmsLengthSale2(sale, currentDate, years = 3) {
+        if (!sale || !isArmLengthSale2(sale)) return false;
+        const saleDate = parseSalesDate2(sale?.sale_dte) || parseSalesDate2(sale?.deed_dte);
+        if (!saleDate) return false;
+        const cutoff = new Date(currentDate.getTime());
+        cutoff.setFullYear(cutoff.getFullYear() - years);
+        return saleDate >= cutoff;
+      }
+      function parcelDistanceMiles2(a2, b) {
+        const ax = Number(a2?.eastCoord);
+        const ay = Number(a2?.nrthCoord);
+        const bx = Number(b?.eastCoord);
+        const by = Number(b?.nrthCoord);
+        if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(bx) || !Number.isFinite(by) || ax <= 0 || ay <= 0 || bx <= 0 || by <= 0) return null;
+        return roundNumber(Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2) / 5280, 2);
+      }
+      function parcelNeighborhoodName2(parcel, profile) {
+        return (profile?.neighborhood || parcel?.neighborhood || parcel?.neighborhoodLabel || "").toString().trim();
+      }
+      function comparableLocationContext2(subject, comp, subjectProfile, compProfile) {
+        const distanceMiles = parcelDistanceMiles2(subject, comp);
+        const sameNeighborhood = !!(parcelNeighborhoodName2(subject, subjectProfile) && parcelNeighborhoodName2(subject, subjectProfile) === parcelNeighborhoodName2(comp, compProfile));
+        const sameStreet = !!(subjectProfile?.normalizedStreetName && compProfile?.normalizedStreetName && subjectProfile.normalizedStreetName === compProfile.normalizedStreetName);
+        const sameZip = !!(subjectProfile?.zipCode && compProfile?.zipCode && subjectProfile.zipCode === compProfile.zipCode);
+        return { distanceMiles, sameNeighborhood, sameStreet, sameZip };
+      }
+      function locationSimilarityScore(location = {}) {
+        const { sameNeighborhood = false, sameStreet = false, sameZip = false, distanceMiles = null } = location;
+        if (sameNeighborhood && Number.isFinite(distanceMiles) && distanceMiles <= 0.5) return 22;
+        if (sameNeighborhood && Number.isFinite(distanceMiles) && distanceMiles <= 1) return 20;
+        if (sameNeighborhood) return 18;
+        if (sameStreet) return 17;
+        if (sameZip && Number.isFinite(distanceMiles) && distanceMiles <= 1) return 14;
+        if (sameZip && Number.isFinite(distanceMiles) && distanceMiles <= 2) return 10;
+        if (sameZip && distanceMiles == null) return 10;
+        if (Number.isFinite(distanceMiles) && distanceMiles <= 4) return 5;
+        return 0;
+      }
+      function supportKindForScore(score) {
+        if (score >= 25) return "strong_support";
+        if (score >= 12) return "moderate_support";
+        if (score >= 1) return "weak_support";
+        if (score >= -8) return "neutral";
+        return "weakens_case";
+      }
+      function supportBadgeForKind(kind) {
+        if (kind === "strong_support") return "Strong support";
+        if (kind === "moderate_support") return "Moderate support";
+        if (kind === "weak_support") return "Weak support";
+        if (kind === "weakens_case") return "Weakens case";
+        return "Neutral";
+      }
+      function qualityLabelForScore(score) {
+        if (score >= 80) return "high";
+        if (score >= 60) return "medium";
+        return "low";
+      }
+      function candidateQualityValue(comp) {
+        return asNumber(comp?.qualityScore ?? comp?._comparableQualityScore);
+      }
+      function candidateConfidenceValue(comp) {
+        return asNumber(comp?.confidenceScore ?? comp?._dataConfidenceScore);
+      }
+      function candidateSupportValue(comp) {
+        return asNumber(comp?.grievanceSupport ?? comp?._grievanceSupportScore);
+      }
+      function candidateKindValue(comp) {
+        return comp?.supportLabel || comp?._grievanceSupportLabel || comp?._grievanceRelevance?.kind || supportKindForScore(candidateSupportValue(comp) || 0);
+      }
+      function candidateParcelId(comp) {
+        return normalizeParcelId2(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
+      }
+      function candidateStreetKey(comp) {
+        return comp?.normalizedStreetName || comp?._compProfile?.normalizedStreetName || streetNameKeyForComp2(comp?.address);
+      }
+      function candidateNeighborhood(comp) {
+        return comp?.neighborhood || comp?._compProfile?.neighborhood || parcelNeighborhoodName2(comp, comp?._compProfile);
+      }
+      function candidateDistance(comp) {
+        return asNumber(comp?.distanceMiles ?? comp?._distanceMiles);
+      }
+      function candidateAssessedValue(comp) {
+        return asNumber(comp?.assessedValue);
+      }
+      function candidateLivingArea(comp) {
+        return asNumber(comp?.livingAreaSqft ?? comp?._compProfile?.livingArea);
+      }
+      function candidateYearBuilt(comp) {
+        return asNumber(comp?.yearBuilt ?? comp?._compProfile?.yearBuilt);
+      }
+      function candidateEquityRatio(comp) {
+        const ratio = asNumber(comp?.equityRatio ?? comp?._compProfile?.equityRatio);
+        if (Number.isFinite(ratio)) return ratio;
+        const pct = asNumber(comp?.equityPct ?? comp?._compProfile?.equity);
+        return Number.isFinite(pct) ? pct / 100 : null;
+      }
+      function candidateNormalizedSummary(comp) {
+        return comp?.normalizedMetricsSummary || comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
+      }
+      function buildPackageDecisionRecord(status, reasonCode, candidateKind = "neutral") {
+        const labels = {
+          support_gate: "Does not support grievance",
+          confidence_gate: "Insufficient data confidence",
+          quality_gate: "Insufficient physical similarity",
+          same_street_cap: "Same-street limit reached",
+          dominated_similar: "Superseded by stronger comparable",
+          assessed_outlier: "Assessed value is an outlier",
+          package_limit: "Package size limit reached"
+        };
+        let message = "Not included in the default package under the current rules.";
+        if (reasonCode === "included_strong_corroboration") {
+          message = "Included because another nearby strong comp makes a similar point, and corroborating strong evidence can strengthen an unequal-assessment claim.";
+        } else if (reasonCode === "included_default") {
+          message = candidateKind === "strong_support" ? "Included because it is one of the strongest pieces of grievance evidence in the current package." : "Included because it cleared the package support, quality, and confidence checks.";
+        } else if (reasonCode === "included_replacement") {
+          message = "Included because it out-ranked another comp on the same street.";
+        } else if (reasonCode === "same_street_cap") {
+          message = candidateKind === "strong_support" ? "This comp strongly supports the grievance, but the default package already includes two comps from the same street." : "This comp was left out because the default package already includes two comps from the same street.";
+        } else if (reasonCode === "package_limit") {
+          message = candidateKind === "strong_support" ? "This comp strongly supports the grievance, but the default package already reached its 3 to 5 comp target with other strong evidence." : "This comp was left out because the default package already reached its target size.";
+        } else if (reasonCode === "dominated_similar") {
+          message = "This comp was left out because a nearby comp was as strong or stronger on support, quality, and confidence.";
+        } else if (reasonCode === "assessed_outlier") {
+          message = "This comp was left out because its assessed value looks like a low outlier compared with the rest of the selected package.";
+        } else if (reasonCode === "quality_gate") {
+          message = "This comp was left out because it remained a research-only physical match rather than clearing the stronger physical-similarity gate for default inclusion.";
+        } else if (reasonCode === "confidence_gate") {
+          message = "This comp was left out because the underlying data were not complete enough for default inclusion.";
+        } else if (reasonCode === "support_gate") {
+          message = "This comp was left out because it stayed neutral after normalization instead of showing a favorable equity-ratio or assessed-value-per-square-foot gap.";
+        } else if (reasonCode === "replaced_by_stronger_same_street") {
+          message = "This comp was left out because a stronger comp on the same street replaced it.";
+        }
+        return {
+          status,
+          reasonCode,
+          label: labels[reasonCode] || (status === "included" ? "Included in package" : "Not included"),
+          message
+        };
+      }
+      function buildSelectionIndicatorRecord(comp, decision = null) {
+        const packageDecision = decision || comp?._packageDecision || comp?.packageDecision || null;
+        const reasonCode = packageDecision?.reasonCode || null;
+        const support = candidateSupportValue(comp) || 0;
+        const quality = candidateQualityValue(comp) || 0;
+        const confidence = candidateConfidenceValue(comp) || 0;
+        if (packageDecision?.status === "included") {
+          if (reasonCode === "included_strong_corroboration") {
+            return {
+              code: "corroborating_strong_evidence",
+              label: "Corroborating strong evidence",
+              message: packageDecision.message
+            };
+          }
+          return {
+            code: "included_in_default_package",
+            label: "Included in default package",
+            message: packageDecision?.message || "This home cleared the default package rules."
+          };
+        }
+        if ((reasonCode === "confidence_gate" || confidence < 60) && support > 0) {
+          return {
+            code: "supportive_but_failed_confidence",
+            label: "Supportive but failed confidence",
+            message: "This home pointed in a favorable direction, but the data confidence was below the default-package threshold."
+          };
+        }
+        if ((reasonCode === "quality_gate" || quality < 50) && support > 0) {
+          return {
+            code: "supportive_but_failed_quality",
+            label: "Supportive but failed quality",
+            message: "This home pointed in a favorable direction, but the physical-match score was below the default-package threshold."
+          };
+        }
+        if (support > 0 && [
+          "same_street_cap",
+          "dominated_similar",
+          "assessed_outlier",
+          "package_limit",
+          "replaced_by_stronger_same_street"
+        ].includes(reasonCode)) {
+          return {
+            code: "supportive_but_excluded_by_package_rules",
+            label: "Supportive but excluded by package rules",
+            message: packageDecision?.message || "This home was supportive, but it was excluded by the package assembly rules."
+          };
+        }
+        if (reasonCode === "support_gate" || support <= 0 && quality >= 50 && confidence >= 60) {
+          return {
+            code: "neutral_after_normalization",
+            label: "Neutral after normalization",
+            message: "This home looks physically similar, but its normalized value metrics did not show more favorable treatment than the subject."
+          };
+        }
+        if (quality < 50 || reasonCode === "quality_gate") {
+          return {
+            code: "physical_match_only",
+            label: "Physical match only",
+            message: "This home remains visible as a physical match, but it did not clear the stronger similarity threshold for the default package."
+          };
+        }
+        if (confidence < 60 || reasonCode === "confidence_gate") {
+          return {
+            code: "physical_match_only",
+            label: "Physical match only",
+            message: "This home remains visible as a physical match, but the underlying data were too incomplete for automatic package use."
+          };
+        }
+        return {
+          code: "physical_match_only",
+          label: "Physical match only",
+          message: "This home remains visible for research, but it did not clear the default package rules."
+        };
+      }
+      function computeSelectionOutcomeCounts(visibleComps = [], selectedComps = []) {
+        const counts = {
+          visible: 0,
+          supportive: 0,
+          confidenceGated: 0,
+          qualityGated: 0,
+          packageLimited: 0,
+          neutralAfterNormalization: 0,
+          physicalMatchOnly: 0,
+          selected: (Array.isArray(selectedComps) ? selectedComps : []).filter(Boolean).length
+        };
+        for (const comp of Array.isArray(visibleComps) ? visibleComps : []) {
+          if (!comp) continue;
+          counts.visible += 1;
+          if ((candidateSupportValue(comp) || 0) > 0) counts.supportive += 1;
+          const indicator = buildSelectionIndicatorRecord(comp, comp?._packageDecision || comp?.packageDecision || null);
+          if (indicator.code === "supportive_but_failed_confidence") counts.confidenceGated += 1;
+          else if (indicator.code === "supportive_but_failed_quality") counts.qualityGated += 1;
+          else if (indicator.code === "supportive_but_excluded_by_package_rules") counts.packageLimited += 1;
+          else if (indicator.code === "neutral_after_normalization") counts.neutralAfterNormalization += 1;
+          else if (indicator.code === "physical_match_only") counts.physicalMatchOnly += 1;
+        }
+        return counts;
+      }
+      function visibleEquityVariance(visibleComps = []) {
+        const ratios = (Array.isArray(visibleComps) ? visibleComps : []).map(candidateEquityRatio).filter(Number.isFinite);
+        if (ratios.length < 2) return null;
+        return (Math.max(...ratios) - Math.min(...ratios)) * 100;
+      }
+      function summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel) {
+        const reasons = [];
+        if (overvaluationFlag?.active) reasons.push("the equalization-rate benchmark still points to overvaluation");
+        if (Number.isFinite(asNumber(marketSaleModel?.impliedDifference)) && asNumber(marketSaleModel?.impliedDifference) > 0) {
+          reasons.push("recent arm's-length sales imply a lower market value than the current assessment");
+        }
+        if (Number.isFinite(asNumber(neighborhoodEquityModel?.subjectPercentile)) && asNumber(neighborhoodEquityModel?.subjectPercentile) >= 75) {
+          reasons.push("your neighborhood equity percentile still runs high");
+        }
+        if (!reasons.length) return "";
+        if (reasons.length === 1) return reasons[0];
+        return `${reasons.slice(0, -1).join(", ")}, and ${reasons[reasons.length - 1]}`;
+      }
+      function buildExcessivePivotSentence(visibleComps = [], overvaluationFlag = null, marketSaleModel = null, neighborhoodEquityModel = null) {
+        const variance = visibleEquityVariance(visibleComps);
+        const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        if (!Number.isFinite(variance) || variance >= 1 || !signalSummary) return "";
+        return ` Nearby visible comps also show tightly clustered equity ratios (variance ${variance.toFixed(1)} points), which weakens an unequal-assessment claim. The remaining support leans more toward excessive assessment because ${signalSummary}.`;
+      }
+      function deriveNoPackageReasonCode(selectionOutcomeCounts = null) {
+        const counts = selectionOutcomeCounts || {};
+        if ((counts.visible || 0) <= 0) return "no_physical_matches";
+        const supportiveGateFailures = (counts.confidenceGated || 0) + (counts.qualityGated || 0);
+        if ((counts.supportive || 0) <= 0 && (counts.packageLimited || 0) <= 0) return "neutral_after_normalization";
+        if (supportiveGateFailures > 0 && (counts.neutralAfterNormalization || 0) <= 0 && (counts.packageLimited || 0) <= 0) {
+          return "failed_reliability_thresholds";
+        }
+        return "mixed_research_only";
+      }
+      function buildNoPackageReasonText(reasonCode, visibleComps = [], overvaluationFlag = null, marketSaleModel = null, neighborhoodEquityModel = null) {
+        const excessivePivot = buildExcessivePivotSentence(visibleComps, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        if (reasonCode === "no_physical_matches") {
+          return "No comparable homes were found within the current search parameters, so the app could not build a grievance package.";
+        }
+        if (reasonCode === "neutral_after_normalization") {
+          return `Comparable homes were found, but none showed a favorable normalized assessment difference after comparing equity ratio and assessed value per square foot. These homes remain visible as research comparables, not default grievance evidence.${excessivePivot}`;
+        }
+        if (reasonCode === "failed_reliability_thresholds") {
+          return `Some homes pointed in a favorable direction, but they failed the minimum quality or data-confidence safeguards, so the app did not auto-build a grievance package.${excessivePivot}`;
+        }
+        return `Comparable homes were found, but the visible set was mixed: some stayed neutral after normalization and others fell short on quality, confidence, or package-assembly rules.${excessivePivot}`;
+      }
+      function recentCompSaleEvidence(subject, comp, salesByParcelId, currentDate) {
+        const sale = getMostRecentArmsLengthSale2(comp, salesByParcelId);
+        if (!sale || !isRecentArmsLengthSale2(sale, currentDate, 3)) {
+          return { sale: null, qualifies: false, points: 0, status: "none", reasons: [] };
+        }
+        const points = [];
+        const reasons = [];
+        const salePrice = asNumber(sale?.sale_price);
+        const subjectFmv = asNumber(subject?.fullMarketValue);
+        const compFmv = asNumber(comp?.fullMarketValue);
+        if (Number.isFinite(salePrice) && Number.isFinite(subjectFmv) && salePrice < subjectFmv) {
+          points.push(6);
+          reasons.push("Recent arm's-length sale price is below the subject FMV.");
+        }
+        if (Number.isFinite(salePrice) && Number.isFinite(compFmv) && salePrice > compFmv * 1.05) {
+          points.push(3);
+          reasons.push("Recent arm's-length sale price is above this comp's FMV.");
+        }
+        if (Number.isFinite(salePrice) && Number.isFinite(subjectFmv) && salePrice > subjectFmv) {
+          points.push(-5);
+          reasons.push("Recent arm's-length sale price is above the subject FMV.");
+        }
+        const total = points.reduce((sum, value) => sum + value, 0);
+        return {
+          sale,
+          qualifies: true,
+          points: total,
+          status: total > 0 ? "supports" : total < 0 ? "weakens" : "neutral",
+          reasons
+        };
+      }
+      function computeRiskFlags({ subject, comp, subjectProfile, compProfile, confidenceScore, livingAreaPctDiff, yearBuiltDiff, saleEvidence }) {
+        const flags = [];
+        const compSale = saleEvidence?.sale || null;
+        const compSalePrice = asNumber(compSale?.sale_price);
+        const compFmv = asNumber(comp?.fullMarketValue);
+        if (compSale && Number.isFinite(compSalePrice) && Number.isFinite(compFmv) && compSalePrice > compFmv * 1.05) {
+          flags.push("Recent arm's-length sale above FMV - assessor may argue this comp is correctly under-assessed, not a favorable comp.");
+        }
+        if (Number.isFinite(livingAreaPctDiff) && livingAreaPctDiff > 0.2) {
+          const sqftGap = Math.abs((asNumber(subjectProfile?.livingArea) || 0) - (asNumber(compProfile?.livingArea) || 0));
+          flags.push(`Large size difference (${Math.round(sqftGap)} sq ft) - assessor may apply a size adjustment that reduces the gap.`);
+        }
+        const fullBathDelta = Math.abs((asNumber(subjectProfile?.fullBaths) || 0) - (asNumber(compProfile?.fullBaths) || 0));
+        if (Number.isFinite(fullBathDelta) && fullBathDelta > 1) {
+          flags.push("Significant bath difference - bath adjustments may materially change the comparison.");
+        }
+        if (parcelNeighborhoodName2(subject, subjectProfile) && parcelNeighborhoodName2(comp, compProfile) && parcelNeighborhoodName2(subject, subjectProfile) !== parcelNeighborhoodName2(comp, compProfile)) {
+          flags.push("Different neighborhood - assessor may challenge whether this property is truly comparable.");
+        }
+        if (Number.isFinite(confidenceScore) && confidenceScore < 70) {
+          flags.push(`Lower data confidence (${Math.round(confidenceScore)}) - assessor may challenge the underlying data.`);
+        }
+        if (Number.isFinite(yearBuiltDiff) && yearBuiltDiff > 30) {
+          flags.push(`Age gap of ${Math.round(yearBuiltDiff)} years - assessor may argue the homes compete in different market tiers.`);
+        }
+        return flags;
+      }
+      function analyzeComparableCandidate({
+        subject,
+        comp,
+        subjectProfile,
+        compProfile,
+        salesByParcelId = null,
+        allowBroadClass = false,
+        cityStrictGeoMode = true,
+        currentDate = /* @__PURE__ */ new Date(),
+        sharedSnapshotMode = false
+      }) {
+        const subjectId = candidateParcelId(subject);
+        const compId = candidateParcelId(comp);
+        if (!subject || !comp || !subjectId || !compId || subjectId === compId) return null;
+        if (!isResidentialPropClass2(subject?.propClass)) return null;
+        const classCompatibility = classCompatibilityTier2(subject, comp, { allowBroadClass });
+        if (classCompatibility.tier === "tier_3_incompatible") return null;
+        const compAssessedRaw = asNumber(comp?.assessedValue);
+        const compFmvRaw = asNumber(comp?.fullMarketValue);
+        const subjectAssessedRaw = asNumber(subject?.assessedValue);
+        const subjectFmvRaw = asNumber(subject?.fullMarketValue);
+        if (!Number.isFinite(compAssessedRaw) && !Number.isFinite(compFmvRaw)) return null;
+        const location = comparableLocationContext2(subject, comp, subjectProfile, compProfile);
+        const maxDistanceMiles = cityStrictGeoMode ? 2 : 4;
+        if (Number.isFinite(location.distanceMiles) && location.distanceMiles > maxDistanceMiles) return null;
+        const subjectSqft = asNumber(subjectProfile?.livingArea);
+        const compSqft = asNumber(compProfile?.livingArea);
+        const livingAreaPctDiff = Number.isFinite(subjectSqft) && subjectSqft > 0 && Number.isFinite(compSqft) ? Math.abs(compSqft - subjectSqft) / subjectSqft : null;
+        if (livingAreaPctDiff != null && livingAreaPctDiff > 0.45) return null;
+        const subjectYear = asNumber(subjectProfile?.yearBuilt);
+        const compYear = asNumber(compProfile?.yearBuilt);
+        const yearBuiltDiff = Number.isFinite(subjectYear) && Number.isFinite(compYear) ? Math.abs(compYear - subjectYear) : null;
+        if (yearBuiltDiff != null && yearBuiltDiff > 60) return null;
+        const subjectBedrooms = asNumber(subjectProfile?.bedrooms);
+        const compBedrooms = asNumber(compProfile?.bedrooms);
+        const bedroomDiff = Number.isFinite(subjectBedrooms) && Number.isFinite(compBedrooms) ? Math.abs(compBedrooms - subjectBedrooms) : null;
+        if (bedroomDiff != null && bedroomDiff > 2) return null;
+        const subjectBaths = asNumber(subjectProfile?.bathCount);
+        const compBaths = asNumber(compProfile?.bathCount);
+        const bathDiff = Number.isFinite(subjectBaths) && Number.isFinite(compBaths) ? Math.abs(compBaths - subjectBaths) : null;
+        if (bathDiff != null && bathDiff > 2.5) return null;
+        const locationScore = locationSimilarityScore(location);
+        let livingAreaPoints = 0;
+        if (livingAreaPctDiff != null) {
+          if (livingAreaPctDiff <= 0.05) livingAreaPoints = 18;
+          else if (livingAreaPctDiff <= 0.1) livingAreaPoints = 16;
+          else if (livingAreaPctDiff <= 0.15) livingAreaPoints = 13;
+          else if (livingAreaPctDiff <= 0.25) livingAreaPoints = 9;
+          else if (livingAreaPctDiff <= 0.4) livingAreaPoints = 4;
+        }
+        let yearBuiltPoints = 0;
+        if (yearBuiltDiff != null) {
+          if (yearBuiltDiff === 0) yearBuiltPoints = 10;
+          else if (yearBuiltDiff <= 5) yearBuiltPoints = 9;
+          else if (yearBuiltDiff <= 10) yearBuiltPoints = 7;
+          else if (yearBuiltDiff <= 20) yearBuiltPoints = 5;
+          else if (yearBuiltDiff <= 40) yearBuiltPoints = 2;
+        }
+        let bedroomPoints = 0;
+        if (bedroomDiff != null) {
+          if (bedroomDiff === 0) bedroomPoints = 8;
+          else if (bedroomDiff === 1) bedroomPoints = 6;
+          else if (bedroomDiff === 2) bedroomPoints = 3;
+        }
+        let bathPoints = 0;
+        if (bathDiff != null) {
+          if (bathDiff === 0) bathPoints = 8;
+          else if (bathDiff === 0.5) bathPoints = 7;
+          else if (bathDiff === 1) bathPoints = 5;
+          else if (bathDiff === 1.5) bathPoints = 2;
+          else if (bathDiff <= 2.5) bathPoints = 1;
+        }
+        const subjectStyle = subjectProfile?.style || "";
+        const compStyle = compProfile?.style || "";
+        const subjectStyleFamily = subjectProfile?.styleFamily || normalizeStyleFamily2(subjectStyle);
+        const compStyleFamily = compProfile?.styleFamily || normalizeStyleFamily2(compStyle);
+        let stylePoints = 0;
+        if (subjectStyleFamily && compStyleFamily && subjectStyleFamily === compStyleFamily && subjectStyleFamily !== "unknown") stylePoints = 10;
+        else if ((subjectStyle || compStyle) && (subjectStyleFamily === "unknown" || compStyleFamily === "unknown")) stylePoints = 3;
+        const fmvPctDiff = comparePctDelta2(asNumber(subject?.fullMarketValue), asNumber(comp?.fullMarketValue));
+        let fmvAlignmentPoints = 0;
+        if (fmvPctDiff != null) {
+          if (fmvPctDiff <= 0.05) fmvAlignmentPoints = 4;
+          else if (fmvPctDiff <= 0.1) fmvAlignmentPoints = 3;
+          else if (fmvPctDiff <= 0.2) fmvAlignmentPoints = 2;
+          else if (fmvPctDiff <= 0.35) fmvAlignmentPoints = 1;
+        }
+        const usablePhysicalFields = [];
+        if (subjectSqft != null && compSqft != null) usablePhysicalFields.push("Living area");
+        if (subjectYear != null && compYear != null) usablePhysicalFields.push("Year built");
+        if (subjectBedrooms != null && compBedrooms != null) usablePhysicalFields.push("Bedrooms");
+        if (subjectBaths != null && compBaths != null) usablePhysicalFields.push("Baths");
+        if (subjectStyleFamily !== "unknown" && compStyleFamily !== "unknown" && subjectStyleFamily && compStyleFamily) usablePhysicalFields.push("Style");
+        const usablePhysicalFieldCount = usablePhysicalFields.length;
+        const confidenceNotes = [];
+        const disqualifyingConcerns = [];
+        let qualityPenalty = 0;
+        if (usablePhysicalFieldCount < 2) qualityPenalty -= 20;
+        else if (usablePhysicalFieldCount < 3) qualityPenalty -= 12;
+        if (subjectSqft == null || compSqft == null) {
+          qualityPenalty -= 6;
+          confidenceNotes.push("Living area is missing on one side.");
+        }
+        if (subjectYear == null || compYear == null) {
+          qualityPenalty -= 3;
+          confidenceNotes.push("Year built is missing on one side.");
+        }
+        if (subjectBedrooms == null && subjectBaths == null || compBedrooms == null && compBaths == null) qualityPenalty -= 5;
+        const missingHardChecks = [livingAreaPctDiff == null, yearBuiltDiff == null, bedroomDiff == null, bathDiff == null].filter(Boolean).length;
+        if (missingHardChecks >= 2 && usablePhysicalFieldCount < 2) qualityPenalty -= 8;
+        if (!location.sameNeighborhood && Number.isFinite(location.distanceMiles) && location.distanceMiles > 1) qualityPenalty -= 8;
+        const qualityScore = clampNumber2(Math.round(
+          classCompatibility.score + locationScore + livingAreaPoints + yearBuiltPoints + bedroomPoints + bathPoints + stylePoints + fmvAlignmentPoints + qualityPenalty
+        ), 0, 100);
+        let confidenceScore = 100;
+        if (subjectSqft == null || compSqft == null) confidenceScore -= 18;
+        if (!Number.isFinite(subjectAssessedRaw) || !Number.isFinite(compAssessedRaw)) {
+          confidenceScore -= 12;
+          confidenceNotes.push("Assessed value is missing on one side.");
+        }
+        if (!Number.isFinite(subjectFmvRaw) || !Number.isFinite(compFmvRaw)) confidenceScore -= 8;
+        if (subjectYear == null || compYear == null) confidenceScore -= 8;
+        if (subjectBedrooms == null || compBedrooms == null) confidenceScore -= 6;
+        if (asNumber(subjectProfile?.fullBaths) == null || asNumber(compProfile?.fullBaths) == null) confidenceScore -= 6;
+        if (subjectStyleFamily === "unknown" || compStyleFamily === "unknown") {
+          confidenceScore -= 5;
+          confidenceNotes.push("Style normalization is uncertain.");
+        }
+        if (location.distanceMiles == null) {
+          confidenceScore -= 5;
+          confidenceNotes.push("Distance could not be calculated from parcel coordinates.");
+        }
+        if (usablePhysicalFieldCount < 3) confidenceScore -= 10;
+        confidenceScore = clampNumber2(Math.round(confidenceScore), 0, 100);
+        const confidenceLabel = confidenceScore >= 80 ? "high" : confidenceScore >= 60 ? "medium" : "low";
+        if (classCompatibility.tier !== "tier_0_exact") disqualifyingConcerns.push(classCompatibility.label + ".");
+        if (Number.isFinite(location.distanceMiles) && location.distanceMiles > 1) disqualifyingConcerns.push(`Comp is ${location.distanceMiles.toFixed(2)} miles away.`);
+        if (livingAreaPctDiff != null && livingAreaPctDiff > 0.25) disqualifyingConcerns.push("Living area gap is wider than ideal.");
+        if (yearBuiltDiff != null && yearBuiltDiff > 20) disqualifyingConcerns.push("Year-built gap is wider than ideal.");
+        if (!location.sameNeighborhood && Number.isFinite(location.distanceMiles) && location.distanceMiles > 1) disqualifyingConcerns.push("Outside the subject neighborhood and more than 1 mile away.");
+        if (confidenceLabel === "low") disqualifyingConcerns.push("Data confidence is low.");
+        const subjectAv = subjectAssessedRaw;
+        const compAv = compAssessedRaw;
+        const subjectFmv = subjectFmvRaw;
+        const compFmv = compFmvRaw;
+        const subjectEquityRatio = asNumber(subjectProfile?.equityRatio) ?? safeDivide(subjectAv, subjectFmv);
+        const compEquityRatio = asNumber(compProfile?.equityRatio) ?? safeDivide(compAv, compFmv);
+        const subjectAvPerSqft = asNumber(subjectProfile?.assessedPerSqft) ?? safeDivide(subjectAv, subjectSqft);
+        const compAvPerSqft = asNumber(compProfile?.assessedPerSqft) ?? safeDivide(compAv, compSqft);
+        const avPctDiff = Number.isFinite(subjectAv) && Number.isFinite(compAv) && Math.max(subjectAv, compAv) > 0 ? (subjectAv - compAv) / Math.max(subjectAv, compAv) : null;
+        let rawAvContribution = 0;
+        if (avPctDiff != null) {
+          if (avPctDiff >= 0.15) rawAvContribution = 25;
+          else if (avPctDiff >= 0.08) rawAvContribution = 18;
+          else if (avPctDiff >= 0.03) rawAvContribution = 10;
+          else if (avPctDiff > 0) rawAvContribution = 3;
+          else if (avPctDiff <= -0.08) rawAvContribution = -18;
+          else if (avPctDiff <= -0.03) rawAvContribution = -10;
+          else rawAvContribution = -4;
+        }
+        let sizeDirectionModifier = 1;
+        const sizeRatio = Number.isFinite(compSqft) && Number.isFinite(subjectSqft) && subjectSqft > 0 ? compSqft / subjectSqft : null;
+        if (Number.isFinite(avPctDiff) && avPctDiff > 0 && Number.isFinite(sizeRatio)) {
+          if (sizeRatio > 1.05) sizeDirectionModifier = 1.35;
+          else if (sizeRatio < 0.95) sizeDirectionModifier = 0.6;
+        }
+        rawAvContribution *= sizeDirectionModifier;
+        const avPerSqftPctDiff = Number.isFinite(subjectAvPerSqft) && Number.isFinite(compAvPerSqft) && compAvPerSqft > 0 ? (subjectAvPerSqft - compAvPerSqft) / compAvPerSqft : null;
+        let avPerSqftContribution = 0;
+        if (avPerSqftPctDiff != null) {
+          if (avPerSqftPctDiff >= 0.12) avPerSqftContribution = 20;
+          else if (avPerSqftPctDiff >= 0.06) avPerSqftContribution = 12;
+          else if (avPerSqftPctDiff >= 0.02) avPerSqftContribution = 6;
+          else if (avPerSqftPctDiff <= -0.02) avPerSqftContribution = -8;
+        }
+        const equityRatioDiff = Number.isFinite(subjectEquityRatio) && Number.isFinite(compEquityRatio) ? subjectEquityRatio - compEquityRatio : null;
+        const equityRatioDeltaPoints = equityRatioDiff != null ? equityRatioDiff * 100 : null;
+        let equityContribution = 0;
+        if (equityRatioDeltaPoints != null) {
+          if (equityRatioDeltaPoints >= 6) equityContribution = 18;
+          else if (equityRatioDeltaPoints >= 3) equityContribution = 10;
+          else if (equityRatioDeltaPoints >= 1) equityContribution = 4;
+          else if (equityRatioDeltaPoints <= -1) equityContribution = -8;
+        }
+        const saleEvidence = recentCompSaleEvidence(subject, comp, salesByParcelId, currentDate);
+        const perSqftTied = Number.isFinite(avPerSqftPctDiff) && Math.abs(avPerSqftPctDiff) < 0.02;
+        const equityTied = Number.isFinite(equityRatioDeltaPoints) && Math.abs(equityRatioDeltaPoints) < 1;
+        const normalizationPenalty = Number.isFinite(avPctDiff) && avPctDiff > 0 && perSqftTied && equityTied ? -8 : 0;
+        const smallRawAdvantagePenalty = Number.isFinite(avPctDiff) && avPctDiff > 0 && avPctDiff < 0.03 ? -3 : 0;
+        const weakConfidencePenalty = !sharedSnapshotMode && confidenceScore < 60 ? -8 : 0;
+        const weakQualityPenalty = !sharedSnapshotMode && qualityScore < 55 ? -10 : 0;
+        const grievanceSupport = clampNumber2(Math.round(
+          rawAvContribution + avPerSqftContribution + equityContribution + saleEvidence.points + normalizationPenalty + smallRawAdvantagePenalty + weakConfidencePenalty + weakQualityPenalty
+        ), -100, 100);
+        const supportLabel = supportKindForScore(grievanceSupport);
+        const marginalSupport = Number.isFinite(compAv) && Number.isFinite(subjectAv) ? compAv > subjectAv * 0.93 : false;
+        if (marginalSupport) disqualifyingConcerns.push("Small assessed value gap may disappear after adjustments.");
+        const reasons = [classCompatibility.label];
+        if (location.sameNeighborhood && Number.isFinite(location.distanceMiles)) reasons.push(`Same neighborhood within ${location.distanceMiles.toFixed(2)} mi`);
+        else if (location.sameNeighborhood) reasons.push("Same neighborhood");
+        else if (location.sameStreet) reasons.push("Same street");
+        else if (location.sameZip && Number.isFinite(location.distanceMiles)) reasons.push(`Same ZIP within ${location.distanceMiles.toFixed(2)} mi`);
+        else if (location.sameZip) reasons.push("Same ZIP");
+        else if (Number.isFinite(location.distanceMiles)) reasons.push(`Within ${location.distanceMiles.toFixed(2)} mi`);
+        if (livingAreaPctDiff != null) reasons.push(`Living area within ${Math.round(livingAreaPctDiff * 100)}%`);
+        if (yearBuiltDiff != null) reasons.push(yearBuiltDiff === 0 ? `Same year built (${compYear})` : `Year built within ${Math.round(yearBuiltDiff)} years`);
+        if (bedroomDiff != null) reasons.push(bedroomDiff === 0 ? "Same bedroom count" : `Bedroom count within ${Math.round(bedroomDiff)}`);
+        if (bathDiff != null) reasons.push(bathDiff === 0 ? "Same bath count" : `Bath count within ${roundNumber(bathDiff, 1)}`);
+        if (subjectStyleFamily === compStyleFamily && subjectStyleFamily !== "unknown") reasons.push(`Same style family (${subjectStyleFamily.replace(/_/g, " ")})`);
+        if (fmvPctDiff != null && fmvPctDiff <= 0.35) reasons.push(`Market value within ${Math.round(fmvPctDiff * 100)}%`);
+        const normalizedMetricsSummary = {
+          assessedPctAdvantage: avPctDiff,
+          assessedPerSqftAdvantagePct: avPerSqftPctDiff,
+          equityRatioDeltaPoints,
+          rawAvContribution: roundNumber(rawAvContribution, 1),
+          sizeDirectionModifier: roundNumber(sizeDirectionModifier, 2),
+          avPerSqftContribution,
+          equityContribution,
+          saleEvidenceContribution: saleEvidence.points,
+          normalizationPenalty,
+          smallRawAdvantagePenalty,
+          weakConfidencePenalty,
+          weakQualityPenalty,
+          tiedNormalizedMetrics: perSqftTied && equityTied,
+          supportScore: grievanceSupport
+        };
+        const riskFlags = computeRiskFlags({
+          subject,
+          comp,
+          subjectProfile,
+          compProfile,
+          confidenceScore,
+          livingAreaPctDiff,
+          yearBuiltDiff,
+          saleEvidence
+        });
+        return {
+          classCompatibility,
+          location,
+          qualityScore,
+          confidenceScore,
+          confidenceLabel,
+          grievanceSupport,
+          supportLabel,
+          supportBadge: supportBadgeForKind(supportLabel),
+          marginalSupport,
+          normalizedMetricsSummary,
+          saleEvidence,
+          riskFlags,
+          reasons,
+          signals: usablePhysicalFields.slice(),
+          physicalFieldsUsed: usablePhysicalFields.slice(),
+          confidenceNotes,
+          disqualifyingConcerns,
+          livingAreaPctDiff,
+          yearBuiltDiff,
+          bedroomDiff,
+          bathDiff,
+          fmvPctDiff
+        };
+      }
+      function comparableDominates(a2, b) {
+        if (!a2 || !b) return false;
+        const qualityA = candidateQualityValue(a2) || 0;
+        const qualityB = candidateQualityValue(b) || 0;
+        const confidenceA = candidateConfidenceValue(a2) || 0;
+        const confidenceB = candidateConfidenceValue(b) || 0;
+        const supportA = candidateSupportValue(a2) || 0;
+        const supportB = candidateSupportValue(b) || 0;
+        return qualityA >= qualityB && confidenceA >= confidenceB && supportA >= supportB && (qualityA > qualityB || confidenceA > confidenceB || supportA > supportB);
+      }
+      function selectedStreetCount(selected, streetKey) {
+        if (!streetKey) return 0;
+        return selected.filter((comp) => candidateStreetKey(comp) === streetKey).length;
+      }
+      function sameAreaAsCandidate(a2, b) {
+        return candidateStreetKey(a2) === candidateStreetKey(b) || candidateNeighborhood(a2) === candidateNeighborhood(b);
+      }
+      function sortVisibleComparableCandidates2(candidates = []) {
+        return candidates.slice().sort(
+          (a2, b) => candidateQualityValue(b) - candidateQualityValue(a2) || candidateConfidenceValue(b) - candidateConfidenceValue(a2) || (candidateDistance(a2) ?? 999) - (candidateDistance(b) ?? 999) || (asNumber(a2?._fmvPctDiff ?? a2?.fmvPctDiff) ?? 999) - (asNumber(b?._fmvPctDiff ?? b?.fmvPctDiff) ?? 999)
+        );
+      }
+      function sortGrievanceCandidatePool2(candidates = []) {
+        return candidates.slice().sort(
+          (a2, b) => candidateSupportValue(b) - candidateSupportValue(a2) || candidateQualityValue(b) - candidateQualityValue(a2) || candidateConfidenceValue(b) - candidateConfidenceValue(a2) || (candidateDistance(a2) ?? 999) - (candidateDistance(b) ?? 999)
+        );
+      }
+      function packageAverageSupport(selected) {
+        return meanValue((selected || []).map(candidateSupportValue)) || 0;
+      }
+      function supportsLivingAreaBracket(selected, subjectLivingArea) {
+        if (!Number.isFinite(subjectLivingArea)) return true;
+        const values = selected.map(candidateLivingArea).filter(Number.isFinite);
+        return values.some((value) => value < subjectLivingArea) && values.some((value) => value > subjectLivingArea);
+      }
+      function supportsYearBracket(selected, subjectYearBuilt) {
+        if (!Number.isFinite(subjectYearBuilt)) return true;
+        const values = selected.map(candidateYearBuilt).filter(Number.isFinite);
+        return values.some((value) => value < subjectYearBuilt) && values.some((value) => value > subjectYearBuilt);
+      }
+      function completeBracket(currentSelected, candidate, subjectValue, valueGetter) {
+        if (!Number.isFinite(subjectValue)) return false;
+        const values = currentSelected.map(valueGetter).filter(Number.isFinite);
+        const candidateValue = valueGetter(candidate);
+        if (!Number.isFinite(candidateValue)) return false;
+        const hasLower = values.some((value) => value < subjectValue) || candidateValue < subjectValue;
+        const hasHigher = values.some((value) => value > subjectValue) || candidateValue > subjectValue;
+        return hasLower && hasHigher;
+      }
+      function applyBracketSwap(selected, eligiblePool, decisionById, subjectProfile) {
+        const livingArea = asNumber(subjectProfile?.livingArea);
+        const yearBuilt = asNumber(subjectProfile?.yearBuilt);
+        const selectedIds = new Set(selected.map(candidateParcelId).filter(Boolean));
+        const baseAverage = packageAverageSupport(selected);
+        const trySwap = (valueGetter, subjectValue, replacementReason) => {
+          if (!Number.isFinite(subjectValue)) return;
+          const bracketed = valueGetter === candidateLivingArea ? supportsLivingAreaBracket(selected, subjectValue) : supportsYearBracket(selected, subjectValue);
+          if (bracketed) return;
+          const candidates = eligiblePool.filter((candidate) => {
+            const id = candidateParcelId(candidate);
+            if (!id || selectedIds.has(id)) return false;
+            if ((candidateSupportValue(candidate) || 0) <= 0) return false;
+            return completeBracket(selected, candidate, subjectValue, valueGetter);
+          });
+          for (const candidate of candidates) {
+            const replacementIndex = selected.findIndex((current) => sameAreaAsCandidate(candidate, current) && (candidateSupportValue(current) || 0) < 25);
+            if (replacementIndex < 0) continue;
+            const updated = selected.slice();
+            updated.splice(replacementIndex, 1, candidate);
+            if (baseAverage > 0 && packageAverageSupport(updated) < baseAverage * 0.8) continue;
+            const replaced = selected[replacementIndex];
+            const candidateId = candidateParcelId(candidate);
+            const replacedId = candidateParcelId(replaced);
+            selected.splice(replacementIndex, 1, candidate);
+            selectedIds.delete(replacedId);
+            selectedIds.add(candidateId);
+            if (replacedId) decisionById.set(replacedId, buildPackageDecisionRecord("excluded", replacementReason, candidateKindValue(replaced)));
+            if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", "included_replacement", candidateKindValue(candidate)));
+            return;
+          }
+        };
+        trySwap(candidateLivingArea, livingArea, "replaced_by_bracket_living_area");
+        trySwap(candidateYearBuilt, yearBuilt, "replaced_by_bracket_year");
+      }
+      function selectGrievancePackage2(candidatePool = [], subjectProfile = null) {
+        const eligible = sortGrievanceCandidatePool2(candidatePool);
+        const strongOrModerate = eligible.filter((comp) => (candidateSupportValue(comp) || 0) >= 12);
+        const weakEligible = eligible.filter((comp) => {
+          const support = candidateSupportValue(comp) || 0;
+          return support > 0 && support < 12;
+        });
+        const targetCount = strongOrModerate.length >= 3 ? Math.min(5, strongOrModerate.length) : Math.min(5, strongOrModerate.length + Math.min(2, weakEligible.length));
+        const pool = strongOrModerate.length >= 3 ? eligible : eligible.filter((comp) => {
+          const support = candidateSupportValue(comp) || 0;
+          return support >= 12 || support > 0 && support < 12;
+        });
+        const selected = [];
+        const decisionById = /* @__PURE__ */ new Map();
+        for (const candidate of pool) {
+          const candidateId = candidateParcelId(candidate);
+          const candidateKind = candidateKindValue(candidate);
+          const streetKey = candidateStreetKey(candidate);
+          if (selected.length >= targetCount) {
+            if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "package_limit", candidateKind));
+            continue;
+          }
+          if (selectedStreetCount(selected, streetKey) >= 2) {
+            if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "same_street_cap", candidateKind));
+            continue;
+          }
+          const dominatedBySelected = candidateKind !== "strong_support" && selected.some((other) => comparableDominates(other, candidate) && sameAreaAsCandidate(other, candidate));
+          if (dominatedBySelected) {
+            if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "dominated_similar", candidateKind));
+            continue;
+          }
+          const selectedAssessed = selected.map(candidateAssessedValue).filter(Number.isFinite);
+          if (selectedAssessed.length >= 2 && Number.isFinite(candidateAssessedValue(candidate))) {
+            const medianAssessed = medianValue2(selectedAssessed);
+            if (Number.isFinite(medianAssessed) && candidateAssessedValue(candidate) < medianAssessed * 0.8) {
+              if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "assessed_outlier", candidateKind));
+              continue;
+            }
+          }
+          const replaceIndex = candidateKind !== "strong_support" ? selected.findIndex((other) => candidateStreetKey(other) === streetKey && comparableDominates(candidate, other)) : -1;
+          const corroboratingStrong = candidateKind === "strong_support" && selected.some((other) => candidateKindValue(other) === "strong_support" && sameAreaAsCandidate(other, candidate));
+          if (replaceIndex >= 0) {
+            const replaced = selected[replaceIndex];
+            const replacedId = candidateParcelId(replaced);
+            selected.splice(replaceIndex, 1, candidate);
+            if (replacedId) decisionById.set(replacedId, buildPackageDecisionRecord("excluded", "replaced_by_stronger_same_street", candidateKindValue(replaced)));
+            if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", "included_replacement", candidateKind));
+          } else {
+            selected.push(candidate);
+            if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", corroboratingStrong ? "included_strong_corroboration" : "included_default", candidateKind));
+          }
+        }
+        applyBracketSwap(selected, eligible, decisionById, subjectProfile);
+        return { selected, decisionById, targetCount, eligible };
+      }
+      function annotateComparablePackageDecisions2(visibleComps = [], grievanceCandidatePool = [], decisionById = /* @__PURE__ */ new Map()) {
+        const selectedIdSet = /* @__PURE__ */ new Set();
+        for (const [id, decision] of decisionById.entries()) {
+          if (decision?.status === "included") selectedIdSet.add(id);
+        }
+        const gatePoolIdSet = new Set((grievanceCandidatePool || []).map(candidateParcelId).filter(Boolean));
+        return (visibleComps || []).map((comp) => {
+          const id = candidateParcelId(comp);
+          const decision = id && decisionById.get(id) || (!gatePoolIdSet.has(id) ? buildPackageDecisionRecord(
+            selectedIdSet.has(id) ? "included" : "excluded",
+            candidateSupportValue(comp) <= 0 ? "support_gate" : candidateConfidenceValue(comp) < 60 ? "confidence_gate" : candidateQualityValue(comp) < 50 ? "quality_gate" : "package_limit",
+            candidateKindValue(comp)
+          ) : buildPackageDecisionRecord(selectedIdSet.has(id) ? "included" : "excluded", selectedIdSet.has(id) ? "included_default" : "package_limit", candidateKindValue(comp)));
+          comp._packageDecision = decision;
+          comp.packageDecision = decision;
+          const selectionIndicator = buildSelectionIndicatorRecord(comp, decision);
+          comp._selectionIndicator = selectionIndicator;
+          comp.selectionIndicator = selectionIndicator;
+          return comp;
+        });
+      }
+      function weightedMedian(entries) {
+        const filtered = (Array.isArray(entries) ? entries : []).filter((entry) => Number.isFinite(entry?.value) && Number.isFinite(entry?.weight) && entry.weight > 0).sort((a2, b) => a2.value - b.value);
+        if (!filtered.length) return null;
+        const total = filtered.reduce((sum, entry) => sum + entry.weight, 0);
+        let running = 0;
+        for (const entry of filtered) {
+          running += entry.weight;
+          if (running >= total / 2) return Math.round(entry.value);
+        }
+        return Math.round(filtered[filtered.length - 1].value);
+      }
+      function summarizeNormalizedMetricSupport(selectedComps = []) {
+        const comps = (Array.isArray(selectedComps) ? selectedComps : []).filter(Boolean);
+        if (!comps.length) return { score: 0, label: "neutral", detail: "Normalized metrics are not available because no grievance comps are selected." };
+        const supportive = comps.filter((comp) => {
+          const metrics = candidateNormalizedSummary(comp);
+          return (asNumber(metrics.equityRatioDeltaPoints) || 0) >= 1 || (asNumber(metrics.assessedPerSqftAdvantagePct) || 0) >= 0.02;
+        }).length;
+        const tied = comps.filter((comp) => {
+          const metrics = candidateNormalizedSummary(comp);
+          return Math.abs(asNumber(metrics.equityRatioDeltaPoints) || 0) < 1 && Math.abs(asNumber(metrics.assessedPerSqftAdvantagePct) || 0) < 0.02;
+        }).length;
+        if (supportive === comps.length) {
+          return { score: 15, label: "supportive", detail: "Normalized metrics support the grievance across the selected package." };
+        }
+        if (supportive >= Math.max(1, Math.ceil(comps.length / 2))) {
+          return { score: 8, label: "mixed_supportive", detail: "Normalized metrics are mixed, but they lean supportive overall." };
+        }
+        if (tied === comps.length) {
+          return { score: 0, label: "neutral", detail: "Normalized metrics are broadly neutral across the selected comps." };
+        }
+        return { score: 0, label: "mixed", detail: "Normalized metrics are mixed and do not consistently support the grievance." };
+      }
+      function computeOvervaluationFlag(subject, equalizationRate) {
+        const av = asNumber(subject?.assessedValue);
+        const fmv = asNumber(subject?.fullMarketValue);
+        const rate = asNumber(equalizationRate);
+        if (!Number.isFinite(av) || !Number.isFinite(fmv) || !Number.isFinite(rate) || rate <= 0) return null;
+        const expectedAssessedValue = fmv * rate;
+        return {
+          active: av > expectedAssessedValue,
+          equalizationRate: rate,
+          expectedAssessedValue: Math.round(expectedAssessedValue),
+          overvaluationExcess: Math.max(Math.round(av - expectedAssessedValue), 0),
+          message: av > expectedAssessedValue ? `The separate overassessment check is positive. Your assessed value is above the expected assessed value implied by the municipal equalization rate of ${(rate * 100).toFixed(1)}%.` : "The separate overassessment check does not show an overvaluation signal from the municipal equalization rate."
+        };
+      }
+      function computeClaimRecommendation(selectedComps, overvaluationFlag) {
+        const equityRatios = (Array.isArray(selectedComps) ? selectedComps : []).map(candidateEquityRatio).filter(Number.isFinite);
+        if (!equityRatios.length) {
+          if (overvaluationFlag?.active) {
+            return {
+              code: "EXCESSIVE",
+              label: "Excessive Assessment",
+              selectionLabel: 'Check "Excessive assessment"',
+              reason: "No selected grievance comps are available, but the equalization-rate benchmark still points to overvaluation.",
+              variance: null
+            };
+          }
+          return {
+            code: "MANUAL_REVIEW",
+            label: "Manual Review Needed",
+            selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+            reason: "No selected grievance comps are available to distinguish unequal assessment from excessive assessment.",
+            variance: null
+          };
+        }
+        const variance = equityRatios.length ? (Math.max(...equityRatios) - Math.min(...equityRatios)) * 100 : null;
+        if (Number.isFinite(variance) && variance < 1) {
+          return {
+            code: "EXCESSIVE",
+            label: "Excessive Assessment",
+            selectionLabel: 'Check "Excessive assessment"',
+            reason: `Equity ratios are nearly uniform across the selected comps (variance ${variance.toFixed(1)} points), so unequal assessment is structurally weak for this roll.`,
+            variance
+          };
+        }
+        if (overvaluationFlag?.active && Number.isFinite(variance) && variance < 2) {
+          return {
+            code: "EXCESSIVE_PRIMARY",
+            label: "Excessive Assessment (Primary)",
+            selectionLabel: 'Check "Excessive assessment" first; unequal assessment is secondary',
+            reason: `Both overvaluation and some unequal-assessment evidence are present, but excessive assessment is stronger because equity-ratio variance is only ${variance.toFixed(1)} points.`,
+            variance
+          };
+        }
+        return {
+          code: "UNEQUAL",
+          label: "Unequal Assessment",
+          selectionLabel: 'Check "Unequal assessment"',
+          reason: Number.isFinite(variance) ? `Comparable equity ratios show meaningful variation (${variance.toFixed(1)} points), so unequal assessment is the stronger primary argument.` : "Comparable equity ratios show enough variation to support unequal assessment as the stronger primary argument.",
+          variance
+        };
+      }
+      function computeResearchClaimRecommendation(visibleComps, overvaluationFlag, marketSaleModel, neighborhoodEquityModel) {
+        const variance = visibleEquityVariance(visibleComps);
+        const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        if (Number.isFinite(variance) && variance < 1 && signalSummary) {
+          return {
+            code: "EXCESSIVE",
+            label: "Excessive Assessment",
+            selectionLabel: 'Check "Excessive assessment"',
+            reason: `Visible comps look physically similar, but their equity ratios are tightly clustered (variance ${variance.toFixed(1)} points), so unequal assessment is weak here. The remaining support leans more toward excessive assessment because ${signalSummary}.`,
+            variance
+          };
+        }
+        if (overvaluationFlag?.active) {
+          return {
+            code: "EXCESSIVE",
+            label: "Excessive Assessment",
+            selectionLabel: 'Check "Excessive assessment"',
+            reason: "Comparable homes were found, but none supported a grievance after normalization. The clearest remaining signal is the independent overvaluation benchmark.",
+            variance
+          };
+        }
+        return {
+          code: "MANUAL_REVIEW",
+          label: "Manual Review Needed",
+          selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+          reason: "Comparable homes were found, but none supported a grievance after normalization. The current evidence does not clearly establish unequal assessment or excessive assessment from the comparable package alone.",
+          variance
+        };
+      }
+      function computeSubjectSaleSignal(subject, salesByParcelId, currentDate) {
+        const sales = getParcelSales2(subject, salesByParcelId);
+        const latestSale = sales[0] || null;
+        const armLengthSale = sales.find((sale) => isArmLengthSale2(sale) && Number(sale?.sale_price) > 0) || null;
+        if (!armLengthSale || !isRecentArmsLengthSale2(armLengthSale, currentDate, 3)) {
+          return {
+            status: "none",
+            sale: armLengthSale,
+            latestSale,
+            note: latestSale && armLengthSale && latestSale !== armLengthSale ? "$/sq ft data uses the most recent arm's-length sale rather than the most recent transfer." : ""
+          };
+        }
+        const ratio = safeDivide(asNumber(armLengthSale?.sale_price), asNumber(subject?.fullMarketValue));
+        if (!Number.isFinite(ratio)) return { status: "neutral", sale: armLengthSale, latestSale, ratio: null, note: "" };
+        if (ratio <= 0.9) {
+          return { status: "supports", sale: armLengthSale, latestSale, ratio, note: "Your recent arm's-length sale price is materially below the current FMV estimate." };
+        }
+        if (ratio >= 1.05) {
+          return { status: "weakens", sale: armLengthSale, latestSale, ratio, note: "Your recent arm's-length sale price is at or above the current FMV estimate." };
+        }
+        return { status: "neutral", sale: armLengthSale, latestSale, ratio, note: "" };
+      }
+      function computeMarketSaleModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = /* @__PURE__ */ new Date() }) {
+        if (!(salesByParcelId instanceof Map) || !subject) return null;
+        const subjectSqft = asNumber(subjectProfile?.livingArea);
+        const subjectYear = asNumber(subjectProfile?.yearBuilt);
+        const collectEligible = (radius) => {
+          const values = [];
+          for (const parcel of parcels || []) {
+            if (!parcel || candidateParcelId(parcel) === candidateParcelId(subject)) continue;
+            const distance = parcelDistanceMiles2(subject, parcel);
+            if (!Number.isFinite(distance) || distance > radius) continue;
+            const livingArea = candidateLivingArea(parcel);
+            const yearBuilt = candidateYearBuilt(parcel);
+            if (Number.isFinite(subjectSqft) && Number.isFinite(livingArea)) {
+              const pctDiff = Math.abs(livingArea - subjectSqft) / subjectSqft;
+              if (pctDiff > 0.2) continue;
+            }
+            if (Number.isFinite(subjectYear) && Number.isFinite(yearBuilt) && Math.abs(yearBuilt - subjectYear) > 25) continue;
+            const sales = getParcelSales2(parcel, salesByParcelId).filter((sale) => isRecentArmsLengthSale2(sale, currentDate, 3));
+            for (const sale of sales) {
+              const salePrice = asNumber(sale?.sale_price);
+              if (!Number.isFinite(salePrice) || salePrice <= 0 || !Number.isFinite(livingArea) || livingArea <= 0) continue;
+              values.push({ parcel, sale, distance, salePricePerSqft: salePrice / livingArea });
+            }
+          }
+          return values;
+        };
+        let eligibleSales = collectEligible(1);
+        let expanded = false;
+        if (eligibleSales.length < 3) {
+          eligibleSales = collectEligible(1.5);
+          expanded = true;
+        }
+        if (eligibleSales.length < 3 || !Number.isFinite(subjectSqft)) {
+          return {
+            available: false,
+            saleCount: eligibleSales.length,
+            expandedRadius: expanded,
+            note: "Insufficient recent sales for market estimate.",
+            fallbackPricePerSqft: Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(subjectSqft) && subjectSqft > 0 ? asNumber(subject?.fullMarketValue) / subjectSqft : null
+          };
+        }
+        const neighborhoodMedianPpsf = medianValue2(eligibleSales.map((entry) => entry.salePricePerSqft));
+        const estimatedSubjectFmv = Number.isFinite(neighborhoodMedianPpsf) ? Math.round(neighborhoodMedianPpsf * subjectSqft) : null;
+        const impliedDifference = Number.isFinite(asNumber(subject?.assessedValue)) && Number.isFinite(estimatedSubjectFmv) ? Math.round(asNumber(subject.assessedValue) - estimatedSubjectFmv) : null;
+        const impliedDifferencePct = Number.isFinite(impliedDifference) && Number.isFinite(estimatedSubjectFmv) && estimatedSubjectFmv > 0 ? impliedDifference / estimatedSubjectFmv : null;
+        return {
+          available: true,
+          saleCount: eligibleSales.length,
+          expandedRadius: expanded,
+          neighborhoodMedianPpsf,
+          estimatedSubjectFmv,
+          impliedDifference,
+          impliedDifferencePct,
+          eligibleSales,
+          note: expanded ? "Radius expanded to 1.5 miles to reach the minimum sale sample." : ""
+        };
+      }
+      function computeNeighborhoodEquityModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = /* @__PURE__ */ new Date() }) {
+        if (!(salesByParcelId instanceof Map) || !subject) return null;
+        const subjectNeighborhood = parcelNeighborhoodName2(subject, subjectProfile);
+        const subjectZip = subjectProfile?.zipCode || subject?.zip || "";
+        const subjectFamily = residentialFamilyForClass2(subject?.propClass, subject?.propClassDesc || "");
+        const collectRatios = (mode) => {
+          const ratios2 = [];
+          for (const parcel of parcels || []) {
+            if (!parcel || !isResidentialPropClass2(parcel?.propClass)) continue;
+            const sameArea = mode === "neighborhood" ? parcelNeighborhoodName2(parcel, parcel?._compProfile) === subjectNeighborhood : (parcel?.zip || "") === subjectZip;
+            if (!sameArea) continue;
+            if (residentialFamilyForClass2(parcel?.propClass, parcel?.propClassDesc || "") !== subjectFamily) continue;
+            const sales = getParcelSales2(parcel, salesByParcelId).filter((sale) => isRecentArmsLengthSale2(sale, currentDate, 3));
+            const av = asNumber(parcel?.assessedValue);
+            for (const sale of sales) {
+              const salePrice = asNumber(sale?.sale_price);
+              if (!Number.isFinite(av) || !Number.isFinite(salePrice) || salePrice <= 0) continue;
+              ratios2.push(av / salePrice);
+            }
+          }
+          return ratios2;
+        };
+        let scope = "neighborhood";
+        let ratios = collectRatios("neighborhood");
+        if (ratios.length < 5) {
+          scope = "zip";
+          ratios = collectRatios("zip");
+        }
+        if (ratios.length < 5) {
+          return { available: false, sampleSize: ratios.length, scope, note: "Insufficient sales data for neighborhood equity analysis." };
+        }
+        const medianRatio = medianValue2(ratios);
+        const absoluteDeviations = ratios.map((value) => Math.abs(value - medianRatio));
+        const cod = Number.isFinite(medianRatio) && medianRatio !== 0 ? medianValue2(absoluteDeviations) / medianRatio * 100 : null;
+        const subjectRatio = safeDivide(asNumber(subject?.assessedValue), asNumber(subject?.fullMarketValue));
+        const subjectPercentile = percentileRankValue2(subjectRatio, ratios);
+        return {
+          available: true,
+          sampleSize: ratios.length,
+          scope,
+          medianRatio,
+          subjectRatio,
+          subjectPercentile,
+          cod,
+          codWarning: Number.isFinite(cod) && cod > 15 ? `Systemic assessment inconsistency detected. COD ${cod.toFixed(1)} exceeds the IAAO single-family standard of 15.0.` : "",
+          iaaoStandard: 15
+        };
+      }
+      function computeSuggestedRequestedValue({ subject, selectedComps = [] }) {
+        const eligible = (Array.isArray(selectedComps) ? selectedComps : []).filter(
+          (comp) => (candidateQualityValue(comp) || 0) >= 60 && (candidateConfidenceValue(comp) || 0) >= 70 && (candidateSupportValue(comp) || 0) >= 12 && Number.isFinite(candidateAssessedValue(comp)) && !comp?._marginalSupport && !comp?.marginalSupport
+        );
+        if (eligible.length < 2) {
+          return {
+            value: null,
+            method: "manual_review",
+            reviewManually: true,
+            note: eligible.length === 1 ? "Only one comp qualifies for the suggested value calculation, so manual review is required." : "Fewer than two comps qualify for the suggested value calculation, so manual review is required.",
+            eligibleCount: eligible.length,
+            methodA: null,
+            methodB: null,
+            scarWarning: null
+          };
+        }
+        const assessedValues = eligible.map(candidateAssessedValue).filter(Number.isFinite);
+        const medianAssessed = medianValue2(assessedValues);
+        const spread = Number.isFinite(medianAssessed) && medianAssessed > 0 ? (Math.max(...assessedValues) - Math.min(...assessedValues)) / medianAssessed : 0;
+        const allEquityTied = eligible.every((comp) => Math.abs(asNumber(candidateNormalizedSummary(comp).equityRatioDeltaPoints) || 0) < 1);
+        if (spread > 0.2 || allEquityTied) {
+          return {
+            value: null,
+            method: "manual_review",
+            reviewManually: true,
+            note: spread > 0.2 ? "Qualifying comp assessed values are spread more than 20%, so manual review is required." : "All qualifying comps have equity ratios within 1 point of the subject, so manual review is required.",
+            eligibleCount: eligible.length,
+            methodA: null,
+            methodB: null,
+            scarWarning: null
+          };
+        }
+        const weightedEntries = eligible.map((comp) => ({
+          value: candidateAssessedValue(comp),
+          weight: (candidateQualityValue(comp) || 0) * 0.35 + (candidateSupportValue(comp) || 0) * 0.4 + (candidateConfidenceValue(comp) || 0) * 0.25
+        }));
+        let methodA = null;
+        if (eligible.length === 2) {
+          const totalWeight = weightedEntries.reduce((sum, entry) => sum + entry.weight, 0);
+          const weightedAverage = totalWeight > 0 ? weightedEntries.reduce((sum, entry) => sum + entry.value * entry.weight, 0) / totalWeight : meanValue(weightedEntries.map((entry) => entry.value));
+          const simpleMidpoint = (weightedEntries[0].value + weightedEntries[1].value) / 2;
+          methodA = Math.round(Math.min(weightedAverage, simpleMidpoint));
+        } else {
+          methodA = weightedMedian(weightedEntries);
+        }
+        const subjectFmv = asNumber(subject?.fullMarketValue);
+        const equityRatios = eligible.map(candidateEquityRatio).filter(Number.isFinite);
+        const medianCompEquityRatio = medianValue2(equityRatios);
+        const methodB = Number.isFinite(subjectFmv) && Number.isFinite(medianCompEquityRatio) ? Math.round(subjectFmv * medianCompEquityRatio) : null;
+        let value = null;
+        let method = "manual_review";
+        if (Number.isFinite(methodA) && Number.isFinite(methodB)) {
+          value = Math.min(methodA, methodB);
+          method = value === methodA ? "method_a" : "method_b";
+        } else if (Number.isFinite(methodA)) {
+          value = methodA;
+          method = "method_a";
+        } else if (Number.isFinite(methodB)) {
+          value = methodB;
+          method = "method_b";
+        }
+        const subjectAv = asNumber(subject?.assessedValue);
+        if (Number.isFinite(subjectAv) && Number.isFinite(value) && value > subjectAv) {
+          return {
+            value: null,
+            method: "manual_review",
+            reviewManually: true,
+            note: "The suggested value is above the current assessed value, so manual review is required.",
+            eligibleCount: eligible.length,
+            methodA,
+            methodB,
+            scarWarning: null
+          };
+        }
+        let scarWarning = null;
+        if (Number.isFinite(subjectAv) && Number.isFinite(value) && subjectAv > 0) {
+          const reductionPct = (subjectAv - value) / subjectAv;
+          if (reductionPct > 0.25) {
+            scarWarning = `SCAR limit exceeded: this reduction (${(reductionPct * 100).toFixed(1)}%) exceeds the 25% maximum typically allowed in SCAR proceedings.`;
+          }
+        }
+        return {
+          value: Number.isFinite(value) ? Math.round(value) : null,
+          method,
+          reviewManually: false,
+          note: method === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : "The comp-based value estimate produced the lower filing recommendation.",
+          eligibleCount: eligible.length,
+          methodA,
+          methodB,
+          scarWarning
+        };
+      }
+      function applyCompAdjustments({ subject, subjectProfile, comps = [], marketSaleModel = null, equalizationRate = null }) {
+        const subjectSqft = asNumber(subjectProfile?.livingArea);
+        const subjectFullBaths = asNumber(subjectProfile?.fullBaths) || 0;
+        const subjectHalfBaths = asNumber(subjectProfile?.halfBaths) || 0;
+        const subjectAv = asNumber(subject?.assessedValue);
+        const fallbackPpsf = Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(subjectSqft) && subjectSqft > 0 ? asNumber(subject?.fullMarketValue) / subjectSqft : null;
+        const pricePerSqft = marketSaleModel?.available ? marketSaleModel.neighborhoodMedianPpsf : fallbackPpsf;
+        const rate = asNumber(equalizationRate);
+        return (Array.isArray(comps) ? comps : []).map((comp) => {
+          const compSqft = candidateLivingArea(comp);
+          const compFullBaths = asNumber(comp?._compProfile?.fullBaths) || 0;
+          const compHalfBaths = asNumber(comp?._compProfile?.halfBaths) || 0;
+          const compAv = candidateAssessedValue(comp);
+          let adjustedAv = compAv;
+          let sqftAdjustment = null;
+          let fullBathAdjustment = null;
+          let halfBathAdjustment = null;
+          if (Number.isFinite(adjustedAv) && Number.isFinite(pricePerSqft) && Number.isFinite(rate) && rate > 0) {
+            const sqftDelta = (subjectSqft || 0) - (compSqft || 0);
+            sqftAdjustment = sqftDelta * pricePerSqft * rate;
+            fullBathAdjustment = (subjectFullBaths - compFullBaths) * 8e3 * rate;
+            halfBathAdjustment = (subjectHalfBaths - compHalfBaths) * 4e3 * rate;
+            adjustedAv += sqftAdjustment + fullBathAdjustment + halfBathAdjustment;
+            adjustedAv = Math.round(adjustedAv / 100) * 100;
+          } else {
+            adjustedAv = null;
+          }
+          const adjustedSupportLabel = Number.isFinite(adjustedAv) && Number.isFinite(subjectAv) ? adjustedAv < subjectAv ? "Yes" : adjustedAv <= subjectAv * 1.02 ? "Marginal" : "No" : null;
+          comp._adjustedAssessedValue = adjustedAv;
+          comp.adjustedAssessedValue = adjustedAv;
+          comp._adjustmentBreakdown = {
+            sqftAdjustment,
+            fullBathAdjustment,
+            halfBathAdjustment,
+            adjustedSupportLabel
+          };
+          comp._adjustmentNarrative = Number.isFinite(adjustedAv) && Number.isFinite(subjectAv) ? `After adjusting for size and bath differences, this comp has an effective assessed value of ${formatWholeDollar(adjustedAv)}.` : "";
+          return comp;
+        });
+      }
+      function summarizeGrievancePackage({
+        subject,
+        subjectProfile,
+        visibleComps = [],
+        selectedComps = [],
+        parcels = [],
+        salesByParcelId = null,
+        equalizationRate = null,
+        currentDate = /* @__PURE__ */ new Date()
+      }) {
+        const selected = (Array.isArray(selectedComps) ? selectedComps : []).filter(Boolean);
+        const visible = (Array.isArray(visibleComps) ? visibleComps : []).filter(Boolean);
+        const marketSaleModel = computeMarketSaleModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate });
+        const neighborhoodEquityModel = computeNeighborhoodEquityModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate });
+        applyCompAdjustments({ subject, subjectProfile, comps: visible, marketSaleModel, equalizationRate });
+        const grievanceAvgFMV = selected.length ? Math.round(meanValue(selected.map((comp) => asNumber(comp?.fullMarketValue)).filter(Number.isFinite))) : null;
+        const grievanceAvgAssessed = selected.length ? Math.round(meanValue(selected.map(candidateAssessedValue).filter(Number.isFinite))) : null;
+        const grievanceAvgEquityRatio = selected.length ? meanValue(selected.map(candidateEquityRatio).filter(Number.isFinite)) : null;
+        const grievanceAvgEquity = grievanceAvgEquityRatio != null ? roundNumber(grievanceAvgEquityRatio * 100, 1) : null;
+        const grievanceDeltaFMV = Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(grievanceAvgFMV) ? Math.round(asNumber(subject.fullMarketValue) - grievanceAvgFMV) : null;
+        const grievanceDeltaAssessed = Number.isFinite(asNumber(subject?.assessedValue)) && Number.isFinite(grievanceAvgAssessed) ? Math.round(asNumber(subject.assessedValue) - grievanceAvgAssessed) : null;
+        const grievanceDeltaEquity = Number.isFinite(asNumber(subjectProfile?.equityRatio)) && Number.isFinite(grievanceAvgEquityRatio) ? roundNumber((subjectProfile.equityRatio - grievanceAvgEquityRatio) * 100, 1) : null;
+        const grievanceSignal = grievanceDeltaEquity == null ? null : grievanceDeltaEquity >= 3 ? "Selected grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity <= -3 ? "Selected grievance comps carry higher equity ratios than your home." : "Selected grievance comps show equity ratios in line with your home.";
+        const grievanceSupportCount = selected.filter((comp) => (candidateSupportValue(comp) || 0) > 0).length;
+        const grievanceModerateOrBetterCount = selected.filter((comp) => (candidateSupportValue(comp) || 0) >= 12).length;
+        const grievanceAverageSupportScore = roundNumber(meanValue(selected.map(candidateSupportValue).filter(Number.isFinite)) || 0, 1);
+        const grievanceAverageQualityScore = roundNumber(meanValue(selected.map(candidateQualityValue).filter(Number.isFinite)) || 0, 1);
+        const grievanceAverageConfidenceScore = roundNumber(meanValue(selected.map(candidateConfidenceValue).filter(Number.isFinite)) || 0, 1);
+        const normalizedMetricSupport = summarizeNormalizedMetricSupport(selected);
+        const packageLimitations = [];
+        if (selected.length < 3) packageLimitations.push("fewer than 3 comps are currently selected");
+        if (selected.some((comp) => (candidateConfidenceValue(comp) || 0) < 70)) packageLimitations.push("at least one selected comp has weaker data confidence");
+        if (selected.some((comp) => comp?._marginalSupport || comp?.marginalSupport)) packageLimitations.push("at least one selected comp is only marginal support");
+        const suggestedRequestedValue = computeSuggestedRequestedValue({ subject, selectedComps: selected });
+        const overvaluationFlag = computeOvervaluationFlag(subject, equalizationRate);
+        const selectionOutcomeCounts = computeSelectionOutcomeCounts(visible, selected);
+        const analysisState = selected.length > 0 ? "grievance_package" : visible.length > 0 ? "research_only" : "no_matches";
+        const noPackageReasonCode = analysisState === "grievance_package" ? null : deriveNoPackageReasonCode(selectionOutcomeCounts);
+        const noPackageReasonText = analysisState === "grievance_package" ? "" : buildNoPackageReasonText(noPackageReasonCode, visible, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        const caseStatusLabel = analysisState === "research_only" ? "Research only" : grievanceModerateOrBetterCount >= 3 && grievanceAverageSupportScore >= 18 && grievanceAverageQualityScore >= 60 && grievanceAverageConfidenceScore >= 65 ? "Strong evidence" : grievanceModerateOrBetterCount >= 2 && grievanceAverageSupportScore >= 10 && grievanceAverageQualityScore >= 50 && grievanceAverageConfidenceScore >= 60 ? "Moderate evidence" : "Weak evidence";
+        const claimRecommendation = selected.length ? computeClaimRecommendation(selected, overvaluationFlag) : computeResearchClaimRecommendation(visible, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        const subjectSaleModel = computeSubjectSaleSignal(subject, salesByParcelId, currentDate);
+        return {
+          grievanceSupportPool: selected.filter((comp) => (candidateSupportValue(comp) || 0) > 0),
+          grievanceCandidatePool: selected.filter((comp) => (candidateSupportValue(comp) || 0) > 0),
+          grievanceCandidates: selected,
+          grievancePackage: selected,
+          analysisState,
+          caseStatusLabel,
+          noPackageReasonCode,
+          noPackageReasonText,
+          researchComparables: analysisState === "research_only" ? visible : [],
+          selectionOutcomeCounts,
+          grievanceAvgFMV,
+          grievanceAvgAssessed,
+          grievanceAvgEquity,
+          grievanceAvgEquityRatio,
+          grievanceDeltaFMV,
+          grievanceDeltaAssessed,
+          grievanceDeltaEquity,
+          grievanceSignal,
+          grievanceSupportCount,
+          grievanceModerateOrBetterCount,
+          grievanceAverageSupportScore,
+          grievanceAverageQualityScore,
+          grievanceAverageConfidenceScore,
+          normalizedMetricSupport,
+          packageLimitations,
+          suggestedRequestedAssessedValue: suggestedRequestedValue.value,
+          suggestedRequestedAssessedValueMethod: suggestedRequestedValue.method,
+          suggestedRequestedAssessedValueReviewManually: suggestedRequestedValue.reviewManually,
+          suggestedRequestedAssessedValueNote: suggestedRequestedValue.note,
+          suggestedRequestedAssessedValueEligibleCount: suggestedRequestedValue.eligibleCount,
+          suggestedValueMethodA: suggestedRequestedValue.methodA,
+          suggestedValueMethodB: suggestedRequestedValue.methodB,
+          scarWarning: suggestedRequestedValue.scarWarning,
+          overvaluationFlag,
+          claimRecommendation,
+          marketSaleModel,
+          neighborhoodEquityModel,
+          subjectSaleModel,
+          grievancePackageAllSupportive: selected.length > 0 && grievanceSupportCount === selected.length
+        };
+      }
+      function buildBroadenedComparableResult2({
+        subject,
+        parcels = [],
+        existingCompIds = [],
+        analyzeCandidate,
+        cityStrictGeoMode = true,
+        limit = 8,
+        maxTier = 1
+      }) {
+        if (!subject || !Array.isArray(parcels) || typeof analyzeCandidate !== "function") return [];
+        const existingIds = new Set((existingCompIds || []).map(normalizeParcelId2).filter(Boolean));
+        const subjectStreet = streetNameKeyForComp2(subject?.address);
+        const subjectNeighborhood = parcelNeighborhoodName2(subject, null);
+        const strictTierThreeMax = cityStrictGeoMode ? 2 : 4;
+        const candidates = parcels.map((comp) => {
+          const compId = candidateParcelId(comp);
+          if (!compId || compId === candidateParcelId(subject) || existingIds.has(compId)) return null;
+          const analyzed = analyzeCandidate(comp);
+          if (!analyzed) return null;
+          const distance = candidateDistance(analyzed);
+          const sameStreet = candidateStreetKey(analyzed) === subjectStreet;
+          const sameNeighborhood = candidateNeighborhood(analyzed) === subjectNeighborhood;
+          const sameZip = (subject?.zip || "") && (comp?.zip || "") && String(subject.zip) === String(comp.zip);
+          const withinTwo = Number.isFinite(distance) && distance <= 2;
+          const withinTierThree = Number.isFinite(distance) && distance <= strictTierThreeMax;
+          if (!(sameNeighborhood || sameStreet || sameZip || withinTierThree)) return null;
+          const tier = sameNeighborhood || sameStreet ? 0 : sameZip ? 1 : withinTwo ? 2 : 3;
+          if (tier > maxTier) return null;
+          analyzed._broadenTier = tier;
+          analyzed._broadenTierLabel = tier === 0 ? "Same neighborhood overflow" : tier === 1 ? "Same ZIP / nearby streets" : tier === 2 ? "Within 2 miles" : `Within ${strictTierThreeMax} miles`;
+          analyzed._broadenDistanceMiles = distance;
+          return analyzed;
+        }).filter(Boolean);
+        return candidates.sort(
+          (a2, b) => candidateSupportValue(b) - candidateSupportValue(a2) || candidateQualityValue(b) - candidateQualityValue(a2) || (a2?._broadenTier || 0) - (b?._broadenTier || 0) || (candidateDistance(a2) ?? 999) - (candidateDistance(b) ?? 999) || (asNumber(a2?._fmvPctDiff) ?? 999) - (asNumber(b?._fmvPctDiff) ?? 999)
+        ).slice(0, limit);
+      }
+      module.exports = {
+        clampNumber: clampNumber2,
+        roundNumber,
+        asNumber,
+        safeDivide,
+        comparePctDelta: comparePctDelta2,
+        meanValue,
+        medianValue: medianValue2,
+        percentileRankValue: percentileRankValue2,
+        normalizeParcelId: normalizeParcelId2,
+        normalizeStreetKeyForCompare: normalizeStreetKeyForCompare2,
+        streetNameKeyForComp: streetNameKeyForComp2,
+        isResidentialPropClass: isResidentialPropClass2,
+        normalizeStyleFamily: normalizeStyleFamily2,
+        residentialUnitCountForClass: residentialUnitCountForClass2,
+        residentialFamilyForClass: residentialFamilyForClass2,
+        classCompatibilityTier: classCompatibilityTier2,
+        parseSalesDate: parseSalesDate2,
+        isArmLengthSale: isArmLengthSale2,
+        getParcelSales: getParcelSales2,
+        getMostRecentArmsLengthSale: getMostRecentArmsLengthSale2,
+        isRecentArmsLengthSale: isRecentArmsLengthSale2,
+        parcelDistanceMiles: parcelDistanceMiles2,
+        parcelNeighborhoodName: parcelNeighborhoodName2,
+        comparableLocationContext: comparableLocationContext2,
+        locationSimilarityScore,
+        supportKindForScore,
+        supportBadgeForKind,
+        qualityLabelForScore,
+        candidateQualityValue,
+        candidateConfidenceValue,
+        candidateSupportValue,
+        candidateKindValue,
+        candidateParcelId,
+        candidateStreetKey,
+        candidateNeighborhood,
+        candidateDistance,
+        candidateAssessedValue,
+        candidateLivingArea,
+        candidateYearBuilt,
+        candidateEquityRatio,
+        candidateNormalizedSummary,
+        buildPackageDecisionRecord,
+        buildSelectionIndicatorRecord,
+        computeSelectionOutcomeCounts,
+        recentCompSaleEvidence,
+        computeRiskFlags,
+        analyzeComparableCandidate,
+        comparableDominates,
+        sortVisibleComparableCandidates: sortVisibleComparableCandidates2,
+        sortGrievanceCandidatePool: sortGrievanceCandidatePool2,
+        selectGrievancePackage: selectGrievancePackage2,
+        annotateComparablePackageDecisions: annotateComparablePackageDecisions2,
+        weightedMedian,
+        summarizeNormalizedMetricSupport,
+        computeOvervaluationFlag,
+        computeClaimRecommendation,
+        computeResearchClaimRecommendation,
+        computeSubjectSaleSignal,
+        computeMarketSaleModel,
+        computeNeighborhoodEquityModel,
+        computeSuggestedRequestedValue,
+        applyCompAdjustments,
+        summarizeGrievancePackage,
+        buildBroadenedComparableResult: buildBroadenedComparableResult2
+      };
+    }
+  });
+
   // entry.jsx
   var import_react46 = __toESM(require_react());
   var import_react_dom2 = __toESM(require_react_dom());
@@ -49108,7 +50647,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     for (let i = 0; i < text.length; i += 1) hash = (hash << 5) - hash + text.charCodeAt(i) | 0;
     return BOUNDARY_PALETTE[Math.abs(hash) % BOUNDARY_PALETTE.length];
   };
-  var LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, utils }) => {
+  var LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, compactMode = false, subjectParcelId = null, compactTitle = "", compactSubtitle = "", utils }) => {
     const {
       normalizeParcelId: normalizeParcelId2,
       FC: FC2,
@@ -49149,17 +50688,19 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       absentee: [["Owner-Occupied", "#22c55e"], ["Absentee Owner", "#f97316"]]
     };
     const SI = { background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "7px 11px", fontSize: 12, cursor: "pointer" };
+    const normalizedSubjectParcelId = normalizeParcelId2(subjectParcelId || "");
+    const initialCompactSelectedParcelId = subjectParcelId || null;
     const [colorBy, setColorBy] = (0, import_react44.useState)(advanced ? "fmv" : "equity");
     const [viewPreset, setViewPreset] = (0, import_react44.useState)("fairness");
     const [addrSearch, setAddrSearch] = (0, import_react44.useState)("");
-    const [selectedParcelId, setSelectedParcelId] = (0, import_react44.useState)(null);
+    const [selectedParcelId, setSelectedParcelId] = (0, import_react44.useState)(() => compactMode ? initialCompactSelectedParcelId : null);
     const [showParcelPoints, setShowParcelPoints] = (0, import_react44.useState)(false);
     const [showPropertyOverlay, setShowPropertyOverlay] = (0, import_react44.useState)(true);
     const [zoomDisplay, setZoomDisplay] = (0, import_react44.useState)(0);
     const [viewport, setViewport] = (0, import_react44.useState)(null);
     const [mapRuntimeReady, setMapRuntimeReady] = (0, import_react44.useState)(() => !!(getLeafletRuntime() && getProj4Runtime()));
     const [mapStatus, setMapStatus] = (0, import_react44.useState)("");
-    const [showNeighborhoodOverlay, setShowNeighborhoodOverlay] = (0, import_react44.useState)(true);
+    const [showNeighborhoodOverlay, setShowNeighborhoodOverlay] = (0, import_react44.useState)(!compactMode);
     const [showAssociationOverlay, setShowAssociationOverlay] = (0, import_react44.useState)(false);
     const [legendOpen, setLegendOpen] = (0, import_react44.useState)({ coloring: true, boundaries: true });
     const [ownerPortfolioOpen, setOwnerPortfolioOpen] = (0, import_react44.useState)(false);
@@ -49180,6 +50721,12 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       setColorBy(residentPresetMap[viewPreset] || "equity");
       setShowAssociationOverlay(false);
     }, [advanced, viewPreset]);
+    (0, import_react44.useEffect)(() => {
+      if (!compactMode || !initialCompactSelectedParcelId) return;
+      setSelectedParcelId((current) => current || initialCompactSelectedParcelId);
+      setShowNeighborhoodOverlay(false);
+      setShowAssociationOverlay(false);
+    }, [compactMode, initialCompactSelectedParcelId]);
     (0, import_react44.useEffect)(() => {
       if (mapRuntimeReady) return;
       let cancelled = false;
@@ -49261,7 +50808,25 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }, [neighborhoodAssociations, projectPoint]);
     const hasNeighborhoodOverlayData = neighborhoodFeatures.length > 0;
     const hasAssociationOverlayData = associationFeatures.length > 0;
-    const compareIds = (0, import_react44.useMemo)(() => new Set((compareList || []).map((p) => p.parcelId)), [compareList]);
+    const compareIndexById = (0, import_react44.useMemo)(() => {
+      const map3 = /* @__PURE__ */ new Map();
+      (compareList || []).forEach((parcel, index) => {
+        const id = normalizeParcelId2(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+        if (id) map3.set(id, index + 1);
+      });
+      return map3;
+    }, [compareList, normalizeParcelId2]);
+    const compareIds = (0, import_react44.useMemo)(() => new Set(compareIndexById.keys()), [compareIndexById]);
+    const getParcelRole = (0, import_react44.useCallback)((parcel) => {
+      const id = normalizeParcelId2(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+      if (!id) return { kind: "other", label: "Parcel", color: "#64748b", outline: "#475569" };
+      if (normalizedSubjectParcelId && id === normalizedSubjectParcelId) return { kind: "subject", label: "Subject parcel", color: "#f59e0b", outline: "#b45309" };
+      if (compareIndexById.has(id)) {
+        const index = compareIndexById.get(id);
+        return { kind: "compare", index, label: `Included comp ${index}`, color: "#2563eb", outline: "#1d4ed8" };
+      }
+      return { kind: "other", label: "Parcel", color: "#64748b", outline: "#475569" };
+    }, [compareIndexById, normalizeParcelId2, normalizedSubjectParcelId]);
     const boundaryLegendItems = (0, import_react44.useMemo)(() => {
       const items = [];
       if (showNeighborhoodOverlay && hasNeighborhoodOverlayData) {
@@ -49516,13 +51081,16 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         const isSelected = selectedParcelId === item.p.parcelId;
         const isHighlighted = hlSet ? hlSet.has(item.p.parcelId) : false;
         const isMuted = !!(hlSet && !isHighlighted && !isSelected);
+        const parcelRole = compactMode ? getParcelRole(item.p) : null;
+        const baseColor = compactMode && parcelRole ? parcelRole.color : colorForParcel(item.p);
+        const outlineColor = compactMode && parcelRole ? parcelRole.outline : colorForParcel(item.p);
         const layer = L.polygon(latLngs, {
           renderer: rendererRef.current,
-          color: isSelected ? "#0f172a" : isHighlighted ? "#ffffff" : colorForParcel(item.p),
-          weight: isSelected ? 2.4 : isHighlighted ? 1.8 : 1.1,
+          color: isSelected ? "#0f172a" : isHighlighted ? "#ffffff" : outlineColor,
+          weight: isSelected ? 2.4 : compactMode && parcelRole ? parcelRole.kind === "subject" ? 2.2 : 2 : isHighlighted ? 1.8 : 1.1,
           opacity: isMuted ? 0.28 : isSelected ? 0.98 : 0.92,
-          fillColor: isSelected ? "#ffffff" : colorForParcel(item.p),
-          fillOpacity: isMuted ? 0.16 : isSelected ? 0.72 : advanced ? 0.62 : 0.56
+          fillColor: isSelected ? "#ffffff" : baseColor,
+          fillOpacity: isMuted ? 0.16 : isSelected ? 0.72 : compactMode && parcelRole ? parcelRole.kind === "subject" ? 0.64 : 0.48 : advanced ? 0.62 : 0.56
         });
         layer.on("click", (evt) => {
           L.DomEvent.stopPropagation(evt);
@@ -49532,7 +51100,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           L.DomEvent.stopPropagation(evt);
           focusParcel(item.p.parcelId, 18);
         });
-        layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
+        layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${compactMode && parcelRole ? `${parcelRole.label}<br/>` : ""}${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
         layer.addTo(polygonLayer);
         polygonVisibleCount += 1;
       }
@@ -49552,14 +51120,16 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         const isSelected = selectedParcelId === item.p.parcelId;
         const isHighlighted = hlSet ? hlSet.has(item.p.parcelId) : false;
         const isMuted = !!(hlSet && !isHighlighted && !isSelected);
+        const parcelRole = compactMode ? getParcelRole(item.p) : null;
+        const baseColor = compactMode && parcelRole ? parcelRole.color : colorForParcel(item.p);
         const layer = L.circleMarker(item.latLng, {
           renderer: rendererRef.current,
-          radius: isSelected ? 8 : isHighlighted ? 6.5 : item.pointFallback ? 4 : 3.25,
+          radius: isSelected ? 8 : compactMode && parcelRole ? parcelRole.kind === "subject" ? 7.2 : 6.2 : isHighlighted ? 6.5 : item.pointFallback ? 4 : 3.25,
           color: isSelected ? "#0f172a" : "#ffffff",
-          weight: isSelected ? 2 : 1.1,
+          weight: isSelected ? 2 : compactMode && parcelRole ? 1.5 : 1.1,
           opacity: isMuted ? 0.34 : 0.96,
-          fillColor: isSelected ? "#ffffff" : colorForParcel(item.p),
-          fillOpacity: isMuted ? 0.18 : item.pointFallback ? 0.9 : 0.72
+          fillColor: isSelected ? "#ffffff" : baseColor,
+          fillOpacity: isMuted ? 0.18 : compactMode && parcelRole ? 0.9 : item.pointFallback ? 0.9 : 0.72
         });
         layer.on("click", (evt) => {
           L.DomEvent.stopPropagation(evt);
@@ -49569,13 +51139,46 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           L.DomEvent.stopPropagation(evt);
           focusParcel(item.p.parcelId, 18);
         });
-        layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
+        layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${compactMode && parcelRole ? `${parcelRole.label}<br/>` : ""}${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
         layer.addTo(pointLayer);
         pointVisibleCount += 1;
       }
       if (pointVisibleCount) {
         pointLayer.addTo(map3);
         dynamicLayersRef.current.push(pointLayer);
+      }
+      if (compactMode) {
+        const labelLayer = L.layerGroup();
+        const labeledKeys = /* @__PURE__ */ new Set();
+        for (const item of visibleItems) {
+          const parcelRole = getParcelRole(item.p);
+          if (!parcelRole || parcelRole.kind !== "subject" && parcelRole.kind !== "compare" || !item.latLng) continue;
+          const labelKey = parcelRole.kind === "subject" ? "subject" : `compare-${parcelRole.index}`;
+          if (labeledKeys.has(labelKey)) continue;
+          labeledKeys.add(labelKey);
+          const bubbleBg = parcelRole.kind === "subject" ? "rgba(245,158,11,.96)" : "rgba(37,99,235,.96)";
+          const bubbleBorder = parcelRole.kind === "subject" ? "rgba(180,83,9,.88)" : "rgba(29,78,216,.9)";
+          const bubbleText = parcelRole.kind === "subject" ? "#7c2d12" : "#ffffff";
+          const labelText = parcelRole.kind === "subject" ? "Subject" : `Comp ${parcelRole.index}`;
+          const marker = L.marker(item.latLng, {
+            interactive: false,
+            keyboard: false,
+            zIndexOffset: parcelRole.kind === "subject" ? 1400 : 1300,
+            icon: L.divIcon({
+              className: "compact-map-label",
+              iconSize: [parcelRole.kind === "subject" ? 74 : 60, 36],
+              iconAnchor: [parcelRole.kind === "subject" ? 37 : 30, 34],
+              html: `<div style="transform:translate(-50%,-120%);pointer-events:none;">
+              <div style="display:inline-flex;align-items:center;justify-content:center;min-width:${parcelRole.kind === "subject" ? 62 : 48}px;height:28px;padding:0 10px;border-radius:999px;background:${bubbleBg};border:1px solid ${bubbleBorder};box-shadow:0 10px 24px rgba(15,23,42,.18);font:700 11px/1 Arial,sans-serif;color:${bubbleText};white-space:nowrap;">${labelText}</div>
+            </div>`
+            })
+          });
+          marker.addTo(labelLayer);
+        }
+        if (labeledKeys.size) {
+          labelLayer.addTo(map3);
+          dynamicLayersRef.current.push(labelLayer);
+        }
       }
       setRenderStats({
         visible: visibleItems.length,
@@ -49627,21 +51230,28 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       const group = getOwnerPortfolioGroup(selectedParcel);
       return group && group.propertyCount > 1 && Array.isArray(group.parcels) ? group : null;
     }, [getOwnerPortfolioGroup, selectedParcel]);
-    const selectedInCompare = selectedParcel ? compareIds.has(selectedParcel.parcelId) : false;
+    const selectedInCompare = selectedParcel ? compareIds.has(normalizeParcelId2(selectedParcel.parcelId)) : false;
+    const selectedParcelRole = selectedParcel ? getParcelRole(selectedParcel) : null;
+    const compactCompareCount = compareList.length;
     const legendItems = LEGEND[colorBy] || [];
     const overlayNotice = (0, import_react44.useMemo)(() => {
+      if (compactMode) {
+        if (!hasParcelGeometry) return "Parcel boundary geometry is unavailable for one or more selected parcels, so point locations are shown where needed.";
+        if (renderStats.pointCapped || renderStats.polygonCapped) return "This map view is trimmed for speed. Zoom in for complete parcel detail.";
+        return "Only your parcel and the grievance comps currently included in the package are shown here.";
+      }
       if (zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM) return `Zoom in to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries.`;
       if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Parcel boundaries are active. Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
       if (renderStats.polygonCapped || renderStats.pointCapped) return "This view is trimmed for speed. Zoom in for complete parcel detail.";
       if (!hasParcelGeometry) return "Point locations are active because parcel boundary geometry is not loaded.";
       return null;
-    }, [hasParcelGeometry, renderStats.pointCapped, renderStats.polygonCapped, zoomDisplay]);
-    return /* @__PURE__ */ import_react44.default.createElement("div", { className: "fi" }, /* @__PURE__ */ import_react44.default.createElement(SectionTitle2, null, "Application Map"), /* @__PURE__ */ import_react44.default.createElement(Sub2, null, hasParcelGeometry ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace." : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", fontWeight: 700 } }, advanced ? "Color by" : "Resident view"), advanced ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setColorBy(k2), style: { background: colorBy === k2 ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k2 ? "var(--teal)" : "var(--border)"}`, color: colorBy === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)) : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setViewPreset(k2), style: { background: viewPreset === k2 ? "var(--blue)" : "var(--card2)", border: `1px solid ${viewPreset === k2 ? "var(--blue)" : "var(--border)"}`, color: viewPreset === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)), advanced ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowPropertyOverlay((v) => !v), disabled: !hasParcelGeometry, style: { background: hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.16)" : "var(--card2)", border: `1px solid ${hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.35)" : "var(--border)"}`, color: hasParcelGeometry ? showPropertyOverlay ? "var(--teal2)" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasParcelGeometry ? "pointer" : "not-allowed", opacity: hasParcelGeometry ? 1 : 0.72 } }, "Parcel boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowParcelPoints((v) => !v), style: { background: showParcelPoints ? "rgba(37,99,235,.16)" : "var(--card2)", border: `1px solid ${showParcelPoints ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: showParcelPoints ? "var(--blue3)" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, hasParcelGeometry ? "Show point markers" : "Point locations"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowAssociationOverlay((v) => !v), disabled: !hasAssociationOverlayData, style: { background: showAssociationOverlay ? "rgba(124,58,237,.14)" : "var(--card2)", border: `1px solid ${showAssociationOverlay ? "rgba(124,58,237,.28)" : "var(--border)"}`, color: hasAssociationOverlayData ? showAssociationOverlay ? "#7c3aed" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasAssociationOverlayData ? "pointer" : "not-allowed", opacity: hasAssociationOverlayData ? 1 : 0.72 } }, "Association boundaries")) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", flex: "1 1 280px" } }, { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset]), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "+"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(-1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "-"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: resetView, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Reset view"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" } }, zoomDisplay ? `z${zoomDisplay}` : "..."))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement(AddressAutocompleteInput, { parcels, value: addrSearch, onChange: setAddrSearch, onSelectParcel: (p) => {
+    }, [compactMode, hasParcelGeometry, renderStats.pointCapped, renderStats.polygonCapped, zoomDisplay]);
+    return /* @__PURE__ */ import_react44.default.createElement("div", { className: "fi" }, !compactMode ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement(SectionTitle2, null, "Application Map"), /* @__PURE__ */ import_react44.default.createElement(Sub2, null, hasParcelGeometry ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace." : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 14 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray)", fontWeight: 700 } }, advanced ? "Color by" : "Resident view"), advanced ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setColorBy(k2), style: { background: colorBy === k2 ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k2 ? "var(--teal)" : "var(--border)"}`, color: colorBy === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)) : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k2, l]) => /* @__PURE__ */ import_react44.default.createElement("button", { key: k2, onClick: () => setViewPreset(k2), style: { background: viewPreset === k2 ? "var(--blue)" : "var(--card2)", border: `1px solid ${viewPreset === k2 ? "var(--blue)" : "var(--border)"}`, color: viewPreset === k2 ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, l)), advanced ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowPropertyOverlay((v) => !v), disabled: !hasParcelGeometry, style: { background: hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.16)" : "var(--card2)", border: `1px solid ${hasParcelGeometry && showPropertyOverlay ? "rgba(13,148,136,.35)" : "var(--border)"}`, color: hasParcelGeometry ? showPropertyOverlay ? "var(--teal2)" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasParcelGeometry ? "pointer" : "not-allowed", opacity: hasParcelGeometry ? 1 : 0.72 } }, "Parcel boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowParcelPoints((v) => !v), style: { background: showParcelPoints ? "rgba(37,99,235,.16)" : "var(--card2)", border: `1px solid ${showParcelPoints ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: showParcelPoints ? "var(--blue3)" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, hasParcelGeometry ? "Show point markers" : "Point locations"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowAssociationOverlay((v) => !v), disabled: !hasAssociationOverlayData, style: { background: showAssociationOverlay ? "rgba(124,58,237,.14)" : "var(--card2)", border: `1px solid ${showAssociationOverlay ? "rgba(124,58,237,.28)" : "var(--border)"}`, color: hasAssociationOverlayData ? showAssociationOverlay ? "#7c3aed" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasAssociationOverlayData ? "pointer" : "not-allowed", opacity: hasAssociationOverlayData ? 1 : 0.72 } }, "Association boundaries")) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", flex: "1 1 280px" } }, { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset]), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setShowNeighborhoodOverlay((v) => !v), disabled: !hasNeighborhoodOverlayData, style: { background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)" : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : 0.72 } }, "Neighborhood boundaries")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "+"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => stepZoom(-1), style: { ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" } }, "-"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: resetView, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Reset view"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" } }, zoomDisplay ? `z${zoomDisplay}` : "..."))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement(AddressAutocompleteInput, { parcels, value: addrSearch, onChange: setAddrSearch, onSelectParcel: (p) => {
       setAddrSearch(p.address);
       focusParcel(p.parcelId, 18);
     }, onEnter: () => {
       if (searchMatches[0]) focusParcel(searchMatches[0].parcelId, 18);
-    }, placeholder: "Search address, owner, or parcel ID", inputStyle: { width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }, wrapperStyle: { flex: 1, minWidth: 220 } }), addrSearch && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setAddrSearch(""), style: { ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" } }, "Clear"), searchMatches.length > 1 && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: fitSearchMatches, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Fit matches"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" } }, hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, mapStatus)))), /* @__PURE__ */ import_react44.default.createElement("div", { className: "leaflet-layout" }, /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ import_react44.default.createElement("div", null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Application map workspace"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : `${renderStats.visible.toLocaleString()} visible parcels`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "relative", borderTop: "none" } }, !mapRuntimeReady ? /* @__PURE__ */ import_react44.default.createElement("div", { style: { height: "min(620px, 70vh)", display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { maxWidth: 520, textAlign: "center" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 } }, "Leaflet is not ready"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, color: "var(--gray2)", lineHeight: 1.7, marginTop: 10 } }, "The base mapping assets did not load. Check internet access for the browser session, then refresh."))) : /* @__PURE__ */ import_react44.default.createElement("div", { ref: mapElRef, style: { height: "min(620px, 70vh)", width: "100%", background: "#dbe4ee" } }), overlayNotice && /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", top: 14, left: 14, maxWidth: 360, background: "rgba(248,250,252,0.96)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 12, padding: "10px 12px", fontSize: 12, color: "#0f172a", boxShadow: "0 8px 20px rgba(15,23,42,.08)" } }, overlayNotice), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", bottom: 10, left: 12, right: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", pointerEvents: "none" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, renderStats.visible.toLocaleString(), " visible parcels | ", renderStats.polygons.toLocaleString(), " parcel boundaries | ", renderStats.points.toLocaleString(), " markers", renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : "", renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, "Scroll to zoom | Drag to pan | Click to inspect | Double-click parcel to fit")))), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, selectedParcel ? "Selected parcel" : "Map inspector"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0, lineHeight: 1.08, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement("a", { href: selectedParcelMapsUrl, target: "_blank", rel: "noreferrer", style: { color: "inherit", textDecoration: "underline", textUnderlineOffset: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.address || selectedParcel.parcelId) : addrSearch ? "Search results" : "Use the map")), selectedParcel && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setSelectedParcelId(null), "aria-label": "Close selected parcel", style: { background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 } }, "x")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", display: "grid", gap: 14, minWidth: 0 } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#6366f1" }, propClassLabel2(selectedParcel)), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: selectedItem?.geom ? "#0d9488" : "#f59e0b" }, selectedItem?.geom ? "Boundary loaded" : "Point location only"), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: FC2[eqFlagFast2(selectedParcel)] }, FL2[eqFlagFast2(selectedParcel)]), isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#f97316" }, "Absentee")), isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement("details", { style: { background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react44.default.createElement("summary", { style: { cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" } }, "Why flagged as absentee?"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 4, marginTop: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 } }, getAbsenteeModelFast2(selectedParcel).label, " (", getAbsenteeModelFast2(selectedParcel).confidence, ", score ", getAbsenteeModelFast2(selectedParcel).score, ")"), (getAbsenteeModelFast2(selectedParcel).signals?.length ? getAbsenteeModelFast2(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${selectedParcel.parcelId}-absentee-${idx}`, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 } }, signal)))), /* @__PURE__ */ import_react44.default.createElement("div", { className: "metric-grid-2", style: { display: "grid", gap: 10, minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Full market value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, $f2(selectedParcel.fullMarketValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Assessed value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, $f2(selectedParcel.assessedValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700, marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.owner1 || "Unknown owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.mailAddress || "Mailing address not available"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.neighborhood || selectedParcel.neighborhoodAssociation || "Neighborhood unknown", selectedParcel.neighborhoodAssociation && selectedParcel.neighborhoodAssociation !== selectedParcel.neighborhood ? ` | ${selectedParcel.neighborhoodAssociation}` : "")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Equity ratio"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, color: FC2[eqFlagFast2(selectedParcel)], overflowWrap: "anywhere", wordBreak: "break-word" } }, eqRFast2(selectedParcel), "%"))), selectedInventoryRows.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Residential profile"), /* @__PURE__ */ import_react44.default.createElement("div", { className: "metric-grid-2", style: { display: "grid", gap: 10, marginTop: 10, minWidth: 0 } }, selectedInventoryRows.map(([label, value]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, label), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.55, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, value))))), selectedOwnerPortfolio && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement(
+    }, placeholder: "Search address, owner, or parcel ID", inputStyle: { width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }, wrapperStyle: { flex: 1, minWidth: 220 } }), addrSearch && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setAddrSearch(""), style: { ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" } }, "Clear"), searchMatches.length > 1 && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: fitSearchMatches, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Fit matches"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" } }, hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, mapStatus))))) : /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { marginBottom: 14, background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.16)" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: "1 1 320px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 } }, compactTitle || "Visual evidence map"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, marginTop: 6 } }, compactSubtitle || `This simplified map shows your property and the ${compactCompareCount} comparable home${compactCompareCount === 1 ? "" : "s"} currently included in the grievance package.`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#f59e0b" }, "Subject parcel"), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#2563eb" }, compactCompareCount, " grievance comp", compactCompareCount === 1 ? "" : "s"), /* @__PURE__ */ import_react44.default.createElement("button", { onClick: resetView, style: { ...SI, fontSize: 11, padding: "7px 11px" } }, "Reset view")))), /* @__PURE__ */ import_react44.default.createElement("div", { className: "leaflet-layout" }, /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ import_react44.default.createElement("div", null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: compactMode ? "var(--blue3)" : "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, compactMode ? "Grievance comparable map" : "Application map workspace"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4 } }, compactMode ? "Only the subject parcel and the currently included grievance comps are shown." : hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)" } }, selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : compactMode ? `${Math.max(renderStats.visible - compactCompareCount, 0)} subject + ${compactCompareCount} comp${compactCompareCount === 1 ? "" : "s"}` : `${renderStats.visible.toLocaleString()} visible parcels`)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "relative", borderTop: "none" } }, !mapRuntimeReady ? /* @__PURE__ */ import_react44.default.createElement("div", { style: { height: "min(620px, 70vh)", display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { maxWidth: 520, textAlign: "center" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 } }, "Leaflet is not ready"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, color: "var(--gray2)", lineHeight: 1.7, marginTop: 10 } }, "The base mapping assets did not load. Check internet access for the browser session, then refresh."))) : /* @__PURE__ */ import_react44.default.createElement("div", { ref: mapElRef, style: { height: "min(620px, 70vh)", width: "100%", background: "#dbe4ee" } }), overlayNotice && /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", top: 14, left: 14, maxWidth: 360, background: "rgba(248,250,252,0.96)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 12, padding: "10px 12px", fontSize: 12, color: "#0f172a", boxShadow: "0 8px 20px rgba(15,23,42,.08)" } }, overlayNotice), /* @__PURE__ */ import_react44.default.createElement("div", { style: { position: "absolute", bottom: 10, left: 12, right: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", pointerEvents: "none" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, compactMode ? `1 subject parcel | ${compactCompareCount} grievance comp${compactCompareCount === 1 ? "" : "s"} | ${renderStats.polygons.toLocaleString()} parcel boundaries | ${renderStats.points.toLocaleString()} markers` : `${renderStats.visible.toLocaleString()} visible parcels | ${renderStats.polygons.toLocaleString()} parcel boundaries | ${renderStats.points.toLocaleString()} markers${renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : ""}${renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""}`), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" } }, "Scroll to zoom | Drag to pan | Click to inspect | Double-click parcel to fit")))), /* @__PURE__ */ import_react44.default.createElement(Card2, { style: { padding: 0, overflow: "hidden", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: 1 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: compactMode ? "var(--blue3)" : advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, selectedParcel ? "Selected parcel" : "Map inspector"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0, lineHeight: 1.08, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement("a", { href: selectedParcelMapsUrl, target: "_blank", rel: "noreferrer", style: { color: "inherit", textDecoration: "underline", textUnderlineOffset: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.address || selectedParcel.parcelId) : addrSearch ? "Search results" : "Use the map")), selectedParcel && !compactMode && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setSelectedParcelId(null), "aria-label": "Close selected parcel", style: { background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 } }, "x")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "14px 16px", display: "grid", gap: 14, minWidth: 0 } }, selectedParcel ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 } }, compactMode && selectedParcelRole?.kind === "subject" && /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#f59e0b" }, "Subject parcel"), compactMode && selectedParcelRole?.kind === "compare" && /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#2563eb" }, selectedParcelRole.label), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#6366f1" }, propClassLabel2(selectedParcel)), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: selectedItem?.geom ? "#0d9488" : "#f59e0b" }, selectedItem?.geom ? "Boundary loaded" : "Point location only"), /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: FC2[eqFlagFast2(selectedParcel)] }, FL2[eqFlagFast2(selectedParcel)]), isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement(Badge2, { color: "#f97316" }, "Absentee")), !compactMode && isAbsenteeFast2(selectedParcel) && /* @__PURE__ */ import_react44.default.createElement("details", { style: { background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react44.default.createElement("summary", { style: { cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" } }, "Why flagged as absentee?"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 4, marginTop: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 } }, getAbsenteeModelFast2(selectedParcel).label, " (", getAbsenteeModelFast2(selectedParcel).confidence, ", score ", getAbsenteeModelFast2(selectedParcel).score, ")"), (getAbsenteeModelFast2(selectedParcel).signals?.length ? getAbsenteeModelFast2(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${selectedParcel.parcelId}-absentee-${idx}`, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 } }, signal)))), /* @__PURE__ */ import_react44.default.createElement("div", { className: "metric-grid-2", style: { display: "grid", gap: 10, minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Full market value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, $f2(selectedParcel.fullMarketValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Assessed value"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, $f2(selectedParcel.assessedValue))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700, marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.owner1 || "Unknown owner"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.mailAddress || "Mailing address not available"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" } }, selectedParcel.neighborhood || selectedParcel.neighborhoodAssociation || "Neighborhood unknown", selectedParcel.neighborhoodAssociation && selectedParcel.neighborhoodAssociation !== selectedParcel.neighborhood ? ` | ${selectedParcel.neighborhoodAssociation}` : "")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Equity ratio"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, color: FC2[eqFlagFast2(selectedParcel)], overflowWrap: "anywhere", wordBreak: "break-word" } }, eqRFast2(selectedParcel), "%"))), selectedInventoryRows.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Residential profile"), /* @__PURE__ */ import_react44.default.createElement("div", { className: "metric-grid-2", style: { display: "grid", gap: 10, marginTop: 10, minWidth: 0 } }, selectedInventoryRows.map(([label, value]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, label), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.55, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" } }, value))))), !compactMode && selectedOwnerPortfolio && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement(
       "button",
       {
         type: "button",
@@ -49662,7 +51272,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         },
         /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { minWidth: 0, flex: "1 1 180px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, p.address || p.parcelId), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4, lineHeight: 1.5, overflowWrap: "anywhere", wordBreak: "break-word" } }, p.parcelId, " | ", p.neighborhood || "Neighborhood unknown", current ? " | Current parcel" : "")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { textAlign: "right", minWidth: 0, flex: "0 1 auto" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" } }, $f2(p.fullMarketValue)), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 4 } }, propClassLabel2(p))))
       );
-    })))), "              ", selectedWarnings.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" } }, selectedWarnings.slice(0, 4).map((w) => /* @__PURE__ */ import_react44.default.createElement("div", { key: w, style: { fontSize: 12, color: "var(--gray2)" } }, w.replace(/_/g, " ")))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => focusParcel(selectedParcel.parcelId, 18), style: { background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 } }, "Center on parcel"), typeof onCompare === "function" && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => onCompare(selectedParcel), style: { background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 } }, selectedInCompare ? "In Compare" : "+ Compare"))) : addrSearch ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 8 } }, searchMatches.length > 0 ? searchMatches.map((p) => /* @__PURE__ */ import_react44.default.createElement("button", { key: p.parcelId, onClick: () => focusParcel(p.parcelId, 18), style: { textAlign: "left", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, p.address || "Address unavailable"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 3 } }, p.owner1 || "Unknown owner", " | Parcel ", p.parcelId))) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7 } }, "No mapped parcels match that search."))) : /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, residentMode ? "Current resident view" : "Start here"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7, marginTop: 6 } }, residentMode ? { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset] : "Search an address or owner name, or click a parcel directly.")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, coloring: !prev.coloring })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Current coloring"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.coloring ? "Hide" : "Show")), legendOpen.coloring && /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 } }, legendItems.map(([label, color2]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: color2, border: "1px solid rgba(255,255,255,.18)", flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, label))))), boundaryLegendItems.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, boundaries: !prev.boundaries })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Boundary legend"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.boundaries ? "Hide" : "Show")), legendOpen.boundaries && /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "0 14px 12px", marginTop: -2 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 5 } }, advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 } }, boundaryLegendItems.map((item) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${item.kind}:${item.label}`, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, item.label)))))))))));
+    })))), "              ", !compactMode && selectedWarnings.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" } }, selectedWarnings.slice(0, 4).map((w) => /* @__PURE__ */ import_react44.default.createElement("div", { key: w, style: { fontSize: 12, color: "var(--gray2)" } }, w.replace(/_/g, " ")))), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => focusParcel(selectedParcel.parcelId, 18), style: { background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 } }, "Center on parcel"), !compactMode && typeof onCompare === "function" && /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => onCompare(selectedParcel), style: { background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 } }, selectedInCompare ? "In Compare" : "+ Compare"))) : addrSearch ? /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 8 } }, searchMatches.length > 0 ? searchMatches.map((p) => /* @__PURE__ */ import_react44.default.createElement("button", { key: p.parcelId, onClick: () => focusParcel(p.parcelId, 18), style: { textAlign: "left", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, p.address || "Address unavailable"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 3 } }, p.owner1 || "Unknown owner", " | Parcel ", p.parcelId))) : /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7 } }, "No mapped parcels match that search."))) : /* @__PURE__ */ import_react44.default.createElement(import_react44.default.Fragment, null, /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, residentMode ? "Current resident view" : "Start here"), /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 13, color: "var(--gray2)", lineHeight: 1.7, marginTop: 6 } }, residentMode ? { fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." }[viewPreset] : "Search an address or owner name, or click a parcel directly.")), /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, coloring: !prev.coloring })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Current coloring"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.coloring ? "Hide" : "Show")), legendOpen.coloring && /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 } }, legendItems.map(([label, color2]) => /* @__PURE__ */ import_react44.default.createElement("div", { key: label, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: color2, border: "1px solid rgba(255,255,255,.18)", flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, label))))), boundaryLegendItems.length > 0 && /* @__PURE__ */ import_react44.default.createElement("div", { style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ import_react44.default.createElement("button", { onClick: () => setLegendOpen((prev) => ({ ...prev, boundaries: !prev.boundaries })), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" } }, /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 } }, "Boundary legend"), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray3)" } }, legendOpen.boundaries ? "Hide" : "Show")), legendOpen.boundaries && /* @__PURE__ */ import_react44.default.createElement("div", { style: { padding: "0 14px 12px", marginTop: -2 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 5 } }, advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."), /* @__PURE__ */ import_react44.default.createElement("div", { style: { display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 } }, boundaryLegendItems.map((item) => /* @__PURE__ */ import_react44.default.createElement("div", { key: `${item.kind}:${item.label}`, style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ import_react44.default.createElement("div", { style: { width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 } }), /* @__PURE__ */ import_react44.default.createElement("span", { style: { fontSize: 12, color: "var(--gray2)" } }, item.label)))))))))));
   };
 
   // property-type-classification-codes.json
@@ -51079,6 +52689,21 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   };
 
   // albany-full-dashboard.jsx
+  var import_grievance_engine = __toESM(require_grievance_engine());
+  var {
+    analyzeComparableCandidate: analyzeComparableCandidateWithSpec,
+    annotateComparablePackageDecisions: annotateComparablePackageDecisionsWithSpec,
+    buildBroadenedComparableResult: buildBroadenedComparableResultWithSpec,
+    computeClaimRecommendation: computeClaimRecommendationWithSpec,
+    computeMarketSaleModel: computeMarketSaleModelWithSpec,
+    computeNeighborhoodEquityModel: computeNeighborhoodEquityModelWithSpec,
+    computeOvervaluationFlag: computeOvervaluationFlagWithSpec,
+    computeSubjectSaleSignal: computeSubjectSaleSignalWithSpec,
+    selectGrievancePackage: selectGrievancePackageWithSpec,
+    sortGrievanceCandidatePool: sortGrievanceCandidatePoolWithSpec,
+    sortVisibleComparableCandidates: sortVisibleComparableCandidatesWithSpec,
+    summarizeGrievancePackage: summarizeGrievancePackageWithSpec
+  } = import_grievance_engine.default;
   var GS = () => /* @__PURE__ */ import_react45.default.createElement("style", null, `
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -51187,6 +52812,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     activeStepId,
     availableStepIds,
     onSelectStep,
+    isLoading = false,
     isMobile = false,
     mobileOpen = false,
     onToggleMobile = () => {
@@ -51261,9 +52887,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           onClick: () => onToggleMobile(false),
           style: { position: "fixed", inset: 0, zIndex: 59, background: "rgba(15,23,42,.20)", border: "none", padding: 0, cursor: "pointer" }
         }
-      ), mobileOpen && /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", left: 12, right: 12, bottom: 78, zIndex: 60, background: "rgba(255,255,255,.98)", border: "1px solid rgba(148,163,184,.24)", borderRadius: 16, padding: "12px 12px 10px", boxShadow: "0 18px 36px rgba(15,23,42,.18)", display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 2 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7 } }, activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: "var(--gray)" } }, activeStep?.label || "Workflow steps")), /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => onToggleMobile(false), style: { background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.22)", color: "var(--gray2)", borderRadius: 999, padding: "7px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Close")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, steps.map((step) => renderStepButton(step, true)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "rgba(255,255,255,.96)", border: "1px solid rgba(148,163,184,.22)", borderRadius: 999, padding: "10px 12px", boxShadow: "0 14px 28px rgba(15,23,42,.12)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 2, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7 } }, activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, activeStep?.label || "Workflow steps")), /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => onToggleMobile(!mobileOpen), "aria-expanded": mobileOpen, "aria-haspopup": "dialog", style: { background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0 } }, mobileOpen ? "Hide steps" : "Show steps")));
+      ), mobileOpen && /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", left: 12, right: 12, bottom: 78, zIndex: 60, background: "rgba(255,255,255,.98)", border: "1px solid rgba(148,163,184,.24)", borderRadius: 16, padding: "12px 12px 10px", boxShadow: "0 18px 36px rgba(15,23,42,.18)", display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 2 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7 } }, activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: "var(--gray)" } }, activeStep?.label || "Workflow steps"), isLoading ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--amber2)", fontWeight: 700, lineHeight: 1.45 } }, "Loading data... more steps unlock when analysis is ready.") : null), /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => onToggleMobile(false), style: { background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.22)", color: "var(--gray2)", borderRadius: 999, padding: "7px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Close")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, steps.map((step) => renderStepButton(step, true)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "rgba(255,255,255,.96)", border: "1px solid rgba(148,163,184,.22)", borderRadius: 999, padding: "10px 12px", boxShadow: "0 14px 28px rgba(15,23,42,.12)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 2, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7 } }, activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, activeStep?.label || "Workflow steps"), isLoading ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--amber2)", fontWeight: 700, lineHeight: 1.4 } }, "Loading data...") : null), /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => onToggleMobile(!mobileOpen), "aria-expanded": mobileOpen, "aria-haspopup": "dialog", style: { background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0 } }, mobileOpen ? "Hide steps" : "Show steps")));
     }
-    return /* @__PURE__ */ import_react45.default.createElement("nav", { className: "workflow-rail-sticky print-hide", "aria-label": "Grievance workflow steps" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.78)", border: "1px solid rgba(148,163,184,.20)", borderRadius: 16, padding: "14px 14px 12px", display: "grid", gap: 12, boxShadow: "0 12px 28px rgba(15,23,42,.06)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.8 } }, activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "var(--gray)" } }, activeStep?.label || "Workflow steps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 } }, "Jump to any major step in the grievance workflow.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, steps.map((step) => renderStepButton(step, false)))));
+    return /* @__PURE__ */ import_react45.default.createElement("nav", { className: "workflow-rail-sticky print-hide", "aria-label": "Grievance workflow steps" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.78)", border: "1px solid rgba(148,163,184,.20)", borderRadius: 16, padding: "14px 14px 12px", display: "grid", gap: 12, boxShadow: "0 12px 28px rgba(15,23,42,.06)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.8 } }, activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "var(--gray)" } }, activeStep?.label || "Workflow steps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 } }, "Jump to any major step in the grievance workflow."), isLoading ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--amber2)", fontWeight: 700, lineHeight: 1.45 } }, "Loading data... more steps unlock when analysis is ready.") : null), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, steps.map((step) => renderStepButton(step, false)))));
   };
   var InfoBox = ({ icon = "Info", title, children, color: color2 = "#3b82f6" }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: `${color2}0d`, border: `1px solid ${color2}28`, borderRadius: 10, padding: "14px 18px", marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 18, flexShrink: 0, marginTop: 1 } }, icon), /* @__PURE__ */ import_react45.default.createElement("div", null, title && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 13, fontWeight: 700, color: color2, marginBottom: 5 } }, title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.85 } }, children))));
   var MyHomeBanner = ({ myHome, onUse, label = "Use My Home" }) => {
@@ -51462,18 +53088,23 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     cond_signif_pers: "Significant personal property",
     cond_uniformed_party: "Uniformed services party"
   };
-  var ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal open-market sale between unrelated buyers and sellers. This kind of sale is called an 'arm's-length' sale. The tool uses arm's-length sales to anchor market-value checks, compare assessed value against real sale prices, and add or reduce support in the grievance summary.";
+  var ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal open-market sale between unrelated buyers and sellers. This kind of sale is called an 'arm's-length' sale. In this app, ORPTS arm's-length sales are used to anchor market-value checks, compare assessed value against real sale prices, and add or reduce support in the grievance summary.";
   var NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER = "Some past transfers on this home were gifts or family moves, not normal market sales. These are called 'non-arm's-length' transfers. The tool keeps them in history, but it does not use those transfer prices as market-value evidence in the grievance scoring.";
   var ARM_LENGTH_DEFINITION = "Arm's-length means a normal open-market sale between unrelated buyers and sellers.";
-  var SALES_DATA_SOURCE_NOTE = "Sales data source: Office of Real Property Tax Services (ORPTS) Municipal Data Portal.";
+  var SALES_DATA_SOURCE_NOTE = "Sales data source: New York State Office of Real Property Tax Services (ORPTS) Municipal Data Portal. Used here for sale history and arm's-length market evidence.";
   var MATCHED_HOME_DETAILS_INFO = 'See "Why this home was included" for details.';
   var TERM_HELP = {
     fmv: "Estimated full market value of your property.",
     assessedValue: "The value the city uses to calculate your taxes.",
     equityRatio: "Assessed value divided by market value. It helps compare whether homes are assessed consistently.",
+    cod: "Coefficient of Dispersion. It measures how tightly neighborhood assessment ratios cluster together. Lower usually means more uniform assessments.",
+    iaaoStandard: "The International Association of Assessing Officers benchmark for acceptable assessment uniformity. In this app, COD at or below 15.0 is treated as meeting the residential uniformity standard.",
     armLengthSale: "A normal market sale between unrelated buyers and sellers.",
     comparableHome: "A home used to compare against yours because it is similar in location and physical details.",
     grievancePackage: "The set of selected comps and narrative materials you may use when filing RP-524.",
+    methodA: "A comp-based value estimate. It asks: if we look at the best comparable homes, what assessed value do they suggest you should ask for?",
+    methodB: "An equity-ratio value estimate. It asks: if your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?",
+    independentOvervaluation: "A separate overassessment check. It asks: even aside from the comps, does your assessment look too high compared with your FMV and the municipality's equalization rate?",
     rp524: "The New York form used to challenge your property assessment."
   };
   var TAX_APPEAL_NEXT_STEPS = [
@@ -51582,6 +53213,23 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     return dt >= cutoff;
   };
   var getSalePricePerSqFt = (sale, livingArea) => Number.isFinite(Number(sale?.sale_price)) && Number(sale.sale_price) > 0 && Number.isFinite(Number(livingArea)) && Number(livingArea) > 0 ? Number(sale.sale_price) / Number(livingArea) : null;
+  var buildCompSaleEvidenceSentence = (parcel, saleEvidence) => {
+    if (!parcel || !saleEvidence?.sale || saleEvidence.status === "neutral") return "";
+    const sale = saleEvidence.sale;
+    const soldText = `sold on ${formatSalesDate(sale.sale_dte || sale.deed_dte)} for ${formatSalePrice(sale.sale_price)}`;
+    if (Array.isArray(saleEvidence.reasons) && saleEvidence.reasons.length) {
+      return `Recent arm's-length sale evidence at ${parcel.address}: it ${soldText}. ${saleEvidence.reasons.join(" ")}`;
+    }
+    if (saleEvidence.status === "supports") return `Recent arm's-length sale evidence at ${parcel.address} also supports market context: it ${soldText}, which supports the grievance signal.`;
+    return `Recent arm's-length sale evidence at ${parcel.address} is less favorable: it ${soldText}, which weakens the grievance signal.`;
+  };
+  var buildSaleHistoryExplainer = (latestSale, armLengthSale) => {
+    if (latestSale && isArmLengthSale(latestSale)) return ARM_LENGTH_SALE_HISTORY_EXPLAINER;
+    if (latestSale && armLengthSale) {
+      return `${NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER} The price-per-square-foot line below uses the most recent arm's-length sale from ${formatSalesDate(armLengthSale.sale_dte || armLengthSale.deed_dte)}.`;
+    }
+    return NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER;
+  };
   var buildSaleHeaderBadge = (parcel, salesByParcelId) => {
     const sales = getParcelSales(parcel, salesByParcelId);
     if (!sales.length) return null;
@@ -52553,6 +54201,104 @@ self.onmessage = function(ev){
       )))
     );
   };
+  var MapPinIcon = ({ color: color2 = "#2563eb", size = 18 }) => {
+    const circleSize = Math.max(8, Math.round(size * 0.56));
+    const stemWidth = Math.max(2, Math.round(size * 0.12));
+    const stemHeight = Math.max(6, Math.round(size * 0.36));
+    const tipSize = Math.max(5, Math.round(size * 0.34));
+    return /* @__PURE__ */ import_react45.default.createElement("span", { "aria-hidden": "true", style: { position: "relative", display: "inline-flex", width: size, height: size + stemHeight, alignItems: "flex-start", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { width: circleSize, height: circleSize, borderRadius: "50%", background: color2, border: "2px solid rgba(255,255,255,.88)", boxShadow: `0 2px 8px ${color2}44`, position: "relative", zIndex: 2 } }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { position: "absolute", top: circleSize - 1, width: stemWidth, height: stemHeight, background: color2, borderRadius: 999, zIndex: 1 } }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { position: "absolute", top: circleSize + stemHeight - 2, width: 0, height: 0, borderLeft: `${Math.round(tipSize / 2)}px solid transparent`, borderRight: `${Math.round(tipSize / 2)}px solid transparent`, borderTop: `${tipSize}px solid ${color2}`, zIndex: 1 } }));
+  };
+  var ComparableMapFeatureCard = ({ subject, comparables = [], onOpen }) => {
+    const compCount = comparables.length;
+    const neighborhoodLabel = parcelNeighborhoodName(subject) || subject?.neighborhood || "your neighborhood";
+    const previewItems = (comparables || []).slice(0, 4);
+    return /* @__PURE__ */ import_react45.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "print-hide",
+        onClick: onOpen,
+        style: { width: "100%", textAlign: "left", background: "linear-gradient(135deg, rgba(37,99,235,.14) 0%, rgba(168,85,247,.12) 52%, rgba(255,255,255,.92) 100%)", border: "1px solid rgba(37,99,235,.24)", borderRadius: 14, padding: "14px 16px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14, alignItems: "stretch", cursor: "pointer", boxShadow: "0 14px 34px rgba(37,99,235,.08)" }
+      },
+      /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.82)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 800, color: "var(--blue3)", letterSpacing: 0.5, textTransform: "uppercase" } }, /* @__PURE__ */ import_react45.default.createElement(MapPinIcon, { color: "#2563eb", size: 14 }), "Visual evidence map"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.22)", color: "#b45309", borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 800 } }, "1 subject"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 800 } }, compCount, " selected comp", compCount === 1 ? "" : "s"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { background: "rgba(22,163,74,.10)", border: "1px solid rgba(22,163,74,.18)", color: "var(--green2)", borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 800 } }, "Live with your selections"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { background: "rgba(139,92,246,.10)", border: "1px solid rgba(139,92,246,.18)", color: "var(--purple)", borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 800 } }, "Included in your packet")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, "See your parcel and grievance comps on one map"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", lineHeight: 1.7, maxWidth: 640 } }, "This map shows whether your supporting comps are truly nearby and in the same neighborhood context. It updates instantly when you include or remove comps from the grievance package, and the same map overview is now printed in your downloaded grievance packet."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)" } }, "Focus area:"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray)" } }, neighborhoodLabel), subject?.address && /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--gray2)" } }, "Subject: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray)" } }, subject.address)))),
+      /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0, display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "relative", minHeight: 132, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(37,99,235,.18)", background: "linear-gradient(180deg, rgba(239,246,255,.98) 0%, rgba(224,231,255,.95) 100%)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 0, transparent 23%, rgba(148,163,184,.16) 23%, rgba(148,163,184,.16) 24%, transparent 24%, transparent 49%, rgba(148,163,184,.14) 49%, rgba(148,163,184,.14) 50%, transparent 50%, transparent 74%, rgba(148,163,184,.14) 74%, rgba(148,163,184,.14) 75%, transparent 75%), linear-gradient(180deg, transparent 0, transparent 28%, rgba(148,163,184,.14) 28%, rgba(148,163,184,.14) 29%, transparent 29%, transparent 58%, rgba(148,163,184,.14) 58%, rgba(148,163,184,.14) 59%, transparent 59%)" } }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "absolute", inset: 0, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { position: "absolute", left: "18%", top: "56%", display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement(MapPinIcon, { color: "#f59e0b", size: 16 }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 800, color: "#b45309", background: "rgba(255,255,255,.82)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 999, padding: "2px 6px" } }, "Subject")), previewItems.map((parcel, idx) => {
+        const positions = [
+          { left: "58%", top: "18%" },
+          { left: "74%", top: "44%" },
+          { left: "52%", top: "68%" },
+          { left: "34%", top: "24%" }
+        ];
+        const pos = positions[idx] || positions[positions.length - 1];
+        return /* @__PURE__ */ import_react45.default.createElement("div", { key: `preview-comp-${parcel.parcelId || idx}`, style: { position: "absolute", left: pos.left, top: pos.top, display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement(MapPinIcon, { color: "#2563eb", size: 15 }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 800, color: "var(--blue3)", background: "rgba(255,255,255,.82)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 999, padding: "2px 6px" } }, `Comp ${idx + 1}`));
+      }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement(MapPinIcon, { color: "#f59e0b", size: 12 }), " Subject parcel"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement(MapPinIcon, { color: "#2563eb", size: 12 }), " Included grievance comps")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Open interactive map")))
+    );
+  };
+  var ComparableMapModal = ({ open, onClose, subject, comparables = [], parcelGeometry = null, ownerPortfolioIndex = null }) => {
+    (0, import_react45.useEffect)(() => {
+      if (!open || typeof window === "undefined") return void 0;
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") onClose?.();
+      };
+      window.addEventListener("keydown", onKeyDown);
+      return () => window.removeEventListener("keydown", onKeyDown);
+    }, [open, onClose]);
+    const modalParcels = (0, import_react45.useMemo)(() => {
+      if (!subject) return [];
+      const seen = /* @__PURE__ */ new Set();
+      return [subject].concat(comparables || []).filter((parcel) => {
+        const id = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    }, [comparables, subject]);
+    const jumpRequest = (0, import_react45.useMemo)(() => {
+      if (!open || !subject) return null;
+      const compKey = (comparables || []).map((parcel) => normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)).filter(Boolean).join(",");
+      return {
+        token: `grievance-comp-map:${normalizeParcelId(subject?.parcelId)}:${compKey}`,
+        address: subject.address || "",
+        parcelId: subject.parcelId || "",
+        parcel: subject
+      };
+    }, [comparables, open, subject]);
+    if (!open || !subject) return null;
+    return /* @__PURE__ */ import_react45.default.createElement(
+      "div",
+      {
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": `Comparable map for ${subject.address || subject.parcelId}`,
+        onClick: () => onClose?.(),
+        style: { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(15,23,42,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }
+      },
+      /* @__PURE__ */ import_react45.default.createElement("div", { onClick: (e) => e.stopPropagation(), style: { width: "min(1320px,100%)", maxHeight: "min(90vh,980px)", background: "var(--card)", borderRadius: 14, border: "1px solid rgba(148,163,184,.3)", boxShadow: "0 24px 64px rgba(15,23,42,.45)", display: "grid", gridTemplateRows: "auto minmax(0,1fr)", overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "14px 16px", borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,.96)" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontSize: 16, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, "Visual evidence map"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 4, lineHeight: 1.55 } }, subject.address || subject.parcelId, " | ", comparables.length, " grievance comp", comparables.length === 1 ? "" : "s")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.5, textAlign: "right" } }, "This simplified view uses the application map engine but only shows your property and the comps currently included in the grievance package."), /* @__PURE__ */ import_react45.default.createElement(
+        "button",
+        {
+          type: "button",
+          onClick: () => onClose?.(),
+          style: { background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.22)", color: "var(--blue3)", borderRadius: 999, padding: "7px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer" }
+        },
+        "Close"
+      ))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--bg2)", minHeight: 360, overflowY: "auto", padding: 16 } }, /* @__PURE__ */ import_react45.default.createElement(
+        MapView,
+        {
+          parcels: modalParcels,
+          parcelGeometry,
+          compareList: comparables,
+          onCompare: null,
+          onDrill: null,
+          jumpRequest,
+          advanced: false,
+          ownerPortfolioIndex,
+          compactMode: true,
+          subjectParcelId: subject.parcelId,
+          compactTitle: "Visual evidence map",
+          compactSubtitle: `This simplified map shows your property and the ${comparables.length} home${comparables.length === 1 ? "" : "s"} currently included in the grievance package.`
+        }
+      )))
+    );
+  };
   var StreetViewPreview = ({ address, zip, neighborhood, streetViewLatLng = null, stopPropagation = true, height = 168 }) => {
     const [streetViewOpen, setStreetViewOpen] = (0, import_react45.useState)(false);
     const [metadataState, setMetadataState] = (0, import_react45.useState)("loading");
@@ -52936,6 +54682,7 @@ self.onmessage = function(ev){
     if (label === "strong") return "var(--green2)";
     if (label === "moderate") return "var(--blue3)";
     if (label === "weak") return "var(--amber2)";
+    if (label === "research_only") return "var(--gray2)";
     return "var(--red2)";
   };
   var buildComparableProfile = (p) => {
@@ -53045,6 +54792,38 @@ self.onmessage = function(ev){
   };
   var comparableSupportDisplayStatus = (kind) => kind === "strong_support" || kind === "moderate_support" ? "supports" : kind === "weak_support" || kind === "neutral" ? "neutral" : "weakens";
   var explanationStatusTone = (status) => status === "supports" ? { color: "var(--green2)", background: "rgba(22,163,74,.08)", border: "rgba(22,163,74,.20)" } : status === "weakens" ? { color: "var(--red2)", background: "rgba(220,38,38,.06)", border: "rgba(220,38,38,.18)" } : { color: "var(--gray2)", background: "rgba(148,163,184,.10)", border: "rgba(148,163,184,.18)" };
+  var grievanceBreakdownWhyItMatters = (row, { tiedLowerValueHome = false } = {}) => {
+    if (!row?.label) return "";
+    if (row.label === "Raw assessed value") {
+      if (row.status === "supports") return "A lower assessed value is the starting point. It can support an argument that your home is over-assessed.";
+      if (row.status === "weakens") return "A higher assessed value on the comp cuts against an over-assessment argument for your home.";
+      return "When raw assessed values are about the same, this check is mostly neutral by itself.";
+    }
+    if (row.label === "Assessed value per sq ft") {
+      if (row.status === "supports") return "This adjusts for size differences, so lower assessed value per sq ft is stronger apples-to-apples support.";
+      if (row.status === "weakens") return "If the comp is higher per sq ft, that can weaken the case even when raw assessed value is lower.";
+      return tiedLowerValueHome ? "This apples-to-apples check is neutral, which suggests the raw gap may come from overall size/value differences rather than favorable treatment." : "This is the main apples-to-apples size adjustment. If it is similar, the raw gap alone is less decisive.";
+    }
+    if (row.label === "Equity ratio") {
+      if (row.status === "supports") return "A lower equity ratio means the comp is assessed at a lower share of market value, which is strong unequal-assessment evidence.";
+      if (row.status === "weakens") return "A higher equity ratio means the comp was not treated more favorably, which weakens unequal-assessment evidence.";
+      return "This is neutral: the assessor treated both homes at a similar share of market value. Good for comparability, but not strong unequal-treatment evidence on its own.";
+    }
+    if (row.label === "Physical match quality") {
+      if (row.status === "supports") return "Closer physical similarity makes the comparison more defensible to a review board.";
+      if (row.status === "weakens") return "Loose physical similarity lowers the credibility of the comp as grievance evidence.";
+      return "Reasonable similarity helps context, but stronger physical matches are usually more persuasive.";
+    }
+    if (row.label === "Data confidence") {
+      if (row.status === "supports") return "High data coverage increases trust in this comp's metrics and conclusions.";
+      if (row.status === "weakens") return "Missing or uncertain data reduce how much weight this comp should carry.";
+      return "Medium confidence means usable evidence, but with caution where data are thin.";
+    }
+    if (row.label === "Final support level") {
+      return "The final support label combines all checks above, not raw assessed value alone.";
+    }
+    return "";
+  };
   var buildGrievanceComparableExplanation = (subject, comp, kind = "neutral") => {
     const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
     const confidenceNotes = Array.isArray(comp?._selectionDiagnostics?.confidenceNotes) ? comp._selectionDiagnostics.confidenceNotes : [];
@@ -53077,6 +54856,9 @@ self.onmessage = function(ev){
       valueText: grievanceRelevanceStyle(kind).badge,
       explanation: kind === "strong_support" ? "Raw assessed value, normalized metrics, and comp quality all line up well." : kind === "moderate_support" ? "This comp supports the grievance overall, but not every signal is equally strong." : kind === "weak_support" ? "This comp helps, but mostly on raw assessed value rather than on stronger apples-to-apples fairness checks." : kind === "weakens_case" ? "This comp is similar enough to matter, but its assessment pattern cuts against the grievance." : "This comp is useful context, but it does not clearly support or weaken the grievance on its own."
     });
+    for (const row of breakdownRows) {
+      row.whyItMatters = grievanceBreakdownWhyItMatters(row, { tiedLowerValueHome });
+    }
     const primaryReason = tiedLowerValueHome ? "Lower raw assessment is not backed up by stronger normalized metrics." : breakdownRows.find((row) => row.status === "weakens")?.explanation || breakdownRows.find((row) => row.status === "neutral" && row.label !== "Final support level")?.explanation || breakdownRows[breakdownRows.length - 1].explanation;
     const normalizationOutcome = tiedLowerValueHome ? "tied_lower_value_home" : breakdownRows.some((row) => row.label === "Assessed value per sq ft" && row.status === "weakens") || breakdownRows.some((row) => row.label === "Equity ratio" && row.status === "weakens") ? "normalized_metrics_weaken" : breakdownRows.some((row) => row.label === "Assessed value per sq ft" && row.status === "supports") || breakdownRows.some((row) => row.label === "Equity ratio" && row.status === "supports") ? "normalized_metrics_support" : "normalized_metrics_neutral";
     const summaryHeadline = kind === "strong_support" ? "Clear support on both raw and apples-to-apples checks." : kind === "moderate_support" ? "Supports the grievance after apples-to-apples checks." : kind === "weak_support" ? "Helpful, but not strong on an apples-to-apples basis." : kind === "weakens_case" ? "Looks comparable, but this one cuts against the grievance." : "Useful context, but not meaningful grievance evidence by itself.";
@@ -53181,81 +54963,6 @@ self.onmessage = function(ev){
     if (items.length === 2) return items[0] + " and " + items[1];
     return items.slice(0, -1).join(", ") + ", and " + items[items.length - 1];
   };
-  var buildWeightedMedianAssessedValue = (entries) => {
-    const sorted = entries.filter((entry) => Number.isFinite(entry?.assessedValue) && Number.isFinite(entry?.weight) && entry.weight > 0).sort((a2, b) => a2.assessedValue - b.assessedValue);
-    if (!sorted.length) return null;
-    const totalWeight = sorted.reduce((sum, entry) => sum + entry.weight, 0);
-    if (!(totalWeight > 0)) return null;
-    let cumulative = 0;
-    for (const entry of sorted) {
-      cumulative += entry.weight;
-      if (cumulative >= totalWeight / 2) return Math.round(entry.assessedValue);
-    }
-    return Math.round(sorted[sorted.length - 1].assessedValue);
-  };
-  var buildSuggestedRequestedValue = (subjectProfile, packageComps = []) => {
-    const selected = (Array.isArray(packageComps) ? packageComps : []).filter(Boolean);
-    const eligible = selected.filter(
-      (comp) => Number(comp?._comparableQualityScore) >= 60 && Number(comp?._dataConfidenceScore) >= 70 && Number(comp?._grievanceSupportScore) >= 12 && Number.isFinite(Number(comp?.assessedValue))
-    );
-    if (!eligible.length) {
-      return {
-        value: null,
-        method: "review_manually",
-        reviewManually: true,
-        confidence: "low",
-        note: "No selected comps meet the minimum quality, support, and confidence thresholds for an automatic requested value.",
-        eligibleCount: 0
-      };
-    }
-    const weightedEntries = eligible.map((comp) => ({
-      comp,
-      assessedValue: Number(comp.assessedValue),
-      weight: 0.5 * Number(comp?._comparableQualityScore || 0) + 0.3 * Number(comp?._grievanceSupportScore || 0) + 0.2 * Number(comp?._dataConfidenceScore || 0)
-    })).filter((entry) => entry.weight > 0);
-    if (weightedEntries.length === 1) {
-      return {
-        value: null,
-        method: "review_manually",
-        reviewManually: true,
-        confidence: "low",
-        note: "Only one comp clears the automatic requested-value thresholds, so the value should be reviewed manually.",
-        eligibleCount: 1
-      };
-    }
-    const assessedValues = weightedEntries.map((entry) => entry.assessedValue);
-    const minAssessed = Math.min(...assessedValues);
-    const maxAssessed = Math.max(...assessedValues);
-    const spreadPct = maxAssessed > 0 ? (maxAssessed - minAssessed) / maxAssessed : 0;
-    let value = null;
-    let method = "review_manually";
-    if (weightedEntries.length >= 3) {
-      value = buildWeightedMedianAssessedValue(weightedEntries);
-      method = "weighted_median";
-    } else {
-      const weightedAverage = weightedEntries.reduce((sum, entry) => sum + entry.assessedValue * entry.weight, 0) / weightedEntries.reduce((sum, entry) => sum + entry.weight, 0);
-      const midpoint = (weightedEntries[0].assessedValue + weightedEntries[1].assessedValue) / 2;
-      value = Math.round(Math.min(weightedAverage, midpoint));
-      method = "lower_of_weighted_average_or_midpoint";
-    }
-    if (Number.isFinite(value)) value = Math.max(value, minAssessed);
-    const subjectEquity = Number(subjectProfile?.equity);
-    const equityParity = eligible.length > 0 && eligible.every((comp) => {
-      const compEquity = Number(comp?._compProfile?.equity);
-      return Number.isFinite(subjectEquity) && Number.isFinite(compEquity) && Math.abs(subjectEquity - compEquity) < 1;
-    });
-    const notes = [];
-    if (spreadPct > 0.2) notes.push("Selected comp assessed values are spread more than 20%, so the result should be reviewed manually.");
-    if (equityParity) notes.push("Selected comps have equity ratios within 1 point of the subject, which lowers confidence in the requested value.");
-    return {
-      value: Number.isFinite(value) ? value : null,
-      method,
-      reviewManually: spreadPct > 0.2,
-      confidence: spreadPct > 0.2 || equityParity ? "medium" : "high",
-      note: notes.join(" "),
-      eligibleCount: weightedEntries.length
-    };
-  };
   var buildNormalizedMetricSupportState = (packageComps = []) => {
     const comps = (Array.isArray(packageComps) ? packageComps : []).filter(Boolean);
     if (!comps.length) return { label: "neutral", detail: "Normalized metrics are not available because no grievance comps are selected." };
@@ -53282,52 +54989,76 @@ self.onmessage = function(ev){
     if (packageComps.some((comp) => Number(comp?._comparableQualityScore) < 55)) limitations.push("at least one selected comp is only a loose physical match");
     return limitations;
   };
-  var buildSelectedGrievancePackage = (subject, subjectProfile, comps = []) => {
+  var buildSelectedGrievancePackage = (subject, subjectProfile, comps = [], options = {}) => {
     const packageComps = (Array.isArray(comps) ? comps : []).filter(Boolean);
-    const subjectEquity = subjectProfile?.equity;
-    const grievanceAvgFMV = packageComps.length ? Math.round(packageComps.reduce((sum, comp) => sum + (comp.fullMarketValue || 0), 0) / packageComps.length) : null;
-    const grievanceAvgAssessed = packageComps.length ? Math.round(packageComps.reduce((sum, comp) => sum + (comp.assessedValue || 0), 0) / packageComps.length) : null;
-    const grievanceAvgEquity = packageComps.length ? meanComparableValue(packageComps.map((comp) => comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
-    const grievanceDeltaFMV = grievanceAvgFMV != null ? subject.fullMarketValue - grievanceAvgFMV : null;
-    const grievanceDeltaFMVPct = grievanceAvgFMV && grievanceDeltaFMV != null ? grievanceDeltaFMV / grievanceAvgFMV * 100 : null;
-    const grievanceDeltaAssessed = grievanceAvgAssessed != null ? subject.assessedValue - grievanceAvgAssessed : null;
-    const grievanceDeltaEquity = grievanceAvgEquity != null && subjectEquity != null ? roundComparableNumber(subjectEquity - grievanceAvgEquity, 1) : null;
-    const grievanceSignal = grievanceDeltaEquity == null ? null : grievanceDeltaEquity >= 3 ? "Selected grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity <= -3 ? "Selected grievance comps carry higher equity ratios than your home." : "Selected grievance comps show equity ratios in line with your home.";
-    const grievanceSupportCount = packageComps.filter((comp) => Number(comp?._grievanceSupportScore) > 0).length;
-    const grievanceModerateOrBetterCount = packageComps.filter((comp) => ["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind)).length;
-    const grievanceAverageSupportScore = meanComparableValue(packageComps.map((comp) => comp?._grievanceSupportScore), 1);
-    const grievanceAverageQualityScore = meanComparableValue(packageComps.map((comp) => comp?._comparableQualityScore), 1);
-    const grievanceAverageConfidenceScore = meanComparableValue(packageComps.map((comp) => comp?._dataConfidenceScore), 1);
-    const normalizedMetricSupport = buildNormalizedMetricSupportState(packageComps);
-    const packageLimitations = buildGrievancePackageLimitations(packageComps);
-    const suggestedRequestedValue = buildSuggestedRequestedValue(subjectProfile, packageComps);
+    const equalizationRate = Number.isFinite(Number(options?.meta?.uniformPercentOfValue)) ? Number(options.meta.uniformPercentOfValue) / 100 : null;
+    const summary = summarizeGrievancePackageWithSpec({
+      subject,
+      subjectProfile,
+      visibleComps: options?.visibleComps || packageComps,
+      selectedComps: packageComps,
+      parcels: options?.parcels || [],
+      salesByParcelId: options?.salesByParcelId || null,
+      equalizationRate,
+      currentDate: options?.currentDate || /* @__PURE__ */ new Date()
+    });
     return {
-      grievanceSupportPool: packageComps.filter((comp) => Number(comp?._grievanceSupportScore) > 0),
-      grievanceCandidatePool: packageComps.filter((comp) => Number(comp?._grievanceSupportScore) > 0),
-      grievanceCandidates: packageComps,
-      grievancePackage: packageComps,
-      grievanceAvgFMV,
-      grievanceAvgAssessed,
-      grievanceAvgEquity,
-      grievanceDeltaFMV,
-      grievanceDeltaFMVPct,
-      grievanceDeltaAssessed,
-      grievanceDeltaEquity,
-      grievanceSignal,
-      grievanceSupportCount,
-      grievanceModerateOrBetterCount,
-      grievanceAverageSupportScore,
-      grievanceAverageQualityScore,
-      grievanceAverageConfidenceScore,
-      normalizedMetricSupport,
-      packageLimitations,
-      suggestedRequestedAssessedValue: suggestedRequestedValue.value,
-      suggestedRequestedAssessedValueMethod: suggestedRequestedValue.method,
-      suggestedRequestedAssessedValueReviewManually: suggestedRequestedValue.reviewManually,
-      suggestedRequestedAssessedValueNote: suggestedRequestedValue.note,
-      suggestedRequestedAssessedValueEligibleCount: suggestedRequestedValue.eligibleCount,
-      grievancePackageAllSupportive: packageComps.length > 0 && grievanceSupportCount === packageComps.length
+      ...summary,
+      grievanceDeltaFMVPct: summary.grievanceAvgFMV && summary.grievanceDeltaFMV != null ? summary.grievanceDeltaFMV / summary.grievanceAvgFMV * 100 : null
     };
+  };
+  var describeApproximateShare = (pct) => {
+    const value = Number(pct);
+    if (!Number.isFinite(value)) return "an unknown share";
+    if (value < 15) return "about one-tenth";
+    if (value < 25) return "about one-fifth";
+    if (value < 40) return "about one-third";
+    if (value < 48) return "about two-fifths";
+    if (value <= 52) return "about half";
+    if (value < 65) return "about three-fifths";
+    if (value < 80) return "about two-thirds";
+    if (value < 90) return "about four-fifths";
+    return "almost all";
+  };
+  var buildNeighborhoodPercentileExplanation = (model) => {
+    const percentile = Number(model?.subjectPercentile);
+    if (!Number.isFinite(percentile)) return "";
+    const lowerShare = describeApproximateShare(percentile);
+    const higherShare = describeApproximateShare(100 - percentile);
+    const sampleArea = model?.scope === "zip" ? "your ZIP-code area" : "your neighborhood";
+    if (percentile >= 75) {
+      return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than only ${higherShare}. That places you toward the high end of the range and makes you look more like an upper-end outlier.`;
+    }
+    if (percentile >= 55) {
+      return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That puts you above the middle of the range, but not at the very top.`;
+    }
+    if (percentile >= 35) {
+      return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That leaves you near the middle of the range rather than at the very top.`;
+    }
+    return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That puts you in the lower half of the range, not as an outlier at the top.`;
+  };
+  var buildNeighborhoodConsistencyExplanation = (model) => {
+    const cod = Number(model?.cod);
+    const iaao = Number(model?.iaaoStandard || 15);
+    if (!Number.isFinite(cod)) return "";
+    const uniform = cod <= iaao;
+    return uniform ? `Neighborhood consistency: COD ${cod.toFixed(1)}. Assessments here are considered uniform by professional standards because the IAAO benchmark is ${iaao.toFixed(1)} or lower. In plain language, most similar homes are being assessed at about the same share of their market value.` : `Neighborhood consistency: COD ${cod.toFixed(1)}. Assessments here are not considered uniform by professional standards because the IAAO benchmark is ${iaao.toFixed(1)} or lower. In plain language, similar homes are not all being assessed at the same share of market value.`;
+  };
+  var buildNeighborhoodEquityPlainSummary = (model) => {
+    const percentile = Number(model?.subjectPercentile);
+    const cod = Number(model?.cod);
+    const iaao = Number(model?.iaaoStandard || 15);
+    if (!Number.isFinite(percentile) || !Number.isFinite(cod)) return "";
+    if (percentile < 55 && cod <= iaao) {
+      return "Taken together, these numbers say your home is not unusually highly assessed compared with similar homes, and the neighborhood's assessments are generally consistent.";
+    }
+    if (percentile >= 75 && cod <= iaao) {
+      return "Taken together, these numbers say your home looks high compared with similar homes, even though the neighborhood's assessments are otherwise fairly consistent.";
+    }
+    if (percentile < 55 && cod > iaao) {
+      return "Taken together, these numbers say your home does not stand out as unusually high, but the neighborhood's assessments are not very consistent overall.";
+    }
+    return "Taken together, these numbers say your home looks high compared with similar homes, and the neighborhood's assessments also appear uneven overall.";
   };
   var buildGrievanceNarrative = (subject, subjectProfile, neighborResult, salesByParcelId = null, neighborhoodBenchmark = null) => {
     const selectedComps = neighborResult?.grievanceCandidates || [];
@@ -53337,11 +55068,7 @@ self.onmessage = function(ev){
     const strongOrModerate = selectedComps.filter((parcel) => ["strong_support", "moderate_support"].includes(parcel?._grievanceRelevance?.kind));
     const supportiveComps = selectedComps.filter((parcel) => Number(parcel?._grievanceSupportScore) > 0);
     const compExamples = formatNarrativeCompList((strongOrModerate.length ? strongOrModerate : supportiveComps.length ? supportiveComps : selectedComps).slice(0, 3));
-    const saleSentences = selectedComps.slice(0, 4).map((parcel) => {
-      const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
-      if (!sale || !isRecentArmsLengthSale(sale, 3)) return "";
-      return `Recent arm's-length sale evidence also exists at ${parcel.address}, which sold on ${formatSalesDate(sale.sale_dte || sale.deed_dte)} for ${formatSalePrice(sale.sale_price)}.`;
-    }).filter(Boolean);
+    const saleSentences = selectedComps.map((parcel) => buildCompSaleEvidenceSentence(parcel, parcel?._saleEvidence || parcel?.saleEvidence || null)).filter(Boolean).slice(0, 3);
     const normalizedState = neighborResult?.normalizedMetricSupport || buildNormalizedMetricSupportState(selectedComps);
     const benchmarkLabel = neighborhoodBenchmark?.interpretationLabel || "neutral";
     const benchmarkSentence = neighborhoodBenchmark ? benchmarkLabel === "supportive" ? "The neighborhood benchmark is supportive on both equity ratio and assessed value per square foot." : benchmarkLabel === "mild_support" ? "The neighborhood benchmark is mildly supportive." : "The neighborhood benchmark is neutral." : "A neighborhood benchmark could not be calculated.";
@@ -53370,72 +55097,46 @@ self.onmessage = function(ev){
     };
   };
   var buildComplaintReasonGuidance = (subject, subjectProfile, neighborResult, neighborhoodBenchmark = null) => {
-    const subjectEquity = Number(subjectProfile?.equity);
-    const packageEquity = Number(neighborResult?.grievanceAvgEquity);
-    const equityGapPoints = Number.isFinite(subjectEquity) && Number.isFinite(packageEquity) ? roundComparableNumber(subjectEquity - packageEquity, 1) : null;
-    const fullMarketValueGap = Number(neighborResult?.grievanceDeltaFMV);
-    const unequalSupport = Number.isFinite(equityGapPoints) && equityGapPoints >= 1;
-    const excessiveSupport = Number.isFinite(fullMarketValueGap) && fullMarketValueGap > 0;
-    const benchmarkSupport = neighborhoodBenchmark?.interpretationLabel === "supportive" || neighborhoodBenchmark?.interpretationLabel === "mild_support";
-    const sameClass = isResidentialPropClass(subject?.propClass);
+    const claimRecommendation = neighborResult?.claimRecommendation || computeClaimRecommendationWithSpec(neighborResult?.grievanceCandidates || [], neighborResult?.overvaluationFlag || computeOvervaluationFlagWithSpec(subject, Number.isFinite(Number(neighborResult?.overvaluationFlag?.equalizationRate)) ? Number(neighborResult.overvaluationFlag.equalizationRate) : null));
+    const comparisonSetLabel = neighborResult?.analysisState === "research_only" ? "visible comps" : "selected comps";
     const unlawfulNotSupportedNote = "This app does not detect unlawful-assessment grounds from comparable-home data. Use that box only if you have separate proof such as a wholly exempt property, a boundary/location error, or another roll-authority problem.";
     const misclassificationNotSupportedNote = "This app does not detect misclassification from comparable-home data. Use that box only if the parcel is placed in the wrong tax class or homestead/non-homestead allocation, which usually requires separate classification evidence.";
-    if (unequalSupport && excessiveSupport) {
-      const why = `Check both "Unequal assessment" and "Excessive assessment" in RP-524 Part Three. Unequal is stronger because your equity ratio is ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints) === 1 ? "" : "s"} above the selected comp package, and excessive is also supported because your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average.`;
-      return {
-        primaryCode: "unequal",
-        primaryLabel: "Unequal Assessment",
-        displayLabel: "Unequal + Excessive Assessment",
-        secondaryCode: "excessive",
-        secondaryLabel: "Excessive Assessment",
-        selectionLabel: 'Check "Unequal assessment" and "Excessive assessment"',
-        why,
-        shortWhy: `Unequal is stronger because your equity ratio is ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints) === 1 ? "" : "s"} above the selected comp package, and excessive is also supported because your current full market value still sits above the comp package average.`,
-        narrativeSentence: "The current evidence supports both unequal-assessment and excessive-assessment arguments, with unequal assessment slightly stronger.",
-        unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
-        unlawfulNotSupportedNote,
-        misclassificationNotSupportedNote,
-        appSupportsComparableGroundsOnly: true
-      };
-    }
-    if (unequalSupport) {
-      const benchmarkTail = benchmarkSupport ? " The neighborhood fairness benchmark also leans in the same direction." : "";
-      const why = `Check "Unequal assessment" in RP-524 Part Three because your property carries a higher effective assessment ratio than the selected comparable package by ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints) === 1 ? "" : "s"}.${benchmarkTail}`;
+    if (claimRecommendation?.code === "UNEQUAL") {
+      const why = `${claimRecommendation.reason}${neighborhoodBenchmark?.interpretationLabel === "supportive" || neighborhoodBenchmark?.interpretationLabel === "mild_support" ? ` ${neighborhoodBenchmark.interpretation}` : ""}`;
       return {
         primaryCode: "unequal",
         primaryLabel: "Unequal Assessment",
         displayLabel: "Unequal Assessment",
         secondaryCode: null,
         secondaryLabel: "",
-        selectionLabel: 'Check "Unequal assessment"',
+        selectionLabel: claimRecommendation.selectionLabel,
         why,
-        shortWhy: `Your property carries a higher effective assessment ratio than the selected comp package by ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints) === 1 ? "" : "s"}.${benchmarkTail}`.trim(),
-        narrativeSentence: "The stronger RP-524 basis appears to be unequal assessment because the subject carries a higher effective assessment ratio than the selected comps.",
+        shortWhy: claimRecommendation.reason,
+        narrativeSentence: `The stronger RP-524 basis appears to be unequal assessment because the ${comparisonSetLabel} show meaningful equity-ratio variation.`,
         unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
         unlawfulNotSupportedNote,
         misclassificationNotSupportedNote,
         appSupportsComparableGroundsOnly: true
       };
     }
-    if (excessiveSupport) {
-      const why = `Check "Excessive assessment" in RP-524 Part Three because your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average, which points to overvaluation more than unequal treatment.`;
+    if (claimRecommendation?.code === "EXCESSIVE" || claimRecommendation?.code === "EXCESSIVE_PRIMARY") {
       return {
         primaryCode: "excessive",
         primaryLabel: "Excessive Assessment",
         displayLabel: "Excessive Assessment",
-        secondaryCode: null,
-        secondaryLabel: "",
-        selectionLabel: 'Check "Excessive assessment"',
-        why,
-        shortWhy: `Your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average, which points to overvaluation more than unequal treatment.`,
-        narrativeSentence: "The stronger RP-524 basis appears to be excessive assessment because the subject's full market value remains above the selected comp package.",
+        secondaryCode: claimRecommendation.code === "EXCESSIVE_PRIMARY" ? "unequal_secondary" : null,
+        secondaryLabel: claimRecommendation.code === "EXCESSIVE_PRIMARY" ? "Unequal Assessment (Secondary)" : "",
+        selectionLabel: claimRecommendation.selectionLabel || 'Check "Excessive assessment"',
+        why: claimRecommendation.reason,
+        shortWhy: claimRecommendation.reason,
+        narrativeSentence: `The stronger RP-524 basis appears to be excessive assessment because the ${comparisonSetLabel} do not show enough equity-ratio spread to make unequal assessment the cleaner primary argument.`,
         unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
         unlawfulNotSupportedNote,
         misclassificationNotSupportedNote,
         appSupportsComparableGroundsOnly: true
       };
     }
-    const manualReviewWhy = sameClass ? `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.` : `The current comparable package does not clearly support unequal or excessive assessment, and the app does not have enough classification evidence to recommend unlawful or misclassification grounds.`;
+    const manualReviewWhy = `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.`;
     return {
       primaryCode: "manual_review",
       primaryLabel: "Manual Review Needed",
@@ -53463,6 +55164,7 @@ self.onmessage = function(ev){
     const assessedReduction = suggestedValue != null && Number.isFinite(subject?.assessedValue) ? Math.max(subject.assessedValue - suggestedValue, 0) : null;
     const grievanceDay = grievanceDayLabel(meta, subject);
     const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
+    const claimRecommendation = neighborResult?.claimRecommendation || null;
     const checklist = [
       { label: "Owner name", value: subject?.owner1 || "-", note: "RP-524 owner or complainant field" },
       { label: "Mailing address", value: mailingAddress || "-", note: "Use the assessment roll mailing address unless it needs correction" },
@@ -53473,10 +55175,14 @@ self.onmessage = function(ev){
       { label: "Current assessed value", value: Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-", note: "Roll value from the assessment record" },
       { label: "Current full market value", value: Number.isFinite(subject?.fullMarketValue) ? $f(subject.fullMarketValue) : "-", note: "Roll full market value" },
       { label: "Equity ratio", value: subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-", note: "Useful grievance talking point from this app" },
+      { label: "Recommended claim type", value: claimRecommendation?.label || "-", note: claimRecommendation?.reason || "Claim type could not be determined from the current package." },
       { label: "Recommended RP-524 complaint reason", value: complaintReasonGuidance.selectionLabel, note: complaintReasonGuidance.why },
       { label: `${labelPrefix} FMV average`, value: Number.isFinite(neighborResult?.grievanceAvgFMV) ? $f(neighborResult.grievanceAvgFMV) : "-", note: `${labelPrefix} average FMV for the homes currently included in the grievance package` },
       { label: `${labelPrefix} assessed average`, value: supportingCompAssessedAverage, note: `${labelPrefix} average assessed value for the homes currently included in the grievance package` },
-      { label: "Suggested requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueMethod === "weighted_median" ? "Weighted median of the strongest selected grievance comps." : neighborResult?.suggestedRequestedAssessedValueMethod === "lower_of_weighted_average_or_midpoint" ? "Conservative value from the two strongest selected grievance comps." : neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the selected package does not support an automatic requested value." },
+      { label: "Comp-based value estimate", value: Number.isFinite(neighborResult?.suggestedValueMethodA) ? $f(neighborResult.suggestedValueMethodA) : "-", note: "If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?" },
+      { label: "Equity-ratio value estimate", value: Number.isFinite(neighborResult?.suggestedValueMethodB) ? $f(neighborResult?.suggestedValueMethodB) : "-", note: "If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?" },
+      { label: "Suggested requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueMethod === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : neighborResult?.suggestedRequestedAssessedValueMethod === "method_a" ? "The comp-based value estimate produced the lower filing recommendation." : neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the selected package does not support an automatic requested value." },
+      { label: "Separate overassessment check", value: neighborResult?.overvaluationFlag?.active ? "Yes" : "No", note: neighborResult?.overvaluationFlag?.message || "The separate overassessment check is unavailable because the equalization-rate benchmark is not available." },
       { label: "Potential assessed value reduction", value: assessedReduction != null ? $f(assessedReduction) : "-", note: assessedReduction != null ? `Dollar tax savings are not shown here because tax rates are not loaded in Neighbor Compare. Use the Savings Estimator tab and your current tax bill to convert this ${$f(assessedReduction)} assessment reduction into annual dollar savings.` : "A suggested requested value is needed before the reduction amount can be calculated.", action: assessedReduction != null ? "open_estimator" : null },
       { label: `${labelPrefix} list`, value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}% | ${parcel?._grievanceRelevance?.badge || "Assessment signal unavailable"}`).join("; ") : "-", note: neighborResult?.grievancePackageCustom ? "This list reflects your current custom grievance selection." : "The default grievance package keeps only comps with positive grievance-support scores and sufficient quality/confidence." }
     ];
@@ -53521,6 +55227,7 @@ self.onmessage = function(ev){
     if (label === "strong") return "Strong";
     if (label === "moderate") return "Moderate";
     if (label === "weak") return "Weak";
+    if (label === "research_only") return "Research only";
     return "Do Not Recommend";
   };
   var buildCaseNormalizedMetricSupport = (selectedComps = []) => {
@@ -53605,6 +55312,14 @@ self.onmessage = function(ev){
   var buildAppealReadiness = ({ subject, subjectProfile, neighborResult, neighborhoodBenchmark = null, totalComparableCount = 0, salesByParcelId = null }) => {
     const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
     const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
+    const marketSaleModel = neighborResult?.marketSaleModel || null;
+    const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+    const overvaluationFlag = neighborResult?.overvaluationFlag || null;
+    const subjectSaleModel = neighborResult?.subjectSaleModel || computeSubjectSaleSignalWithSpec(subject, salesByParcelId, /* @__PURE__ */ new Date());
+    const claimRecommendation = neighborResult?.claimRecommendation || null;
+    const analysisState = neighborResult?.analysisState || (selectedComps.length ? "grievance_package" : visibleComps.length ? "research_only" : "no_matches");
+    const noPackageReasonCode = neighborResult?.noPackageReasonCode || (analysisState === "no_matches" ? "no_physical_matches" : analysisState === "research_only" ? "mixed_research_only" : null);
+    const noPackageReasonText = neighborResult?.noPackageReasonText || (analysisState === "no_matches" ? "No comparable homes were found within the current search parameters, so the app could not build a grievance package." : "");
     const supportingSelected = selectedComps.filter((parcel) => Number(parcel?._grievanceSupportScore) > 0);
     const moderateOrBetterSelected = selectedComps.filter((parcel) => ["strong_support", "moderate_support"].includes(parcel?._grievanceRelevance?.kind));
     const supportingVisible = visibleComps.filter((parcel) => Number(parcel?._grievanceSupportScore) > 0);
@@ -53615,8 +55330,13 @@ self.onmessage = function(ev){
     const topSupportAverage = meanComparableValue(selectedComps.map((parcel) => parcel?._grievanceSupportScore).filter(Number.isFinite).sort((a2, b) => b - a2).slice(0, 3), 1) || 0;
     const avgQuality = meanComparableValue(selectedComps.map((parcel) => parcel?._comparableQualityScore), 1) || 0;
     const avgConfidence = meanComparableValue(selectedComps.map((parcel) => parcel?._dataConfidenceScore), 1) || 0;
-    const normalizedMetricModel = buildCaseNormalizedMetricSupport(selectedComps);
-    const benchmarkContribution = neighborhoodBenchmark?.interpretationLabel === "supportive" ? 10 : neighborhoodBenchmark?.interpretationLabel === "mild_support" ? 6 : 0;
+    const fallbackNormalizedMetricModel = buildCaseNormalizedMetricSupport(selectedComps);
+    const normalizedMetricModel = neighborResult?.normalizedMetricSupport && Number.isFinite(Number(neighborResult.normalizedMetricSupport.score)) ? neighborResult.normalizedMetricSupport : {
+      ...fallbackNormalizedMetricModel,
+      label: neighborResult?.normalizedMetricSupport?.label || fallbackNormalizedMetricModel.label,
+      detail: neighborResult?.normalizedMetricSupport?.detail || fallbackNormalizedMetricModel.detail
+    };
+    const benchmarkContribution = overvaluationFlag?.active ? 10 : neighborhoodEquityModel?.codWarning ? 8 : neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) >= 75 ? 6 : 0;
     const weakensShare = visibleCount > 0 ? weakensVisible.length / visibleCount : 0;
     const score = clampNumber(Math.round(
       clampNumber(topSupportAverage / 35, 0, 1) * 35 + clampNumber(avgQuality / 100, 0, 1) * 20 + clampNumber(avgConfidence / 100, 0, 1) * 15 + normalizedMetricModel.score + benchmarkContribution - Math.min(5, weakensShare * 5)
@@ -53637,31 +55357,47 @@ self.onmessage = function(ev){
       caseStrengthLabel = "moderate";
       downgradeReasons.push("A strong rating is not allowed when the neighborhood benchmark is neutral and equity ratios are at parity.");
     }
-    const recommendedAction = caseStrengthLabel === "strong" ? "recommend_filing" : caseStrengthLabel === "moderate" ? "recommend_filing_with_caution" : caseStrengthLabel === "weak" ? "review_manually" : "do_not_recommend";
+    if (selectedComps.length === 1 && (caseStrengthLabel === "strong" || caseStrengthLabel === "moderate")) {
+      caseStrengthLabel = "weak";
+      downgradeReasons.push("Only 1 comparable is selected. A single comp is not enough support for more than a weak case assessment.");
+    }
+    const researchOnlySignals = !!(overvaluationFlag?.active || marketSaleModel?.available && Number(marketSaleModel?.impliedDifference) > 0 || neighborhoodEquityModel?.available && Number(neighborhoodEquityModel?.subjectPercentile) >= 75 || subjectSaleModel?.status === "supports");
+    if (analysisState === "research_only") caseStrengthLabel = "research_only";
+    if (analysisState === "no_matches" && !selectedComps.length) caseStrengthLabel = "do_not_recommend";
+    const recommendedAction = caseStrengthLabel === "research_only" ? researchOnlySignals ? "review_manually" : "do_not_recommend" : caseStrengthLabel === "strong" ? "recommend_filing" : caseStrengthLabel === "moderate" ? "recommend_filing_with_caution" : caseStrengthLabel === "weak" ? "review_manually" : "do_not_recommend";
     const scoreReasons = [];
-    if (moderateOrBetterSelected.length) {
+    if (analysisState === "research_only" || analysisState === "no_matches") {
+      if (noPackageReasonText) scoreReasons.push(noPackageReasonText);
+    } else if (moderateOrBetterSelected.length) {
       scoreReasons.push(`${moderateOrBetterSelected.length} selected comps are moderate support or better.`);
     } else if (supportingSelected.length) {
       scoreReasons.push(`${supportingSelected.length} selected comps still show some positive grievance support.`);
     } else {
       scoreReasons.push("No selected comps currently produce a positive grievance-support score.");
     }
-    scoreReasons.push(`Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`);
-    const normalizedMetricReason = normalizedMetricModel.label === "supportive" && moderateOrBetterSelected.length < 3 && weakensVisible.length > 0 ? "The selected comp's normalized metrics support the grievance, but the overall case is still limited by thin support and opposing visible comps." : normalizedMetricModel.detail;
-    scoreReasons.push(normalizedMetricReason);
-    if (neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
-    if (weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length === 1 ? " weakens" : "s weaken"} the case.`);
-    const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
-    if (subjectSale && isRecentArmsLengthSale(subjectSale, 3) && Number(subjectSale?.sale_price) > 0 && Number(subject?.fullMarketValue) > 0) {
-      const ratio = Number(subjectSale.sale_price) / Number(subject.fullMarketValue);
-      if (ratio <= 0.9) scoreReasons.push("Your own recent arm's-length sale is below the current full market value estimate.");
-      else if (ratio >= 1.05) scoreReasons.push("Your own recent arm's-length sale is close to or above the current full market value estimate.");
+    if (selectedComps.length) {
+      scoreReasons.push(`Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`);
+      const normalizedMetricReason = normalizedMetricModel.label === "supportive" && moderateOrBetterSelected.length < 3 && weakensVisible.length > 0 ? "The selected comp's normalized metrics support the grievance, but the overall case is still limited by thin support and opposing visible comps." : normalizedMetricModel.detail;
+      scoreReasons.push(normalizedMetricReason);
+      if (selectedComps.length === 1) scoreReasons.push("Only 1 comparable is selected. A single comp is not enough support for more than a weak case assessment.");
+    } else if (visibleComps.length) {
+      scoreReasons.push(`Visible research comps found: ${visibleComps.length}. None cleared the full package gates for automatic filing support.`);
     }
+    if (overvaluationFlag?.active) scoreReasons.push(`An independent overvaluation check is positive: your assessed value exceeds the equalization-rate benchmark by ${$f(overvaluationFlag.overvaluationExcess)}.`);
+    if (marketSaleModel?.available) scoreReasons.push(`Recent neighborhood sale evidence implies an estimated market value of ${$f(marketSaleModel.estimatedSubjectFmv)} for your home.`);
+    else if (marketSaleModel?.note) scoreReasons.push(marketSaleModel.note);
+    if (neighborhoodEquityModel?.available) scoreReasons.push(`Your neighborhood equity percentile is ${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th, with a COD (consistency measure) of ${Number(neighborhoodEquityModel.cod).toFixed(1)}.`);
+    if (neighborhoodEquityModel?.codWarning) scoreReasons.push(neighborhoodEquityModel.codWarning);
+    else if (neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
+    if (analysisState === "research_only" && claimRecommendation?.reason) scoreReasons.push(claimRecommendation.reason);
+    if (weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length === 1 ? " weakens" : "s weaken"} the case.`);
+    if (subjectSaleModel?.status === "supports") scoreReasons.push("Your own recent arm's-length sale is below the current full market value estimate.");
+    else if (subjectSaleModel?.status === "weakens") scoreReasons.push("Your own recent arm's-length sale is close to or above the current full market value estimate.");
     const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
     const caseStrengthDisplay = `${humanCaseStrengthLabel(caseStrengthLabel)} (${complaintReasonGuidance.displayLabel})`;
     return {
       score,
-      caseBand: caseStrengthLabel === "strong" ? "strong case" : caseStrengthLabel === "moderate" ? "possible case" : caseStrengthLabel === "weak" ? "weak case" : "do not recommend",
+      caseBand: caseStrengthLabel === "strong" ? "strong case" : caseStrengthLabel === "moderate" ? "possible case" : caseStrengthLabel === "weak" ? "weak case" : caseStrengthLabel === "research_only" ? "research only" : "do not recommend",
       supportingSelectedCount: supportingSelected.length,
       moderateOrBetterCount: moderateOrBetterSelected.length,
       visibleSupportCount: supportingVisible.length,
@@ -53679,6 +55415,10 @@ self.onmessage = function(ev){
       caseStrengthLabel,
       caseStrength: caseStrengthDisplay,
       caseStrengthBase: humanCaseStrengthLabel(caseStrengthLabel),
+      analysisState,
+      noPackageReasonCode,
+      noPackageReasonText,
+      selectionOutcomeCounts: neighborResult?.selectionOutcomeCounts || null,
       complaintReasonGuidance,
       why: [...new Set(scoreReasons)].slice(0, 6)
     };
@@ -53690,11 +55430,13 @@ self.onmessage = function(ev){
     const recommendation = readiness.recommendedAction === "recommend_filing" ? "Recommend filing" : readiness.recommendedAction === "recommend_filing_with_caution" ? "File with caution" : readiness.recommendedAction === "review_manually" ? "Review manually" : "Do not recommend";
     let keyReason = "The current evidence does not clearly point to a supported lower assessment.";
     if (readiness.recommendedAction === "recommend_filing") {
-      keyReason = `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the package points toward a lower supported assessment.`;
+      keyReason = `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the package points toward a lower supported assessment under ${neighborResult?.claimRecommendation?.label || "the current claim model"}.`;
     } else if (readiness.recommendedAction === "recommend_filing_with_caution") {
-      keyReason = "Some selected comps support filing, but the evidence still has meaningful limitations.";
+      keyReason = "Some selected comps support filing, but the evidence still has meaningful limitations or counter-signals.";
     } else if (readiness.recommendedAction === "review_manually") {
-      keyReason = "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
+      keyReason = readiness.caseStrengthLabel === "research_only" ? neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence." : "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
+    } else if (readiness.caseStrengthLabel === "research_only") {
+      keyReason = neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence.";
     }
     return {
       recommendation,
@@ -53711,8 +55453,16 @@ self.onmessage = function(ev){
   var buildAppealEvidence = ({ subject, subjectProfile, neighborResult, readiness, neighborhoodBenchmark, salesByParcelId = null }) => {
     const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
     const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
+    const marketSaleModel = neighborResult?.marketSaleModel || null;
+    const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+    const overvaluationFlag = neighborResult?.overvaluationFlag || null;
+    const subjectSaleModel = neighborResult?.subjectSaleModel || computeSubjectSaleSignalWithSpec(subject, salesByParcelId, /* @__PURE__ */ new Date());
+    const analysisState = neighborResult?.analysisState || (selectedComps.length ? "grievance_package" : visibleComps.length ? "research_only" : "no_matches");
     const supportItems = [];
     const againstItems = [];
+    if ((analysisState === "research_only" || analysisState === "no_matches") && neighborResult?.noPackageReasonText) {
+      againstItems.push(neighborResult.noPackageReasonText);
+    }
     if (readiness.moderateOrBetterCount) {
       supportItems.push(`${readiness.moderateOrBetterCount} selected comp${readiness.moderateOrBetterCount === 1 ? " is" : "s are"} moderate support or better.`);
     }
@@ -53722,34 +55472,49 @@ self.onmessage = function(ev){
     if (readiness.normalizedMetricLabel === "supportive" || readiness.normalizedMetricLabel === "mixed_supportive") {
       supportItems.push("Normalized metrics support the grievance more than raw assessed value alone.");
     }
+    if (overvaluationFlag?.active) {
+      supportItems.push(`An independent overvaluation check supports the case because your assessed value is ${$f(overvaluationFlag.overvaluationExcess)} above the equalization-rate benchmark.`);
+    }
+    if (marketSaleModel?.available) {
+      supportItems.push(`Recent arm's-length sales suggest a market value around ${$f(marketSaleModel.estimatedSubjectFmv)} for your home.`);
+    }
+    if (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) >= 75) {
+      supportItems.push(`Your neighborhood equity percentile is ${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th, which leans high relative to the sale-backed neighborhood sample.`);
+    }
+    if (neighborhoodEquityModel?.codWarning) {
+      supportItems.push(neighborhoodEquityModel.codWarning);
+    }
+    if (analysisState === "research_only" && /^EXCESSIVE/.test(neighborResult?.claimRecommendation?.code || "")) {
+      supportItems.push(neighborResult.claimRecommendation.reason);
+    }
     if (neighborhoodBenchmark?.interpretationLabel === "supportive" || neighborhoodBenchmark?.interpretationLabel === "mild_support") {
       supportItems.push(neighborhoodBenchmark.interpretation);
     }
-    const supportiveSales = selectedComps.filter((parcel) => {
-      if (!(Number(parcel?._grievanceSupportScore) > 0)) return false;
-      const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
-      return sale && isRecentArmsLengthSale(sale, 3);
-    });
+    const compSaleEvidence = selectedComps.filter((parcel) => Number(parcel?._grievanceSupportScore) > 0).map((parcel) => ({ parcel, evidence: parcel?._saleEvidence || parcel?.saleEvidence || null })).filter((entry) => entry.evidence?.qualifies);
+    const supportiveSales = compSaleEvidence.filter((entry) => entry.evidence.status === "supports");
+    const weakeningSales = compSaleEvidence.filter((entry) => entry.evidence.status === "weakens");
     if (supportiveSales.length) {
-      supportItems.push(`${supportiveSales.length} selected supporting comp${supportiveSales.length === 1 ? " has" : "s have"} recent arm's-length sales.`);
+      supportItems.push(`${supportiveSales.length} selected supporting comp${supportiveSales.length === 1 ? " has" : "s have"} recent arm's-length sale evidence that supports the grievance.`);
+    }
+    if (weakeningSales.length) {
+      againstItems.push(`${weakeningSales.length} selected supporting comp${weakeningSales.length === 1 ? " has" : "s have"} recent arm's-length sale evidence that weakens the grievance signal.`);
     }
     const weakensVisible = visibleComps.filter((parcel) => parcel?._grievanceRelevance?.kind === "weakens_case");
     if (weakensVisible.length) {
       againstItems.push(`${weakensVisible.length} visible comp${weakensVisible.length === 1 ? " weakens" : "s weaken"} the case and could be used as assessor counter-evidence.`);
     }
     if (readiness.selectedEquityParity) againstItems.push("Selected comps have equity ratios close to yours, which weakens the unequal-assessment argument.");
+    if (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) < 55) againstItems.push("The neighborhood equity distribution does not place your parcel unusually high in the sale-backed sample.");
     if (neighborhoodBenchmark?.interpretationLabel === "neutral") againstItems.push("The neighborhood benchmark is neutral.");
     if (selectedComps.length < 3) againstItems.push("Fewer than 3 comps are selected in the package.");
     if (neighborResult?.suggestedRequestedAssessedValueReviewManually) againstItems.push("The suggested requested value needs manual review because the selected comp values are spread out.");
-    const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
-    if (subjectSale && isRecentArmsLengthSale(subjectSale, 3) && Number(subjectSale?.sale_price) > 0 && Number(subject?.fullMarketValue) > 0) {
-      const ratio = Number(subjectSale.sale_price) / Number(subject.fullMarketValue);
-      if (ratio >= 0.95) {
-        againstItems.push("A recent arm's-length sale of the subject may support the current full market value estimate.");
-      } else if (ratio <= 0.9) {
-        supportItems.push("A recent arm's-length sale of the subject sits below the current full market value estimate.");
-      }
+    if (subjectSaleModel?.status === "weakens") {
+      againstItems.push("A recent arm's-length sale of the subject may support the current full market value estimate.");
+    } else if (subjectSaleModel?.status === "supports") {
+      supportItems.push("A recent arm's-length sale of the subject sits below the current full market value estimate.");
     }
+    const riskFlagCount = selectedComps.reduce((sum, comp) => sum + ((comp?._riskFlags || []).length ? 1 : 0), 0);
+    if (riskFlagCount) againstItems.push(`${riskFlagCount} selected comp${riskFlagCount === 1 ? " carries" : "s carry"} assessor challenge flags such as size, neighborhood, bath, or sale-history issues.`);
     if (!supportItems.length) supportItems.push("The current package does not yet contain a strong, well-supported filing signal.");
     if (!againstItems.length) againstItems.push("No major counter-signals stand out in the current comparable set.");
     return {
@@ -53759,6 +55524,129 @@ self.onmessage = function(ev){
     };
   };
   var escapePrintableHtml = (value) => (value == null ? "" : String(value)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  var comparablePrintableLatLng = (parcel, profileOverride = null) => {
+    const profile = profileOverride || parcel?._compProfile || buildComparableProfile(parcel);
+    const lat = Number(profile?.latitude ?? parcel?.latitude);
+    const lng = Number(profile?.longitude ?? parcel?.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+  };
+  var buildComparableMapPreviewHtml = ({ subject, selectedComps = [] } = {}) => {
+    if (!subject || !selectedComps.length) return "";
+    const subjectProfile = subject?._compProfile || buildComparableProfile(subject);
+    const subjectLatLng = comparablePrintableLatLng(subject, subjectProfile);
+    const compEntries = (selectedComps || []).map((parcel, idx) => {
+      const profile = parcel?._compProfile || buildComparableProfile(parcel);
+      return {
+        parcel,
+        profile,
+        index: idx + 1,
+        latLng: comparablePrintableLatLng(parcel, profile)
+      };
+    });
+    const plottedEntries = [
+      { kind: "subject", label: "Subject", color: "#f59e0b", textColor: "#7c2d12", parcel: subject, profile: subjectProfile, latLng: subjectLatLng },
+      ...compEntries.filter((entry) => entry.latLng).map((entry) => ({
+        kind: "compare",
+        label: `Comp ${entry.index}`,
+        color: "#2563eb",
+        textColor: "#ffffff",
+        parcel: entry.parcel,
+        profile: entry.profile,
+        latLng: entry.latLng,
+        index: entry.index
+      }))
+    ].filter((entry) => entry.latLng);
+    if (plottedEntries.length < 2) return "";
+    const latitudes = plottedEntries.map((entry) => entry.latLng[0]);
+    const longitudes = plottedEntries.map((entry) => entry.latLng[1]);
+    const minLatBase = Math.min(...latitudes);
+    const maxLatBase = Math.max(...latitudes);
+    const minLngBase = Math.min(...longitudes);
+    const maxLngBase = Math.max(...longitudes);
+    const latSpanBase = Math.max(maxLatBase - minLatBase, 18e-4);
+    const lngSpanBase = Math.max(maxLngBase - minLngBase, 18e-4);
+    const minLat = minLatBase - latSpanBase * 0.16;
+    const maxLat = maxLatBase + latSpanBase * 0.16;
+    const minLng = minLngBase - lngSpanBase * 0.16;
+    const maxLng = maxLngBase + lngSpanBase * 0.16;
+    const width = 820;
+    const height = 430;
+    const padX = 44;
+    const padY = 34;
+    const toPlotPoint = ([lat, lng]) => {
+      const x2 = padX + (lng - minLng) / Math.max(maxLng - minLng, 1e-6) * (width - padX * 2);
+      const y2 = padY + (1 - (lat - minLat) / Math.max(maxLat - minLat, 1e-6)) * (height - padY * 2);
+      return [Number.isFinite(x2) ? x2 : width / 2, Number.isFinite(y2) ? y2 : height / 2];
+    };
+    const plottedWithCoords = plottedEntries.map((entry) => ({
+      ...entry,
+      plot: toPlotPoint(entry.latLng)
+    }));
+    const subjectPoint = plottedWithCoords.find((entry) => entry.kind === "subject") || null;
+    const gridLines = [0.2, 0.4, 0.6, 0.8].map((stop) => {
+      const x2 = padX + (width - padX * 2) * stop;
+      const y2 = padY + (height - padY * 2) * stop;
+      return `<g>
+      <line x1="${x2.toFixed(1)}" y1="${padY}" x2="${x2.toFixed(1)}" y2="${height - padY}" stroke="rgba(148,163,184,.28)" stroke-width="1" />
+      <line x1="${padX}" y1="${y2.toFixed(1)}" x2="${width - padX}" y2="${y2.toFixed(1)}" stroke="rgba(148,163,184,.22)" stroke-width="1" />
+    </g>`;
+    }).join("");
+    const compLines = subjectPoint ? plottedWithCoords.filter((entry) => entry.kind === "compare").map((entry) => `<line x1="${subjectPoint.plot[0].toFixed(1)}" y1="${subjectPoint.plot[1].toFixed(1)}" x2="${entry.plot[0].toFixed(1)}" y2="${entry.plot[1].toFixed(1)}" stroke="rgba(37,99,235,.26)" stroke-width="2.4" stroke-dasharray="7 6" />`).join("") : "";
+    const mapMarkers = plottedWithCoords.map((entry) => {
+      const [x2, y2] = entry.plot;
+      const badgeText = entry.kind === "subject" ? "S" : String(entry.index);
+      const bubbleWidth = entry.kind === "subject" ? 34 : 26;
+      const badgeFill = entry.kind === "subject" ? "#f59e0b" : "#2563eb";
+      const badgeTextColor = entry.kind === "subject" ? "#7c2d12" : "#ffffff";
+      const labelText = escapePrintableHtml(entry.kind === "subject" ? `Subject | ${entry.parcel?.address || entry.parcel?.parcelId || "Parcel"}` : `Comp ${entry.index} | ${entry.parcel?.address || entry.parcel?.parcelId || "Comparable"}`);
+      const labelY = y2 - 20;
+      return `<g>
+      <circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="${entry.kind === "subject" ? 12 : 10}" fill="${badgeFill}" stroke="#ffffff" stroke-width="3" />
+      <text x="${x2.toFixed(1)}" y="${(y2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${badgeTextColor}">${badgeText}</text>
+      <rect x="${Math.max(12, x2 - 8)}" y="${Math.max(10, labelY - 13)}" rx="12" ry="12" width="${Math.min(286, Math.max(120, labelText.length * 5.8))}" height="24" fill="rgba(255,255,255,.94)" stroke="${badgeFill}" stroke-width="1.2" />
+      <text x="${Math.max(24, x2 + 4)}" y="${Math.max(26, labelY + 3)}" font-size="11" font-weight="700" fill="#0f172a">${labelText}</text>
+    </g>`;
+    }).join("");
+    const missingCoordsCount = compEntries.filter((entry) => !entry.latLng).length;
+    const legendItems = [
+      `<div class="print-map-legend-item">
+      <span class="print-map-chip subject">Subject</span>
+      <div><strong>${escapePrintableHtml(subject?.address || subject?.parcelId || "Subject parcel")}</strong><div class="print-map-legend-meta">${escapePrintableHtml(subject?.owner1 || subject?.parcelId || "")}</div></div>
+    </div>`,
+      ...compEntries.map((entry) => `<div class="print-map-legend-item">
+      <span class="print-map-chip compare">Comp ${entry.index}</span>
+      <div><strong>${escapePrintableHtml(entry.parcel?.address || entry.parcel?.parcelId || `Comp ${entry.index}`)}</strong><div class="print-map-legend-meta">${escapePrintableHtml(entry.parcel?.owner1 || entry.parcel?.parcelId || "")}</div></div>
+    </div>`)
+    ].join("");
+    return `
+    <section class="section">
+      <h2>Comparable map overview</h2>
+      <p>This simplified map is included in the packet so you can show where the subject parcel and the selected grievance comps sit relative to one another.</p>
+      <div class="print-map-shell">
+        <div class="print-map-frame">
+          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Comparable map overview" class="print-map-svg">
+            <defs>
+              <linearGradient id="compMapBg" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#eff6ff" />
+                <stop offset="100%" stop-color="#eef2ff" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="${width}" height="${height}" rx="22" fill="url(#compMapBg)" />
+            <rect x="${padX - 10}" y="${padY - 10}" width="${width - (padX - 10) * 2}" height="${height - (padY - 10) * 2}" rx="18" fill="rgba(255,255,255,.58)" stroke="rgba(148,163,184,.26)" stroke-width="1.5" />
+            ${gridLines}
+            ${compLines}
+            ${mapMarkers}
+          </svg>
+        </div>
+        <div class="print-map-legend">
+          <div class="print-map-legend-title">Map legend</div>
+          ${legendItems}
+          <div class="print-map-note">Gold marks the subject parcel. Blue numbered markers show the grievance comps included in this packet.</div>
+          ${missingCoordsCount ? `<div class="print-map-note">Location data was unavailable for ${missingCoordsCount} selected comp${missingCoordsCount === 1 ? "" : "s"}, so they are listed in the report but not plotted on this map.</div>` : ""}
+        </div>
+      </div>
+    </section>`;
+  };
   var buildComparablePrintReportHtml = ({
     subject,
     subjectProfile,
@@ -53778,14 +55666,20 @@ self.onmessage = function(ev){
     const comps = includeContextComps ? Array.from(new Map(defaultComps.concat(selectedComps).map((parcel) => [normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl) || parcel?.parcelId, parcel])).values()) : selectedComps;
     const generatedAt = (/* @__PURE__ */ new Date()).toLocaleString();
     const summaryLabelPrefix = neighborResult?.grievancePackageCustom ? "Selected grievance comp" : "Supporting comp";
+    const claimRecommendation = neighborResult?.claimRecommendation || null;
+    const overvaluationFlag = neighborResult?.overvaluationFlag || null;
+    const marketSaleModel = neighborResult?.marketSaleModel || null;
+    const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+    const subjectSaleModel = neighborResult?.subjectSaleModel || null;
+    const comparableMapHtml = buildComparableMapPreviewHtml({ subject, selectedComps });
     const selectionMethodHtml = `
     <section class="section">
       <h2>How comparable homes are chosen</h2>
       <ul>
-        <li>The visible comparable list starts with residential class compatibility, location, living area, year built, beds, baths, style, and full market value alignment. It keeps up to 12 physically credible matches.</li>
-        <li>The default grievance package is narrower. A home must clear the quality gate, the data-confidence gate, and a positive grievance-support score. Lower assessed value alone is not enough.</li>
-        <li>When enough evidence exists, the package usually keeps 3 to 5 homes. It favors strong or moderate support first, limits over-concentration from the same street, and avoids weaker duplicates.</li>
-        <li>The homeowner can still include or remove comps manually. The summary, narrative, and suggested requested value update from that live selection.</li>
+        <li>The full visible list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</li>
+        <li>A narrower default grievance package is then suggested. A comp must clear the quality gate, the data-confidence gate, and earn positive grievance support from raw assessed value plus normalized metrics.</li>
+        <li>Lower assessed value alone is not enough. The app also checks assessed value per square foot, equity ratio, recent arm's-length sale evidence, and package-assembly rules such as same-street limits and corroborating strong comps.</li>
+        <li>The complete authoritative rules are documented in GRIEVANCE_APP_COMPLETE_SPEC.md. This printable report is a user-facing summary of that engine.</li>
       </ul>
     </section>`;
     const checklistRows = (grievanceHelper?.checklist || []).map((item) => `
@@ -53800,7 +55694,13 @@ self.onmessage = function(ev){
       const profile = parcel?._compProfile || buildComparableProfile(parcel);
       const delta = parcel?._compDelta || {};
       const relevance = parcel?._grievanceRelevance || classifyGrievanceComparable(subject, parcel);
+      const explanation = relevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevance?.kind || "neutral");
       const reasons = (parcel?._compReasons || []).map((reason) => `<li>${escapePrintableHtml(reason)}</li>`).join("");
+      const riskFlags = (parcel?._riskFlags || []).map((flag) => `<li>${escapePrintableHtml(flag)}</li>`).join("");
+      const adjustedAv = Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
+      const adjustedDelta = adjustedAv != null && Number.isFinite(Number(subject?.assessedValue)) ? adjustedAv - Number(subject.assessedValue) : null;
+      const adjustedSupport = parcel?._adjustmentBreakdown?.adjustedSupportLabel || null;
+      const supportBreakdownRows = (explanation?.breakdownRows || []).map((row) => `<li><strong>${escapePrintableHtml(row.label)}:</strong> ${escapePrintableHtml(row.valueText)}. ${escapePrintableHtml(row.explanation)}${row.whyItMatters ? ` Why it matters: ${escapePrintableHtml(row.whyItMatters)}` : ""}</li>`).join("");
       return `
       <section class="comp-card ${escapePrintableHtml(relevance.kind)}">
         <div class="comp-head">
@@ -53810,19 +55710,26 @@ self.onmessage = function(ev){
           </div>
           <div class="status ${escapePrintableHtml(relevance.kind)}">${escapePrintableHtml(relevance.badge)}</div>
         </div>
-        <div class="status-copy"><strong>${escapePrintableHtml(relevance.headline)}.</strong> ${escapePrintableHtml(relevance.detail)}</div>
+        <div class="status-copy"><strong>${escapePrintableHtml(explanation.summaryHeadline)}.</strong> ${escapePrintableHtml(explanation.summaryText)}</div>
+        <div class="status-copy"><strong>Main reason:</strong> ${escapePrintableHtml(explanation.primaryReason)}</div>
+        ${parcel?._marginalSupport ? `<div class="status-copy"><strong>Marginal support:</strong> Small assessed value gap may disappear after adjustments.</div>` : ""}
         <table>
           <thead><tr><th>Metric</th><th>You</th><th>Comp</th><th>Delta</th></tr></thead>
           <tbody>
             <tr><td>Assessed</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml($f(parcel?.assessedValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.assessed))}</td></tr>
+            <tr><td>Adjusted AV</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml(adjustedAv != null ? $f(adjustedAv) : "-")}</td><td>${escapePrintableHtml(adjustedDelta != null ? formatSignedComparableMoney(adjustedDelta) : "-")}</td></tr>
             <tr><td>FMV</td><td>${escapePrintableHtml($f(subject?.fullMarketValue))}</td><td>${escapePrintableHtml($f(parcel?.fullMarketValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.fmv))}</td></tr>
             <tr><td>Equity %</td><td>${escapePrintableHtml(subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-")}</td><td>${escapePrintableHtml(profile?.equity != null ? profile.equity + "%" : "-")}</td><td>${escapePrintableHtml(formatSignedComparableCount(delta.equity, "%"))}</td></tr>
             <tr><td>Living area</td><td>${escapePrintableHtml(subjectProfile?.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(profile?.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-")}</td></tr>
             <tr><td>Year built</td><td>${escapePrintableHtml(subjectProfile?.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(profile?.yearBuilt != null ? String(profile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-")}</td></tr>
             <tr><td>Bedrooms</td><td>${escapePrintableHtml(subjectProfile?.bedrooms != null ? String(subjectProfile.bedrooms) : "-")}</td><td>${escapePrintableHtml(profile?.bedrooms != null ? String(profile.bedrooms) : "-")}</td><td>${escapePrintableHtml(delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-")}</td></tr>
             <tr><td>Baths</td><td>${escapePrintableHtml(subjectProfile?.bathText || "-")}</td><td>${escapePrintableHtml(profile?.bathText || "-")}</td><td>${escapePrintableHtml(delta.baths != null ? formatSignedComparableCount(delta.baths) : "-")}</td></tr>
+            <tr><td>Adjusted support</td><td>-</td><td>${escapePrintableHtml(adjustedSupport || "-")}</td><td>${escapePrintableHtml(parcel?._adjustmentNarrative || "-")}</td></tr>
           </tbody>
         </table>
+        ${supportBreakdownRows || "" ? `<div class="why-title">Why this support level</div><ul>${supportBreakdownRows}</ul>` : ""}
+        ${parcel?._adjustmentNarrative ? `<div class="status-copy"><strong>Adjustment narrative:</strong> ${escapePrintableHtml(parcel._adjustmentNarrative)}</div>` : ""}
+        ${riskFlags ? `<div class="why-title">Assessor challenge flags</div><ul>${riskFlags}</ul>` : ""}
         <div class="why-title">Why this home was included</div>
         <ul>${reasons || "<li>No selection reasons were recorded for this comp.</li>"}</ul>
       </section>`;
@@ -53837,10 +55744,15 @@ self.onmessage = function(ev){
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(selectedComps.length))}</div><div>Selected grievance comps</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(neighborResult.grievanceModerateOrBetterCount ?? 0))}</div><div>Moderate support or better</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Suggested requested assessed value</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedValueMethodA != null ? $f(neighborResult.suggestedValueMethodA) : "-")}</div><div>Comp-based value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedValueMethodB != null ? $f(neighborResult.suggestedValueMethodB) : "-")}</div><div>Equity-ratio value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "-")}</div><div>Recommended claim type</div></div>
       </div>
       <p><strong>Selection method:</strong> The default grievance package keeps homes with positive grievance-support scores plus adequate quality and confidence. Lower assessed value alone does not qualify a home.</p>
       <p><strong>Package quality:</strong> Average quality score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageQualityScore) ? Number(neighborResult.grievanceAverageQualityScore).toFixed(1) : "-")} | Average confidence score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageConfidenceScore) ? Number(neighborResult.grievanceAverageConfidenceScore).toFixed(1) : "-")}.</p>
       <p><strong>Normalized metrics:</strong> ${escapePrintableHtml(neighborResult?.normalizedMetricSupport?.detail || "No normalized-metric summary is available.")}</p>
+      <p><strong>Suggested value method:</strong> ${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a requested assessed value.")}</p>
+      ${neighborResult?.scarWarning ? `<p><strong>SCAR warning:</strong> ${escapePrintableHtml(neighborResult.scarWarning)}</p>` : ""}
     </section>` : `
     <section>
       <h2>Grievance summary</h2>
@@ -53860,6 +55772,8 @@ self.onmessage = function(ev){
       <p><strong>Recommended RP-524 complaint reason:</strong> ${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.selectionLabel || "Review RP-524 Part Three manually before choosing a complaint reason.")}</p>
       <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.why || "")}</p>
       <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.unsupportedGroundsNote || "")}</p>
+      <p><strong>Recommended claim type:</strong> ${escapePrintableHtml(claimRecommendation?.label || "Manual review")}</p>
+      <p>${escapePrintableHtml(claimRecommendation?.reason || "")}</p>
       ${(appealSummary.why || []).length ? `<div class="subhead">Why this recommendation</div><ul>${appealSummary.why.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
       ${(appealReadiness.why || []).length ? `<div class="subhead">Why this score</div><ul>${appealReadiness.why.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
     </section>` : "";
@@ -53899,6 +55813,60 @@ self.onmessage = function(ev){
       </div>
       <p>${escapePrintableHtml(neighborhoodBenchmark.interpretation || "")}</p>
     </section>` : "";
+    const valuationModelHtml = `
+    <section class="section">
+      <h2>Valuation model outputs</h2>
+      <div class="summary-grid">
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "-")}</div><div>Recommended claim type</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedValueMethodA != null ? $f(neighborResult.suggestedValueMethodA) : "-")}</div><div>Comp-based value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedValueMethodB != null ? $f(neighborResult?.suggestedValueMethodB) : "-")}</div><div>Equity-ratio value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Filing recommendation</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(overvaluationFlag?.active ? "Yes" : "No")}</div><div>Separate overassessment check</div></div>
+      </div>
+      <p>${escapePrintableHtml(claimRecommendation?.reason || "Claim recommendation is not available from the current package.")}</p>
+      <p>${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a filing value.")}</p>
+      ${overvaluationFlag?.message ? `<p>${escapePrintableHtml(overvaluationFlag.message)}</p>` : ""}
+      ${neighborResult?.scarWarning ? `<p><strong>SCAR warning:</strong> ${escapePrintableHtml(neighborResult.scarWarning)}</p>` : ""}
+    </section>`;
+    const marketModelHtml = `
+    <section class="section">
+      <h2>Market and equity models</h2>
+      <div class="evidence-grid">
+        <div class="evidence-box neutral">
+          <div class="subhead">Market value estimate</div>
+          ${marketSaleModel?.available ? `
+            <p>${escapePrintableHtml(`${marketSaleModel.saleCount} recent arm's-length sales${marketSaleModel.expandedRadius ? " | radius expanded to 1.5 miles" : ""}`)}</p>
+            <ul>
+              <li>Neighborhood median sale $/sq ft: ${escapePrintableHtml(`$${Number(marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`)}</li>
+              <li>Estimated subject FMV: ${escapePrintableHtml(marketSaleModel.estimatedSubjectFmv != null ? $f(marketSaleModel.estimatedSubjectFmv) : "-")}</li>
+              <li>Implied gap versus assessed value: ${escapePrintableHtml(marketSaleModel.impliedDifference != null ? `${marketSaleModel.impliedDifference >= 0 ? "+" : ""}${$f(Math.abs(marketSaleModel.impliedDifference))}` : "-")}</li>
+            </ul>
+            ${marketSaleModel.note ? `<p>${escapePrintableHtml(marketSaleModel.note)}</p>` : ""}
+          ` : `<p>${escapePrintableHtml(marketSaleModel?.note || "Insufficient recent sales for market estimate.")}</p>`}
+        </div>
+        <div class="evidence-box neutral">
+          <div class="subhead">Neighborhood equity distribution</div>
+          ${neighborhoodEquityModel?.available ? `
+            <p>${escapePrintableHtml(`${neighborhoodEquityModel.sampleSize} sale-backed ratios | ${neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : "Subject neighborhood sample"}`)}</p>
+            <ul>
+              <li>Neighborhood median ratio: ${escapePrintableHtml(neighborhoodEquityModel.medianRatio != null ? `${(neighborhoodEquityModel.medianRatio * 100).toFixed(1)}%` : "-")}</li>
+              <li>Your ratio: ${escapePrintableHtml(neighborhoodEquityModel.subjectRatio != null ? `${(neighborhoodEquityModel.subjectRatio * 100).toFixed(1)}%` : "-")}</li>
+              <li>Your percentile: ${escapePrintableHtml(neighborhoodEquityModel.subjectPercentile != null ? `${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th` : "-")}</li>
+              <li>COD (consistency measure): ${escapePrintableHtml(neighborhoodEquityModel.cod != null ? Number(neighborhoodEquityModel.cod).toFixed(1) : "-")}</li>
+              <li>IAAO standard: ${escapePrintableHtml(`<= ${Number(neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`)}</li>
+            </ul>
+            ${buildNeighborhoodPercentileExplanation(neighborhoodEquityModel) ? `<p>${escapePrintableHtml(buildNeighborhoodPercentileExplanation(neighborhoodEquityModel))}</p>` : ""}
+            ${buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel) ? `<p>${escapePrintableHtml(buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel))}</p>` : ""}
+            ${buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel) ? `<p><strong>${escapePrintableHtml(buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel))}</strong></p>` : ""}
+            ${neighborhoodBenchmark?.interpretation ? `<p>${escapePrintableHtml(`Separate neighborhood benchmark: ${neighborhoodBenchmark.interpretation}`)}</p>` : ""}
+            ${neighborhoodEquityModel.codWarning ? `<p>${escapePrintableHtml(neighborhoodEquityModel.codWarning)}</p>` : ""}
+          ` : `<p>${escapePrintableHtml(neighborhoodEquityModel?.note || "Insufficient sales data for neighborhood equity analysis.")}</p>`}
+        </div>
+      </div>
+      ${subjectSaleModel?.note ? `<p>${escapePrintableHtml(subjectSaleModel.note)}</p>` : ""}
+      ${subjectSaleModel?.status === "supports" ? `<p>${escapePrintableHtml("Your recent arm's-length subject sale sits materially below the current FMV estimate, which supports the grievance.")}</p>` : ""}
+      ${subjectSaleModel?.status === "weakens" ? `<p>${escapePrintableHtml("Your recent arm's-length subject sale sits at or above the current FMV estimate, which may support the assessor's position.")}</p>` : ""}
+    </section>`;
     return `<!doctype html>
 <html>
 <head>
@@ -53927,7 +55895,7 @@ self.onmessage = function(ev){
   th,td{border:1px solid #cbd5e1;padding:8px;vertical-align:top;text-align:left;font-size:12px}
   th{background:#f8fafc}
   ul{margin:8px 0 0 18px}
-  .comp-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:14px;page-break-inside:avoid}
+  .comp-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:22px;page-break-inside:avoid}
   .comp-card.strong_support,.comp-card.moderate_support{border-color:#86efac;background:#f0fdf4}
   .comp-card.weak_support{border-color:#fcd34d;background:#fffbeb}
   .comp-card.weakens_case{border-color:#fecaca;background:#fef2f2}
@@ -53942,9 +55910,23 @@ self.onmessage = function(ev){
   .status.neutral{color:#475569}
   .status-copy{font-size:12px;margin-top:10px}
   .why-title{font-weight:700;font-size:12px;margin-top:10px}
+  .print-map-shell{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(240px,.9fr);gap:14px;align-items:stretch}
+  .print-map-frame{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:12px}
+  .print-map-svg{width:100%;height:auto;display:block}
+  .print-map-legend{background:#f8fafc;border:1px solid #cbd5e1;border-radius:14px;padding:12px;display:grid;gap:10px}
+  .print-map-legend-title{font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.06em}
+  .print-map-legend-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:flex-start}
+  .print-map-chip{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+  .print-map-chip.subject{background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.30);color:#92400e}
+  .print-map-chip.compare{background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.22);color:#1d4ed8}
+  .print-map-legend-meta{font-size:11px;color:#64748b;margin-top:2px}
+  .print-map-note{font-size:11px;color:#475569;line-height:1.55}
   @media print{
     body{margin:16px}
     a{text-decoration:none;color:inherit}
+  }
+  @media (max-width:900px){
+    .summary-grid,.evidence-grid,.print-map-shell{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -53961,7 +55943,10 @@ self.onmessage = function(ev){
   ${appealSummaryHtml}
   ${appealEvidenceHtml}
   ${benchmarkHtml}
+  ${valuationModelHtml}
+  ${marketModelHtml}
   ${summaryHtml}
+  ${comparableMapHtml}
   ${selectionMethodHtml}
   <section class="section">
     <h2>Auto-generated grievance narrative</h2>
@@ -53999,235 +55984,40 @@ self.onmessage = function(ev){
     const sameZip = !!(subjectProfile?.zipCode && compProfile?.zipCode && subjectProfile.zipCode === compProfile.zipCode);
     return { distanceMiles, sameNeighborhood, sameStreet, sameZip };
   };
-  var locationSimilarityScore = ({ sameNeighborhood = false, sameStreet = false, sameZip = false, distanceMiles = null } = {}) => {
-    if (sameNeighborhood && Number.isFinite(distanceMiles) && distanceMiles <= 0.5) return 22;
-    if (sameNeighborhood && Number.isFinite(distanceMiles) && distanceMiles <= 1) return 20;
-    if (sameNeighborhood) return 18;
-    if (sameStreet) return 17;
-    if (sameZip && Number.isFinite(distanceMiles) && distanceMiles <= 1) return 14;
-    if (sameZip && Number.isFinite(distanceMiles) && distanceMiles <= 2) return 10;
-    if (sameZip && distanceMiles == null) return 10;
-    if (Number.isFinite(distanceMiles) && distanceMiles <= 4) return 5;
-    return 0;
-  };
-  var buildGrievanceSupportScore = ({ subject, subjectProfile, comp, compProfile, comparableQualityScore = 0, dataConfidenceScore = 0, ignoreScorePenalties = false }) => {
-    const subjectAssessed = Number(subject?.assessedValue);
-    const compAssessed = Number(comp?.assessedValue);
-    const assessedDelta = Number.isFinite(subjectAssessed) && Number.isFinite(compAssessed) ? subjectAssessed - compAssessed : null;
-    const assessedPctAdvantage = assessedDelta != null ? assessedDelta / Math.max(subjectAssessed, compAssessed) : null;
-    const subjectAssessedPerSqft = subjectProfile?.assessedPerSqft;
-    const compAssessedPerSqft = compProfile?.assessedPerSqft;
-    const assessedPerSqftDelta = subjectAssessedPerSqft != null && compAssessedPerSqft != null ? subjectAssessedPerSqft - compAssessedPerSqft : null;
-    const assessedPerSqftAdvantagePct = assessedPerSqftDelta != null ? assessedPerSqftDelta / Math.max(subjectAssessedPerSqft, compAssessedPerSqft) : null;
-    const equityRatioDeltaPoints = subjectProfile?.equity != null && compProfile?.equity != null ? roundComparableNumber(subjectProfile.equity - compProfile.equity, 1) : null;
-    let score = 0;
-    const supportingBecause = [];
-    if (assessedPctAdvantage != null) {
-      if (assessedPctAdvantage >= 0.15) {
-        score += 25;
-        supportingBecause.push("Materially lower assessed value.");
-      } else if (assessedPctAdvantage >= 0.08) {
-        score += 18;
-        supportingBecause.push("Lower assessed value.");
-      } else if (assessedPctAdvantage >= 0.03) {
-        score += 10;
-        supportingBecause.push("Modestly lower assessed value.");
-      } else if (assessedPctAdvantage > 0) {
-        score += 3;
-        supportingBecause.push("Slightly lower assessed value.");
-      } else if (assessedPctAdvantage <= -0.08) {
-        score -= 18;
-        supportingBecause.push("Materially higher assessed value.");
-      } else if (assessedPctAdvantage <= -0.03) {
-        score -= 10;
-        supportingBecause.push("Higher assessed value.");
-      } else if (assessedPctAdvantage < 0) {
-        score -= 4;
-        supportingBecause.push("Slightly higher assessed value.");
-      }
-    }
-    if (assessedPerSqftAdvantagePct != null) {
-      if (assessedPerSqftAdvantagePct >= 0.12) {
-        score += 20;
-        supportingBecause.push("Much lower assessed value per sq ft.");
-      } else if (assessedPerSqftAdvantagePct >= 0.06) {
-        score += 12;
-        supportingBecause.push("Lower assessed value per sq ft.");
-      } else if (assessedPerSqftAdvantagePct >= 0.02) {
-        score += 6;
-        supportingBecause.push("Slightly lower assessed value per sq ft.");
-      } else if (assessedPerSqftAdvantagePct <= -0.02) {
-        score -= 8;
-        supportingBecause.push("Higher assessed value per sq ft.");
-      }
-    }
-    if (equityRatioDeltaPoints != null) {
-      if (equityRatioDeltaPoints >= 6) {
-        score += 18;
-        supportingBecause.push("Meaningfully lower equity ratio.");
-      } else if (equityRatioDeltaPoints >= 3) {
-        score += 10;
-        supportingBecause.push("Lower equity ratio.");
-      } else if (equityRatioDeltaPoints >= 1) {
-        score += 4;
-        supportingBecause.push("Slightly lower equity ratio.");
-      } else if (equityRatioDeltaPoints <= -1) {
-        score -= 8;
-        supportingBecause.push("Higher equity ratio.");
-      }
-    }
-    if (assessedPctAdvantage != null && assessedPctAdvantage > 0 && Math.abs(Number(equityRatioDeltaPoints) || 0) < 1 && Math.abs(Number(assessedPerSqftAdvantagePct) || 0) < 0.02) {
-      score -= 8;
-      supportingBecause.push("Raw assessed advantage is not confirmed by normalized metrics.");
-    }
-    if (assessedPctAdvantage != null && assessedPctAdvantage > 0 && assessedPctAdvantage < 0.03) {
-      score -= 3;
-    }
-    if (!ignoreScorePenalties && dataConfidenceScore < 60) score -= 8;
-    if (!ignoreScorePenalties && comparableQualityScore < 55) score -= 10;
-    const finalScore = clampNumber(Math.round(score), -100, 100);
-    return {
-      score: finalScore,
-      label: grievanceSupportLabelForScore(finalScore),
-      supportingBecause,
-      normalizedMetricsSummary: {
-        assessedDelta,
-        assessedPctAdvantage,
-        assessedPerSqftDelta: assessedPerSqftDelta != null ? roundComparableNumber(assessedPerSqftDelta, 2) : null,
-        assessedPerSqftAdvantagePct,
-        equityRatioDeltaPoints
-      }
+  var sortVisibleComparableCandidates = (subject, candidates = []) => sortVisibleComparableCandidatesWithSpec(candidates);
+  var sortGrievanceCandidatePool = (candidates = []) => sortGrievanceCandidatePoolWithSpec(candidates);
+  var selectGrievancePackage = (candidatePool = [], subjectProfile = null) => selectGrievancePackageWithSpec(candidatePool, subjectProfile);
+  var annotateComparablePackageDecisions = (visibleComps = [], grievanceCandidatePool = [], decisionById = /* @__PURE__ */ new Map()) => annotateComparablePackageDecisionsWithSpec(visibleComps, grievanceCandidatePool, decisionById).map((comp) => {
+    if (!comp) return comp;
+    comp._selectionDiagnostics = {
+      ...comp._selectionDiagnostics || {},
+      packageDecision: comp._packageDecision || comp.packageDecision || null,
+      selectionIndicator: comp._selectionIndicator || comp.selectionIndicator || null
     };
-  };
-  var sortVisibleComparableCandidates = (subject, candidates = []) => candidates.slice().sort(
-    (a2, b) => Number(b?._comparableQualityScore || 0) - Number(a2?._comparableQualityScore || 0) || Number(b?._dataConfidenceScore || 0) - Number(a2?._dataConfidenceScore || 0) || (a2?._distanceMiles ?? 999) - (b?._distanceMiles ?? 999) || (a2?._fmvPctDiff ?? 999) - (b?._fmvPctDiff ?? 999)
-  );
-  var sortGrievanceCandidatePool = (candidates = []) => candidates.slice().sort(
-    (a2, b) => Number(b?._grievanceSupportScore || 0) - Number(a2?._grievanceSupportScore || 0) || Number(b?._comparableQualityScore || 0) - Number(a2?._comparableQualityScore || 0) || Number(b?._dataConfidenceScore || 0) - Number(a2?._dataConfidenceScore || 0) || (a2?._distanceMiles ?? 999) - (b?._distanceMiles ?? 999)
-  );
-  var comparableDominates = (a2, b) => {
-    if (!a2 || !b) return false;
-    const qualityA = Number(a2?._comparableQualityScore || 0);
-    const qualityB = Number(b?._comparableQualityScore || 0);
-    const confidenceA = Number(a2?._dataConfidenceScore || 0);
-    const confidenceB = Number(b?._dataConfidenceScore || 0);
-    const supportA = Number(a2?._grievanceSupportScore || 0);
-    const supportB = Number(b?._grievanceSupportScore || 0);
-    return qualityA >= qualityB && confidenceA >= confidenceB && supportA >= supportB && (qualityA > qualityB || confidenceA > confidenceB || supportA > supportB);
-  };
-  var buildPackageDecisionMessage = (reasonCode, candidateKind = "neutral") => {
-    if (reasonCode === "included_strong_corroboration") return "Included because another nearby strong comp makes a similar point, and corroborating strong evidence can strengthen an unequal-assessment claim.";
-    if (reasonCode === "included_default") return candidateKind === "strong_support" ? "Included by default because it is one of the strongest pieces of grievance evidence in the current package." : "Included by default because it cleared the package support, quality, and confidence checks.";
-    if (reasonCode === "included_replacement") return "Included by default because it out-ranked another comp on the same street.";
-    if (reasonCode === "same_street_cap") return candidateKind === "strong_support" ? "This comp strongly supports the grievance, but the default package already includes two comps from the same street." : "Not included by default because the package already includes two comps from the same street.";
-    if (reasonCode === "package_limit") return candidateKind === "strong_support" ? "This comp strongly supports the grievance, but the default package already reached its 3 to 5 comp target with other strong evidence." : "Not included by default because the current package already reached its target size.";
-    if (reasonCode === "dominated_similar") return "Not included by default because another nearby comp was as strong or stronger on support, quality, and confidence.";
-    if (reasonCode === "replaced_by_stronger_same_street") return "Not included by default because a stronger comp on the same street replaced it in the package.";
-    if (reasonCode === "assessed_outlier") return "Not included by default because its assessed value looks like an outlier compared with the rest of the selected package.";
-    if (reasonCode === "quality_gate") return "Not included by default because it did not clear the physical-match quality gate.";
-    if (reasonCode === "confidence_gate") return "Not included by default because its comparison data were not strong enough.";
-    if (reasonCode === "support_gate") return "Not included by default because it did not support the grievance after normalized value checks.";
-    return "Not included by default under the current package rules.";
-  };
-  var buildPackageDecisionRecord = (status, reasonCode, candidateKind = "neutral") => ({
-    status,
-    reasonCode,
-    message: buildPackageDecisionMessage(reasonCode, candidateKind)
+    return comp;
   });
-  var selectGrievancePackage = (candidatePool = []) => {
-    const strongOrModerate = candidatePool.filter((comp) => ["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind));
-    const weakSupport = candidatePool.filter((comp) => comp?._grievanceRelevance?.kind === "weak_support");
-    const targetCount = strongOrModerate.length >= 3 ? Math.min(5, strongOrModerate.length) : Math.min(5, strongOrModerate.length + Math.min(2, weakSupport.length));
-    const pool = strongOrModerate.length >= 3 ? strongOrModerate : strongOrModerate.concat(weakSupport.slice(0, 2));
-    const selected = [];
-    const decisionById = /* @__PURE__ */ new Map();
-    for (const candidate of pool) {
-      const candidateId = normalizeParcelId(candidate?.parcelIdNorm || candidate?.parcelId || candidate?.printKey || candidate?.pinSbl);
-      const streetKey = streetNameKeyForComp(candidate?.address);
-      const candidateKind = candidate?._grievanceRelevance?.kind || "neutral";
-      const candidateNeighborhood = parcelNeighborhoodName(candidate);
-      if (selected.length >= targetCount) {
-        if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "package_limit", candidateKind));
-        continue;
-      }
-      if (streetKey && selected.filter((comp) => streetNameKeyForComp(comp?.address) === streetKey).length >= 2) continue;
-      if (streetKey && selected.filter((comp) => streetNameKeyForComp(comp?.address) === streetKey).length >= 2) {
-        if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "same_street_cap", candidateKind));
-        continue;
-      }
-      const dominatedBySelected = candidateKind === "strong_support" ? false : selected.some((other) => comparableDominates(other, candidate) && (streetNameKeyForComp(other?.address) === streetKey || parcelNeighborhoodName(other) === candidateNeighborhood));
-      if (dominatedBySelected) {
-        if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "dominated_similar", candidateKind));
-        continue;
-      }
-      const selectedAssessed = selected.map((comp) => Number(comp?.assessedValue)).filter(Number.isFinite);
-      if (selectedAssessed.length >= 2 && Number.isFinite(Number(candidate?.assessedValue))) {
-        const medianAssessed = medianValue(selectedAssessed);
-        if (Number.isFinite(medianAssessed) && Number(candidate.assessedValue) < medianAssessed * 0.8) {
-          if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "assessed_outlier", candidateKind));
-          continue;
-        }
-      }
-      const replaceIndex = candidateKind === "strong_support" ? -1 : selected.findIndex((other) => comparableDominates(candidate, other) && streetNameKeyForComp(other?.address) === streetKey);
-      const corroboratingStrong = candidateKind === "strong_support" && selected.some((other) => other?._grievanceRelevance?.kind === "strong_support" && (streetNameKeyForComp(other?.address) === streetKey || parcelNeighborhoodName(other) === candidateNeighborhood));
-      if (replaceIndex >= 0) {
-        const replaced = selected[replaceIndex];
-        const replacedId = normalizeParcelId(replaced?.parcelIdNorm || replaced?.parcelId || replaced?.printKey || replaced?.pinSbl);
-        if (replacedId) decisionById.set(replacedId, buildPackageDecisionRecord("excluded", "replaced_by_stronger_same_street", replaced?._grievanceRelevance?.kind || "neutral"));
-        selected.splice(replaceIndex, 1, candidate);
-        if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", "included_replacement", candidateKind));
-      } else {
-        selected.push(candidate);
-        if (candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", corroboratingStrong ? "included_strong_corroboration" : "included_default", candidateKind));
-      }
-    }
-    return { selected, decisionById, targetCount };
-  };
-  var annotateComparablePackageDecisions = (visibleComps = [], grievanceCandidatePool = [], decisionById = /* @__PURE__ */ new Map()) => {
-    const selectedIdSet = /* @__PURE__ */ new Set();
-    for (const [id, decision] of decisionById.entries()) {
-      if (decision?.status === "included") selectedIdSet.add(id);
-    }
-    const gatePoolIdSet = new Set((grievanceCandidatePool || []).map((comp) => normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)).filter(Boolean));
-    return (visibleComps || []).map((comp) => {
-      if (!comp) return comp;
-      const id = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
-      const decision = id && decisionById.get(id) || (!gatePoolIdSet.has(id) ? buildPackageDecisionRecord(
-        selectedIdSet.has(id) ? "included" : "excluded",
-        Number(comp?._grievanceSupportScore) <= 0 ? "support_gate" : Number(comp?._dataConfidenceScore) < 60 ? "confidence_gate" : Number(comp?._comparableQualityScore) < 50 ? "quality_gate" : "package_limit",
-        comp?._grievanceRelevance?.kind || "neutral"
-      ) : buildPackageDecisionRecord(selectedIdSet.has(id) ? "included" : "excluded", selectedIdSet.has(id) ? "included_default" : "package_limit", comp?._grievanceRelevance?.kind || "neutral"));
-      comp._packageDecision = decision;
-      comp._selectionDiagnostics = {
-        ...comp._selectionDiagnostics || {},
-        packageDecision: decision
-      };
-      return comp;
-    });
-  };
   var buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
-    const candidate = buildComparableCandidate(subject, comp, { subjectProfile });
+    const candidate = buildComparableCandidate(subject, comp, { subjectProfile, sharedSnapshotMode: true });
     if (candidate) return candidate;
     const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
     const compProfile = buildComparableProfile(comp);
     const location = comparableLocationContext(subject, comp, baseSubjectProfile, compProfile);
-    const supportModel = buildGrievanceSupportScore({
-      subject,
+    const fallbackCandidate = buildComparableCandidate(subject, comp, {
       subjectProfile: baseSubjectProfile,
-      comp,
       compProfile,
-      comparableQualityScore: 60,
-      dataConfidenceScore: 60,
-      ignoreScorePenalties: true
+      allowBroadClass: true,
+      sharedSnapshotMode: true
     });
+    const supportScore = Number(fallbackCandidate?._grievanceSupportScore || 0);
+    const supportLabel = fallbackCandidate?._grievanceSupportLabel || grievanceSupportLabelForScore(supportScore);
     const snapshotCandidate = {
       ...comp,
       _compScore: 0,
       _comparableQualityScore: 0,
       _dataConfidenceScore: 0,
       _dataConfidenceLabel: "low",
-      _grievanceSupportScore: supportModel.score,
-      _grievanceSupportLabel: supportModel.label,
+      _grievanceSupportScore: supportScore,
+      _grievanceSupportLabel: supportLabel,
       _compReasons: [
         "Included from shared comparable snapshot",
         location.sameNeighborhood ? "Same neighborhood: " + baseSubjectProfile.neighborhood : null,
@@ -54245,10 +56035,10 @@ self.onmessage = function(ev){
       _fmvPctDiff: comparePctDelta(subject?.fullMarketValue, comp?.fullMarketValue),
       _selectionDiagnostics: {
         selectedBecause: ["Included from a shared snapshot and preserved exactly as shared."],
-        supportingBecause: supportModel.supportingBecause,
+        supportingBecause: fallbackCandidate?._selectionDiagnostics?.supportingBecause || [],
         confidenceNotes: ["Snapshot mode bypasses normal quality and confidence scoring."],
         disqualifyingConcerns: ["Snapshot comps may fall outside the normal comparable-selection rules."],
-        normalizedMetricsSummary: supportModel.normalizedMetricsSummary
+        normalizedMetricsSummary: fallbackCandidate?._selectionDiagnostics?.normalizedMetricsSummary || {}
       },
       _compSnapshotIncluded: true
     };
@@ -54260,192 +56050,55 @@ self.onmessage = function(ev){
     if (!isResidentialPropClass(subject?.propClass)) return null;
     const subjectProfile = options?.subjectProfile || buildComparableProfile(subject);
     const compProfile = options?.compProfile || buildComparableProfile(comp);
-    const classCompatibility = classCompatibilityTier(subject, comp, { allowBroadClass: !!options?.allowBroadClass });
-    if (classCompatibility.tier === "tier_3_incompatible") return null;
-    if (!Number.isFinite(Number(comp?.assessedValue)) && !Number.isFinite(Number(comp?.fullMarketValue))) return null;
-    const location = comparableLocationContext(subject, comp, subjectProfile, compProfile);
-    if (Number.isFinite(location.distanceMiles) && location.distanceMiles > (options?.maxDistanceMiles ?? 4)) return null;
-    const reasons = [classCompatibility.label];
-    const allSignals = [];
-    const physicalFieldsUsed = [];
-    const confidenceNotes = [];
-    const disqualifyingConcerns = [];
-    const subjectSqft = subjectProfile.livingArea;
-    const compSqft = compProfile.livingArea;
-    const livingAreaPct = comparePctDelta(subjectSqft, compSqft);
-    if (livingAreaPct != null && livingAreaPct > 0.6) return null;
-    const subjectYear = subjectProfile.yearBuilt;
-    const compYear = compProfile.yearBuilt;
-    const yearDiff = subjectYear != null && compYear != null ? Math.abs(compYear - subjectYear) : null;
-    if (yearDiff != null && yearDiff > 100) return null;
-    const subjectBeds = subjectProfile.bedrooms;
-    const compBeds = compProfile.bedrooms;
-    const bedDiff = subjectBeds != null && compBeds != null ? Math.abs(compBeds - subjectBeds) : null;
-    if (bedDiff != null && bedDiff > 3) return null;
-    const subjectBaths = subjectProfile.bathCount;
-    const compBaths = compProfile.bathCount;
-    const bathDiff = subjectBaths != null && compBaths != null ? Math.abs(compBaths - subjectBaths) : null;
-    if (bathDiff != null && bathDiff > 2.5) return null;
-    const locationScore = locationSimilarityScore(location);
-    if (location.sameNeighborhood) allSignals.push("Neighborhood");
-    else if (location.sameZip) allSignals.push("ZIP");
-    if (location.sameStreet) allSignals.push("Street");
-    if (location.sameNeighborhood && Number.isFinite(location.distanceMiles)) reasons.push(`Same neighborhood within ${location.distanceMiles.toFixed(2)} mi`);
-    else if (location.sameStreet) reasons.push("Same street");
-    else if (location.sameZip) reasons.push(`Same ZIP${Number.isFinite(location.distanceMiles) ? ` within ${location.distanceMiles.toFixed(2)} mi` : ""}`);
-    else if (Number.isFinite(location.distanceMiles)) reasons.push(`Within ${location.distanceMiles.toFixed(2)} mi`);
-    let livingAreaScore = 0;
-    if (livingAreaPct != null) {
-      physicalFieldsUsed.push("Living area");
-      if (livingAreaPct <= 0.05) livingAreaScore = 18;
-      else if (livingAreaPct <= 0.1) livingAreaScore = 16;
-      else if (livingAreaPct <= 0.15) livingAreaScore = 13;
-      else if (livingAreaPct <= 0.25) livingAreaScore = 9;
-      else if (livingAreaPct <= 0.4) livingAreaScore = 4;
-      reasons.push(`Living area within ${Math.round(livingAreaPct * 100)}%`);
-    } else {
-      confidenceNotes.push("Living area is missing on one side.");
-    }
-    let yearScore = 0;
-    if (yearDiff != null) {
-      physicalFieldsUsed.push("Year built");
-      if (yearDiff === 0) yearScore = 10;
-      else if (yearDiff <= 5) yearScore = 9;
-      else if (yearDiff <= 10) yearScore = 7;
-      else if (yearDiff <= 20) yearScore = 5;
-      else if (yearDiff <= 40) yearScore = 2;
-      reasons.push(yearDiff === 0 ? `Same year built (${compYear})` : `Year built within ${yearDiff} years`);
-    } else {
-      confidenceNotes.push("Year built is missing on one side.");
-    }
-    let bedroomScore = 0;
-    if (bedDiff != null) {
-      physicalFieldsUsed.push("Bedrooms");
-      bedroomScore = bedDiff === 0 ? 8 : bedDiff === 1 ? 6 : bedDiff === 2 ? 3 : 1;
-      reasons.push(bedDiff === 0 ? "Same bedroom count" : `Bedroom count within ${bedDiff}`);
-    } else {
-      confidenceNotes.push("Bedroom count is missing on one side.");
-    }
-    let bathroomScore = 0;
-    if (bathDiff != null) {
-      physicalFieldsUsed.push("Baths");
-      if (bathDiff === 0) bathroomScore = 8;
-      else if (bathDiff <= 0.5) bathroomScore = 7;
-      else if (bathDiff <= 1) bathroomScore = 5;
-      else if (bathDiff <= 1.5) bathroomScore = 2;
-      else bathroomScore = 1;
-      reasons.push(bathDiff === 0 ? "Same bath count" : `Bath count within ${bathDiff}`);
-    } else {
-      confidenceNotes.push("Bath count is missing on one side.");
-    }
-    let styleScore = 0;
-    if (subjectProfile?.style || compProfile?.style) physicalFieldsUsed.push("Style");
-    if (subjectProfile?.styleFamily === "unknown" || compProfile?.styleFamily === "unknown") {
-      styleScore = 2;
-      reasons.push("Style match is uncertain");
-    } else if (subjectProfile?.styleFamily && compProfile?.styleFamily && subjectProfile.styleFamily === compProfile.styleFamily) {
-      styleScore = 6;
-      reasons.push(`Same style family (${subjectProfile.styleFamily.replace(/_/g, " ")})`);
-    }
-    const valuePct = comparePctDelta(subject?.fullMarketValue, comp?.fullMarketValue);
-    let fmvScore = 0;
-    if (valuePct != null) {
-      if (valuePct <= 0.05) fmvScore = 10;
-      else if (valuePct <= 0.1) fmvScore = 8;
-      else if (valuePct <= 0.2) fmvScore = 5;
-      else if (valuePct <= 0.35) fmvScore = 2;
-      if (fmvScore > 0) {
-        reasons.push(`Market value within ${Math.round(valuePct * 100)}%`);
-        allSignals.push("Market value");
-      }
-    } else {
-      confidenceNotes.push("Full market value is missing on one side.");
-    }
-    const usablePhysicalFieldCount = physicalFieldsUsed.length;
-    let qualityPenalty = 0;
-    if (usablePhysicalFieldCount < 2) qualityPenalty -= 20;
-    else if (usablePhysicalFieldCount < 3) qualityPenalty -= 12;
-    if (subjectSqft == null || compSqft == null) qualityPenalty -= 6;
-    if (subjectYear == null || compYear == null) qualityPenalty -= 3;
-    if ((subjectBeds == null || compBeds == null) && (subjectBaths == null || compBaths == null)) qualityPenalty -= 5;
-    const missingHardCheckPairs = [livingAreaPct == null, yearDiff == null, bedDiff == null, bathDiff == null].filter(Boolean).length;
-    if (missingHardCheckPairs >= 2 && usablePhysicalFieldCount < 2) qualityPenalty -= 8;
-    const comparableQualityScore = clampNumber(Math.round(
-      classCompatibility.score + locationScore + livingAreaScore + yearScore + bedroomScore + bathroomScore + styleScore + fmvScore + qualityPenalty
-    ), 0, 100);
-    let dataConfidenceScore = 100;
-    if (subjectSqft == null || compSqft == null) {
-      dataConfidenceScore -= 18;
-    }
-    if (!Number.isFinite(Number(subject?.assessedValue)) || !Number.isFinite(Number(comp?.assessedValue))) {
-      dataConfidenceScore -= 12;
-      confidenceNotes.push("Assessed value is missing on one side.");
-    }
-    if (!Number.isFinite(Number(subject?.fullMarketValue)) || !Number.isFinite(Number(comp?.fullMarketValue))) {
-      dataConfidenceScore -= 8;
-    }
-    if (subjectYear == null || compYear == null) {
-      dataConfidenceScore -= 8;
-    }
-    if (subjectBeds == null || compBeds == null) {
-      dataConfidenceScore -= 6;
-    }
-    if (subjectBaths == null || compBaths == null) {
-      dataConfidenceScore -= 6;
-    }
-    if (subjectProfile?.styleFamily === "unknown" || compProfile?.styleFamily === "unknown") {
-      dataConfidenceScore -= 5;
-      confidenceNotes.push("Style-family normalization is incomplete.");
-    }
-    if (location.distanceMiles == null) {
-      dataConfidenceScore -= 5;
-      confidenceNotes.push("Distance could not be calculated from parcel coordinates.");
-    }
-    if (physicalFieldsUsed.length < 3) {
-      dataConfidenceScore -= 10;
-    }
-    dataConfidenceScore = clampNumber(Math.round(dataConfidenceScore), 0, 100);
-    const dataConfidenceLabel = dataConfidenceScore >= 80 ? "high" : dataConfidenceScore >= 60 ? "medium" : "low";
-    if (classCompatibility.tier !== "tier_0_exact") disqualifyingConcerns.push(classCompatibility.label + ".");
-    if (Number.isFinite(location.distanceMiles) && location.distanceMiles > 1) disqualifyingConcerns.push(`Comp is ${location.distanceMiles.toFixed(2)} miles away.`);
-    if (livingAreaPct != null && livingAreaPct > 0.25) disqualifyingConcerns.push("Living area gap is wider than ideal.");
-    if (yearDiff != null && yearDiff > 20) disqualifyingConcerns.push("Year-built gap is wider than ideal.");
-    if (dataConfidenceLabel === "low") disqualifyingConcerns.push("Data confidence is low.");
-    const supportModel = buildGrievanceSupportScore({
+    const analysis = analyzeComparableCandidateWithSpec({
       subject,
-      subjectProfile,
       comp,
+      subjectProfile,
       compProfile,
-      comparableQualityScore,
-      dataConfidenceScore
+      salesByParcelId: options?.salesByParcelId || null,
+      allowBroadClass: !!options?.allowBroadClass,
+      cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+      currentDate: options?.currentDate || /* @__PURE__ */ new Date(),
+      sharedSnapshotMode: !!options?.sharedSnapshotMode
     });
+    if (!analysis) return null;
     const delta = buildComparableDelta(subject, comp, subjectProfile, compProfile);
-    const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter((label) => !physicalFieldsUsed.includes(label));
+    const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter((label) => !analysis.physicalFieldsUsed.includes(label));
     const candidate = {
       ...comp,
-      _compScore: comparableQualityScore,
-      _comparableQualityScore: comparableQualityScore,
-      _dataConfidenceScore: dataConfidenceScore,
-      _dataConfidenceLabel: dataConfidenceLabel,
-      _grievanceSupportScore: supportModel.score,
-      _grievanceSupportLabel: supportModel.label,
-      _classCompatibility: classCompatibility,
-      _distanceMiles: location.distanceMiles,
-      _fmvPctDiff: valuePct,
-      _compReasons: reasons,
-      _compSignals: allSignals.concat(physicalFieldsUsed),
-      _compEvidenceCount: physicalFieldsUsed.length,
-      _compPhysicalFieldsUsed: physicalFieldsUsed,
+      qualityScore: analysis.qualityScore,
+      confidenceScore: analysis.confidenceScore,
+      grievanceSupport: analysis.grievanceSupport,
+      supportLabel: analysis.supportLabel,
+      marginalSupport: analysis.marginalSupport,
+      saleEvidence: analysis.saleEvidence,
+      riskFlags: analysis.riskFlags,
+      _compScore: analysis.qualityScore,
+      _comparableQualityScore: analysis.qualityScore,
+      _dataConfidenceScore: analysis.confidenceScore,
+      _dataConfidenceLabel: analysis.confidenceLabel,
+      _grievanceSupportScore: analysis.grievanceSupport,
+      _grievanceSupportLabel: analysis.supportLabel,
+      _marginalSupport: analysis.marginalSupport,
+      _saleEvidence: analysis.saleEvidence,
+      _riskFlags: analysis.riskFlags,
+      _classCompatibility: analysis.classCompatibility,
+      _distanceMiles: analysis.location.distanceMiles,
+      _fmvPctDiff: analysis.fmvPctDiff,
+      _compReasons: analysis.reasons,
+      _compSignals: analysis.signals,
+      _compEvidenceCount: analysis.physicalFieldsUsed.length,
+      _compPhysicalFieldsUsed: analysis.physicalFieldsUsed,
       _compUnusedPhysicalFields: unusedPhysicalFields,
       _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
       _compProfile: compProfile,
       _compDelta: delta,
       _selectionDiagnostics: {
-        selectedBecause: reasons,
-        supportingBecause: supportModel.supportingBecause,
-        confidenceNotes,
-        disqualifyingConcerns,
-        normalizedMetricsSummary: supportModel.normalizedMetricsSummary
+        selectedBecause: analysis.reasons,
+        supportingBecause: analysis.saleEvidence?.reasons || [],
+        confidenceNotes: analysis.confidenceNotes,
+        disqualifyingConcerns: analysis.disqualifyingConcerns,
+        normalizedMetricsSummary: analysis.normalizedMetricsSummary
       }
     };
     candidate._grievanceRelevance = classifyGrievanceComparable(subject, candidate);
@@ -54458,6 +56111,12 @@ self.onmessage = function(ev){
     const exactCompIds = [...new Set((options?.exactCompIds || []).map(normalizeParcelId).filter(Boolean))];
     const requestedDatasetKey = (options?.snapshotDatasetKey || "").trim();
     const currentDatasetKey = (options?.currentDatasetKey || "").trim();
+    const engineOptions = {
+      salesByParcelId: options?.salesByParcelId || null,
+      meta: options?.meta || {},
+      cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+      currentDate: options?.currentDate || /* @__PURE__ */ new Date()
+    };
     let neighbors = [];
     let comparableMode = "physical";
     let snapshot = {
@@ -54495,7 +56154,7 @@ self.onmessage = function(ev){
     } else if (residential) {
       const collectVisible = (allowBroadClass = false) => sortVisibleComparableCandidates(
         subject,
-        (parcels || []).map((comp) => buildComparableCandidate(subject, comp, { subjectProfile, allowBroadClass, maxDistanceMiles: 4 })).filter(Boolean).filter((comp) => Number(comp?._comparableQualityScore) >= 40)
+        (parcels || []).map((comp) => buildComparableCandidate(subject, comp, { subjectProfile, allowBroadClass, ...engineOptions })).filter(Boolean).filter((comp) => Number(comp?._comparableQualityScore) >= 40)
       ).slice(0, 12);
       neighbors = collectVisible(false);
       let defaultPool = sortGrievanceCandidatePool(neighbors.filter(
@@ -54512,10 +56171,16 @@ self.onmessage = function(ev){
           defaultPool = fallbackPool;
         }
       }
-      const grievancePackageSelection2 = selectGrievancePackage(defaultPool);
+      const grievancePackageSelection2 = selectGrievancePackage(defaultPool, subjectProfile);
       const grievanceCandidates2 = grievancePackageSelection2.selected;
       neighbors = annotateComparablePackageDecisions(neighbors, defaultPool, grievancePackageSelection2.decisionById);
-      const summary2 = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates2);
+      const summary2 = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates2, {
+        visibleComps: neighbors,
+        parcels,
+        salesByParcelId: engineOptions.salesByParcelId,
+        meta: engineOptions.meta,
+        currentDate: engineOptions.currentDate
+      });
       const avgFMV2 = neighbors.length ? Math.round(neighbors.reduce((sum, comp) => sum + (comp.fullMarketValue || 0), 0) / neighbors.length) : null;
       const avgAssessed2 = neighbors.length ? Math.round(neighbors.reduce((sum, comp) => sum + (comp.assessedValue || 0), 0) / neighbors.length) : null;
       const avgEquity2 = neighbors.length ? meanComparableValue(neighbors.map((comp) => comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
@@ -54529,8 +56194,8 @@ self.onmessage = function(ev){
         excludedNearMisses: neighbors.filter((comp) => Number(comp?._comparableQualityScore) >= 45 && !grievanceCandidates2.some((sel) => normalizeParcelId(sel?.parcelIdNorm || sel?.parcelId || sel?.printKey || sel?.pinSbl) === normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl))).map((comp) => ({
           parcelId: comp?.parcelId,
           address: comp?.address,
-          excludedReason: comp?._packageDecision?.message || (Number(comp?._grievanceSupportScore) <= 0 ? "Did not clear the grievance-support gate." : Number(comp?._dataConfidenceScore) < 60 ? "Did not clear the confidence gate." : "Was out-ranked by stronger or more diverse package comps."),
-          wouldHaveBeenSelectedIf: Number(comp?._grievanceSupportScore) <= 0 ? "its normalized support metrics were stronger" : Number(comp?._dataConfidenceScore) < 60 ? "its data were more complete" : comp?._packageDecision?.reasonCode === "same_street_cap" ? "fewer same-street comps had already been selected" : comp?._packageDecision?.reasonCode === "package_limit" ? "the default package had more room" : "the selected package had fewer stronger comps on the same street or with similar scores"
+          excludedReason: comp?._selectionIndicator?.message || comp?._packageDecision?.message || (Number(comp?._grievanceSupportScore) <= 0 ? "Stayed neutral after normalization." : Number(comp?._dataConfidenceScore) < 60 ? "Supportive direction, but confidence was too weak." : "Was out-ranked by stronger or more diverse package comps."),
+          wouldHaveBeenSelectedIf: comp?._selectionIndicator?.code === "neutral_after_normalization" ? "its normalized support metrics were more favorable" : comp?._selectionIndicator?.code === "supportive_but_failed_confidence" ? "its underlying data were more complete" : comp?._selectionIndicator?.code === "supportive_but_failed_quality" ? "it was a closer physical match" : comp?._packageDecision?.reasonCode === "same_street_cap" ? "fewer same-street comps had already been selected" : comp?._packageDecision?.reasonCode === "package_limit" ? "the default package had more room" : "the selected package had fewer stronger comps on the same street or with similar scores"
         }))
       };
       return {
@@ -54559,10 +56224,16 @@ self.onmessage = function(ev){
       };
     }
     const grievanceCandidatePool = exactCompIds.length ? sortGrievanceCandidatePool(neighbors.filter((comp) => Number(comp?._grievanceSupportScore) > 0)) : [];
-    const grievancePackageSelection = exactCompIds.length ? selectGrievancePackage(grievanceCandidatePool) : { selected: [], decisionById: /* @__PURE__ */ new Map(), targetCount: 0 };
+    const grievancePackageSelection = exactCompIds.length ? selectGrievancePackage(grievanceCandidatePool, subjectProfile) : { selected: [], decisionById: /* @__PURE__ */ new Map(), targetCount: 0 };
     const grievanceCandidates = grievancePackageSelection.selected;
     neighbors = annotateComparablePackageDecisions(neighbors, grievanceCandidatePool, grievancePackageSelection.decisionById);
-    const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates);
+    const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates, {
+      visibleComps: neighbors,
+      parcels,
+      salesByParcelId: engineOptions.salesByParcelId,
+      meta: engineOptions.meta,
+      currentDate: engineOptions.currentDate
+    });
     const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp) => sum + (comp.fullMarketValue || 0), 0) / neighbors.length) : null;
     const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp) => sum + (comp.assessedValue || 0), 0) / neighbors.length) : null;
     const avgEquity = neighbors.length ? meanComparableValue(neighbors.map((comp) => comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
@@ -54607,52 +56278,28 @@ self.onmessage = function(ev){
     if (miles < 0.1) return "Under 0.1 mi";
     return `${miles.toFixed(miles < 1 ? 1 : 2)} mi`;
   };
-  var broadenTierLabel = (tier) => {
-    if (tier === 0) return "Same neighborhood overflow";
-    if (tier === 1) return "Same ZIP / nearby streets";
-    if (tier === 2) return "Within 2 miles";
-    return "Within 4 miles";
-  };
   var buildBroadenedComparableResult = (subject, parcels, options = {}) => {
     if (!subject || !Array.isArray(parcels)) return [];
     const subjectProfile = options?.subjectProfile || buildComparableProfile(subject);
-    const existingIds = new Set((options?.existingCompIds || []).map(normalizeParcelId).filter(Boolean));
-    const subjectNeighborhood = subjectProfile.neighborhood || "";
-    const subjectStreet = streetNameKeyForComp(subject.address);
-    const maxTier = Number.isFinite(options?.maxTier) ? options.maxTier : 1;
     const exactClassCount = (parcels || []).filter(
       (parcel) => normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl) !== normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl) && String(parcel?.propClass || "") === String(subject?.propClass || "")
     ).length;
     const allowBroadClass = options?.allowBroadClass ?? exactClassCount < 3;
-    const candidates = parcels.map((comp) => {
-      const compId = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
-      if (!compId || compId === normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl) || existingIds.has(compId)) return null;
-      const candidate = buildComparableCandidate(subject, comp, {
+    return buildBroadenedComparableResultWithSpec({
+      subject,
+      parcels,
+      existingCompIds: options?.existingCompIds || [],
+      cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+      limit: options?.limit || 8,
+      maxTier: Number.isFinite(options?.maxTier) ? options.maxTier : 1,
+      analyzeCandidate: (comp) => buildComparableCandidate(subject, comp, {
         subjectProfile,
         allowBroadClass,
-        maxDistanceMiles: 4
-      });
-      if (!candidate) return null;
-      const distanceMiles = parcelDistanceMiles(subject, comp);
-      const compNeighborhood = parcelNeighborhoodName(comp) || candidate?._compProfile?.neighborhood || "";
-      const sameNeighborhood = !!(subjectNeighborhood && compNeighborhood === subjectNeighborhood);
-      const sameZip = !!(subject?.zip && comp?.zip === subject.zip);
-      const sameStreet = !!(subjectStreet && streetNameKeyForComp(comp.address) === subjectStreet);
-      const withinTwoMiles = distanceMiles != null && distanceMiles <= 2;
-      const withinFourMiles = distanceMiles != null && distanceMiles <= 4;
-      if (!(sameNeighborhood || sameZip || sameStreet || withinFourMiles)) return null;
-      const tier = sameNeighborhood || sameStreet ? 0 : sameZip ? 1 : withinTwoMiles ? 2 : 3;
-      if (tier > maxTier) return null;
-      return {
-        ...candidate,
-        _broadenDistanceMiles: distanceMiles,
-        _broadenTier: tier,
-        _broadenTierLabel: broadenTierLabel(tier)
-      };
-    }).filter(Boolean);
-    return candidates.sort(
-      (a2, b) => Number(b?._grievanceSupportScore || 0) - Number(a2?._grievanceSupportScore || 0) || Number(b?._comparableQualityScore || 0) - Number(a2?._comparableQualityScore || 0) || (a2?._broadenTier || 0) - (b?._broadenTier || 0) || (a2?._broadenDistanceMiles ?? 999) - (b?._broadenDistanceMiles ?? 999) || (a2?._fmvPctDiff ?? 999) - (b?._fmvPctDiff ?? 999)
-    ).slice(0, options?.limit || 8);
+        salesByParcelId: options?.salesByParcelId || null,
+        cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+        currentDate: options?.currentDate || /* @__PURE__ */ new Date()
+      })
+    });
   };
   function compactGeoJsonMultiPolygonCoords(geom) {
     if (!geom || !geom.type || !geom.coordinates) return null;
@@ -55466,6 +57113,7 @@ self.onmessage = function(ev){
     const [broadenedSearchTier, setBroadenedSearchTier] = (0, import_react45.useState)(0);
     const [showBroadenedResults, setShowBroadenedResults] = (0, import_react45.useState)(false);
     const [showNeighborhoodSales, setShowNeighborhoodSales] = (0, import_react45.useState)(false);
+    const [comparableMapOpen, setComparableMapOpen] = (0, import_react45.useState)(false);
     const [subjectCardExpanded, setSubjectCardExpanded] = (0, import_react45.useState)(true);
     const [expandedComparableIds, setExpandedComparableIds] = (0, import_react45.useState)({});
     const [expandedBroadenedIds, setExpandedBroadenedIds] = (0, import_react45.useState)({});
@@ -55513,8 +57161,10 @@ self.onmessage = function(ev){
     const lookupParcel = (0, import_react45.useCallback)((value) => findBestAddressMatch(parcels, value), [parcels]);
     const buildNeighborResult = (0, import_react45.useCallback)((parcel, options = {}) => buildComparableResult(parcel, parcels, {
       ...options,
-      currentDatasetKey: datasetKey
-    }), [datasetKey, parcels]);
+      currentDatasetKey: datasetKey,
+      meta,
+      salesByParcelId
+    }), [datasetKey, meta, parcels, salesByParcelId]);
     const focusNeighborParcel = (0, import_react45.useCallback)((parcel, options = {}) => {
       if (!parcel) return null;
       const nextResult = buildNeighborResult(parcel, options);
@@ -55528,6 +57178,7 @@ self.onmessage = function(ev){
       setBroadenedSearchTier(0);
       setShowBroadenedResults(false);
       setShowNeighborhoodSales(false);
+      setComparableMapOpen(false);
       setSubjectCardExpanded(true);
       setExpandedComparableIds({});
       setExpandedBroadenedIds({});
@@ -55560,6 +57211,7 @@ self.onmessage = function(ev){
         setBroadenedSearchTier(0);
         setShowBroadenedResults(false);
         setShowNeighborhoodSales(false);
+        setComparableMapOpen(false);
         setSubjectCardExpanded(true);
         setExpandedComparableIds({});
         setExpandedBroadenedIds({});
@@ -55604,8 +57256,13 @@ self.onmessage = function(ev){
     const selectedGrievanceComps = (0, import_react45.useMemo)(() => grievanceSelectableComparables.filter((parcel) => isParcelIncludedInGrievance(parcel)), [grievanceSelectableComparables, isParcelIncludedInGrievance]);
     const effectiveSelectedGrievancePackage = (0, import_react45.useMemo)(() => {
       if (!displayNeighborResult?.p) return null;
-      return buildSelectedGrievancePackage(displayNeighborResult.p, displayNeighborResult.subjectProfile || buildComparableProfile(displayNeighborResult.p), selectedGrievanceComps);
-    }, [displayNeighborResult, selectedGrievanceComps]);
+      return buildSelectedGrievancePackage(displayNeighborResult.p, displayNeighborResult.subjectProfile || buildComparableProfile(displayNeighborResult.p), selectedGrievanceComps, {
+        visibleComps: grievanceSelectableComparables,
+        parcels,
+        salesByParcelId,
+        meta
+      });
+    }, [displayNeighborResult, grievanceSelectableComparables, meta, parcels, salesByParcelId, selectedGrievanceComps]);
     const effectiveNeighborResult = (0, import_react45.useMemo)(() => displayNeighborResult && effectiveSelectedGrievancePackage ? {
       ...displayNeighborResult,
       ...effectiveSelectedGrievancePackage,
@@ -55655,14 +57312,16 @@ self.onmessage = function(ev){
         subjectProfile: neighborResult.subjectProfile || buildComparableProfile(subject),
         existingCompIds: (displayNeighborResult?.neighbors || []).map((parcel) => parcel.parcelId),
         limit: 8,
-        maxTier: nextTier
+        maxTier: nextTier,
+        salesByParcelId,
+        currentDate: /* @__PURE__ */ new Date()
       });
       setBroadenedComparables(result);
       setBroadenedSearchRan(true);
       setBroadenedSearchTier(nextTier);
       setShowBroadenedResults(true);
       setExpandedBroadenedIds({});
-    }, [broadenedSearchTier, displayNeighborResult, neighborResult, parcels]);
+    }, [broadenedSearchTier, displayNeighborResult, neighborResult, parcels, salesByParcelId]);
     const toggleBroadenedComp = (0, import_react45.useCallback)((parcelId) => {
       setExpandedBroadenedIds((prev) => ({ ...prev, [parcelId]: !prev[parcelId] }));
     }, []);
@@ -55708,19 +57367,26 @@ self.onmessage = function(ev){
       });
     }, [appealReadiness, effectiveNeighborResult, neighborhoodBenchmark, salesByParcelId]);
     const grievanceWorkflowChecklistItems = (0, import_react45.useMemo)(() => TAX_APPEAL_NEXT_STEPS.map((label, idx) => ({ key: `next-step-${idx}`, label })), []);
+    const workflowAnalysisReady = !!(effectiveNeighborResult?.p && appealReadiness && appealSummary && appealEvidence);
+    const workflowDataLoading = (0, import_react45.useMemo)(() => {
+      if (view !== "neighbor") return false;
+      if (uploading || autoloadPhase === "running") return true;
+      if (!neighborResult) return false;
+      return !workflowAnalysisReady;
+    }, [autoloadPhase, neighborResult, uploading, view, workflowAnalysisReady]);
     const availableWorkflowStepIds = (0, import_react45.useMemo)(() => {
       const ids = /* @__PURE__ */ new Set([GRIEVANCE_WORKFLOW_STEPS[0].id]);
       ids.add("step-2-terminology");
       ids.add("step-3-find-property");
-      if (appealSummary && appealReadiness) ids.add("step-4-appeal-summary");
-      if (appealEvidence) ids.add("step-5-review-evidence");
-      if (effectiveNeighborResult?.p) {
+      if (workflowAnalysisReady) {
+        ids.add("step-4-appeal-summary");
+        ids.add("step-5-review-evidence");
         ids.add("step-6-build-grievance");
         ids.add("step-7-print-packet");
         ids.add("step-8-file");
       }
       return ids;
-    }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult]);
+    }, [workflowAnalysisReady]);
     const scrollToWorkflowStep = (0, import_react45.useCallback)((stepId) => {
       if (typeof window === "undefined") return;
       const node = document.getElementById(stepId);
@@ -55839,8 +57505,19 @@ self.onmessage = function(ev){
       return () => clearTimeout(id);
     }, [copiedNarrative]);
     (0, import_react45.useEffect)(() => {
-      if (!compareScrollTick || !neighborResult) return;
-      const runner = () => compareResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!compareScrollTick || !neighborResult || typeof window === "undefined") return;
+      const runner = () => {
+        const firstStepId = GRIEVANCE_WORKFLOW_STEPS[0]?.id;
+        const firstStepNode = firstStepId ? document.getElementById(firstStepId) : null;
+        if (firstStepNode) {
+          const rect = firstStepNode.getBoundingClientRect();
+          const top = window.scrollY + rect.top - GRIEVANCE_WORKFLOW_SCROLL_OFFSET;
+          window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
+        } else {
+          compareResultRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+        }
+        setActiveWorkflowStepId(firstStepId || GRIEVANCE_WORKFLOW_STEPS[0].id);
+      };
       const id = typeof window !== "undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner, 0);
       return () => {
         if (typeof id === "number" && typeof window !== "undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
@@ -55948,15 +57625,39 @@ self.onmessage = function(ev){
       } catch {
       }
     }, [grievanceCompOverrides, grievanceOverrideStorageKey]);
+    const InfoGlyph = ({ tone = "var(--gray2)", small = false }) => /* @__PURE__ */ import_react45.default.createElement(
+      "span",
+      {
+        "aria-hidden": "true",
+        style: {
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: small ? 16 : 18,
+          height: small ? 16 : 18,
+          minWidth: small ? 16 : 18,
+          borderRadius: "50%",
+          border: `1px solid ${tone === "var(--gray2)" ? "var(--border)" : "currentColor"}`,
+          background: "rgba(248,250,252,.94)",
+          color: tone,
+          fontFamily: "var(--fm)",
+          fontSize: small ? 10 : 11,
+          fontWeight: 800,
+          lineHeight: 1,
+          boxShadow: "0 1px 3px rgba(15,23,42,.08)"
+        }
+      },
+      "i"
+    );
     const InlineInfoIcon = ({ text, tone = "var(--gray2)", small = false }) => {
       if (!text) return null;
-      return /* @__PURE__ */ import_react45.default.createElement("span", { title: text, style: { display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--fm)", fontSize: small ? 9 : 10, fontWeight: 700, color: tone, border: `1px solid ${tone === "var(--gray2)" ? "var(--border)" : "currentColor"}`, borderRadius: 999, padding: small ? "0 4px" : "1px 6px", cursor: "help", lineHeight: 1 } }, "(i)");
+      return /* @__PURE__ */ import_react45.default.createElement("span", { title: text, "aria-label": text, style: { display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "help", lineHeight: 1 } }, /* @__PURE__ */ import_react45.default.createElement(InfoGlyph, { tone, small }));
     };
     const TermWithHelp = ({ termKey, children, tone = "var(--gray2)" }) => /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", null, children), /* @__PURE__ */ import_react45.default.createElement(InlineInfoIcon, { text: TERM_HELP[termKey], tone, small: true }));
     const WorkflowStepCard = ({ step, title, subtitle = "", accent = "rgba(37,99,235,.16)", children }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.03)", border: `1px solid ${accent}`, borderRadius: 12, padding: "14px 16px", marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, step), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 15, fontWeight: 800, color: "var(--gray)" } }, title), subtitle && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginTop: 5, maxWidth: 960 } }, subtitle))), children);
     const DeltaInfoNote = ({ text, tone = "var(--gray3)" }) => {
       if (!text) return null;
-      return /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, fontSize: 10, color: tone, lineHeight: 1.45, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontFamily: "var(--fm)", fontWeight: 700 } }, "(i)"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { overflowWrap: "anywhere", wordBreak: "break-word" } }, text));
+      return /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, fontSize: 10, color: tone, lineHeight: 1.45, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { paddingTop: 1 } }, /* @__PURE__ */ import_react45.default.createElement(InfoGlyph, { tone, small: true })), /* @__PURE__ */ import_react45.default.createElement("span", { style: { overflowWrap: "anywhere", wordBreak: "break-word" } }, text));
     };
     const CompareMetricCard = ({ label, youValue, compValue, deltaValue, deltaTone = "var(--gray2)", deltaInfo = "" }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 6, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.6 } }, label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "You"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, youValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Comp"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, compValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Delta"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", color: deltaTone, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, deltaValue)), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: deltaInfo, tone: deltaTone })));
     const CompareProfileRow = ({ label, youValue, compValue }) => /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.03)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", display: "grid", gap: 4, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.6 } }, label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "You"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, youValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Comp"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, compValue)));
@@ -55974,7 +57675,7 @@ self.onmessage = function(ev){
       const armLengthSale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
       const salePricePerSqFt = getSalePricePerSqFt(armLengthSale, livingArea);
       const showExplainer = options.showExplainer ?? true;
-      const saleHistoryExplainer = latestSale && isArmLengthSale(latestSale) ? ARM_LENGTH_SALE_HISTORY_EXPLAINER : NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER;
+      const saleHistoryExplainer = buildSaleHistoryExplainer(latestSale, armLengthSale);
       if (!sales.length && salePricePerSqFt == null) return null;
       return /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: options.background || "rgba(255,255,255,.03)", border: options.border || "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 8, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: options.titleColor || "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.6 } }, options.title || "Sale history"), showExplainer && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, saleHistoryExplainer), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5 } }, SALES_DATA_SOURCE_NOTE))), salePricePerSqFt != null && armLengthSale && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, `Last arm's-length sale $/sq ft (${formatSalesDate(armLengthSale.sale_dte || armLengthSale.deed_dte)})`), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, textAlign: "right" } }, `$${salePricePerSqFt.toFixed(0)}/sq ft`)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, sales.map((sale, saleIdx) => {
         const reasons = !isArmLengthSale(sale) ? getReadableSaleConditions(sale) : [];
@@ -56016,9 +57717,10 @@ self.onmessage = function(ev){
         steps: GRIEVANCE_WORKFLOW_STEPS,
         activeStepId: activeWorkflowStepId,
         availableStepIds: availableWorkflowStepIds,
-        onSelectStep: scrollToWorkflowStep
+        onSelectStep: scrollToWorkflowStep,
+        isLoading: workflowDataLoading
       }
-    )), /* @__PURE__ */ import_react45.default.createElement("div", { className: "workflow-main", style: { paddingBottom: isWorkflowNavMobile ? 92 : 0 } }, /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-1-how-to-read", className: "workflow-step-anchor", "data-workflow-step-id": "step-1-how-to-read", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 1 - How to read these numbers", title: "How to read the comparison numbers", subtitle: "This step explains how the app evaluates fairness so you can interpret comp results correctly." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.65 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "comparableHome", tone: "var(--gray2)" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Comparable homes")), " are the strongest matches for your parcel's class, location, and home details. Each comp card shows ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "You"), ", ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Comp"), ", and ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Delta"), " so you can see similarity and fairness together."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.65 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio", tone: "var(--gray2)" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Equity %")), " = ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "assessedValue", tone: "var(--gray2)" }, "Assessed value"), " / ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "fmv", tone: "var(--gray2)" }, "FMV"), " x 100. Lower assessed value alone is not enough. The app also checks equity ratio and assessed value per sq ft so the comparison is apples-to-apples."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 2, padding: "10px 12px", background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.16)", borderRadius: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--blue3)" } }, "Example: lower assessed value, but still not strong evidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Just because a comp has a lower assessed value than your home does not mean the assessor was more generous with it. What matters is how the assessed value compares to the home's full market value. That ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp's assessed value might be lower simply because it is a smaller or lower-value home overall, not because it got a better deal from the assessor."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "For a comp to be strong grievance evidence, you want to see that it was assessed at a ", /* @__PURE__ */ import_react45.default.createElement("i", null, "lower proportion"), " of its market value than your home, meaning the assessor undervalued it relative to what it is actually worth, compared to how they valued yours.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, 'Albany style codes use historic assessment terminology. Style labels (for example, "Mansion" or "Colonial") describe architecture, not home size or value.'), equityUniformityNotice && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--amber2)" } }, "Equity % warning"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, equityUniformityNotice.detail), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, "Average ", equityUniformityNotice.average, "% | Standard deviation ", equityUniformityNotice.stdDev, "%"))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-2-terminology", className: "workflow-step-anchor", "data-workflow-step-id": "step-2-terminology", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 2 - Terminology", title: "Key terms used in this app", subtitle: "These are the exact terms used across the grievance workflow and comp cards." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "fmv", tone: "var(--gray2)" }, "FMV (Fair Market Value)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Estimated market value of the property.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "assessedValue", tone: "var(--gray2)" }, "Assessed Value")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Taxable value used by the assessor.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio", tone: "var(--gray2)" }, "Equity Ratio Percentage")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Assessed value divided by FMV, expressed as a percent.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "rp524", tone: "var(--gray2)" }, "RP-524")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "New York assessment grievance form.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Neighborhood Fairness"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Comparison against neighborhood medians/percentiles to see if your parcel is unusually high.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Normalized Metrics"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Fairness checks that adjust for size/value differences, especially equity ratio and assessed value per sq ft.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "armLengthSale", tone: "var(--gray2)" }, "Arm's-length sale")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "A normal market sale between unrelated parties. The tool uses these sales as stronger FMV evidence.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Non-arm's-length transfer"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "A transfer such as family/gift/related-party deal. The tool shows it in history but does not treat its price as reliable market value evidence."))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-3-find-property", className: "workflow-step-anchor", "data-workflow-step-id": "step-3-find-property", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, "Step 3 - Find your property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 6 } }, "Enter Your Address to Compare"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 12 } }, "Search by address or parcel ID to start the tax appeal assistant workflow for a specific property."), /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: () => {
+    )), /* @__PURE__ */ import_react45.default.createElement("div", { className: "workflow-main", style: { paddingBottom: isWorkflowNavMobile ? 92 : 0 } }, /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-1-how-to-read", className: "workflow-step-anchor", "data-workflow-step-id": "step-1-how-to-read", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 1 - How to read these numbers", title: "How to read the comparison numbers", subtitle: "This step explains how the app evaluates fairness so you can interpret comp results correctly." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.65 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "comparableHome", tone: "var(--gray2)" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Comparable homes")), " are the strongest matches for your parcel's class, location, and home details. Each comp card shows ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "You"), ", ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Comp"), ", and ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Delta"), " so you can see similarity and fairness together."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.65 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio", tone: "var(--gray2)" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Equity %")), " = ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "assessedValue", tone: "var(--gray2)" }, "Assessed value"), " / ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "fmv", tone: "var(--gray2)" }, "FMV"), " x 100. Lower assessed value alone is not enough. The app also checks equity ratio and assessed value per sq ft so the comparison is apples-to-apples."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 2, padding: "10px 12px", background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.16)", borderRadius: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--blue3)" } }, "Example: lower assessed value, but still not strong evidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Just because a comp has a lower assessed value than your home does not mean the assessor was more generous with it. What matters is how the assessed value compares to the home's full market value. That ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp's assessed value might be lower simply because it is a smaller or lower-value home overall, not because it got a better deal from the assessor."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "For a comp to be strong grievance evidence, you want to see that it was assessed at a ", /* @__PURE__ */ import_react45.default.createElement("i", null, "lower proportion"), " of its market value than your home, meaning the assessor undervalued it relative to what it is actually worth, compared to how they valued yours.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, 'Albany style codes use historic assessment terminology. Style labels (for example, "Mansion" or "Colonial") describe architecture, not home size or value.'), equityUniformityNotice && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--amber2)" } }, "Equity % warning"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, equityUniformityNotice.detail), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, "Average ", equityUniformityNotice.average, "% | Standard deviation ", equityUniformityNotice.stdDev, "%"))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-2-terminology", className: "workflow-step-anchor", "data-workflow-step-id": "step-2-terminology", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 2 - Terminology", title: "Key terms used in this app", subtitle: "These are the exact terms used across the grievance workflow and comp cards." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "fmv", tone: "var(--gray2)" }, "FMV (Fair Market Value)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Estimated market value of the property.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "assessedValue", tone: "var(--gray2)" }, "Assessed Value")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Taxable value used by the assessor.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio", tone: "var(--gray2)" }, "Equity Ratio Percentage")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Assessed value divided by FMV, expressed as a percent.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "rp524", tone: "var(--gray2)" }, "RP-524")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "New York assessment grievance form.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Neighborhood Fairness"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Comparison against neighborhood medians/percentiles to see if your parcel is unusually high.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Normalized Metrics"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Fairness checks that adjust for size/value differences, especially equity ratio and assessed value per sq ft.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Data confidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "How complete and reliable the comp inputs are for analysis, including assessed value, FMV, equity ratio, living area, class, location, and core home details. A score like 100.0 means the app found full usable coverage for those checks; lower scores mean missing or weaker data reduced certainty.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "cod", tone: "var(--gray2)" }, "COD (Coefficient of Dispersion)")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "A consistency measure for neighborhood assessment ratios. Lower COD usually means nearby properties are being assessed more uniformly.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "iaaoStandard", tone: "var(--gray2)" }, "IAAO standard")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "The usual residential COD benchmark from the International Association of Assessing Officers. In this app, COD at or below 15.0 is treated as meeting that uniformity benchmark.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "methodA", tone: "var(--gray2)" }, "Comp-based value estimate")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "methodB", tone: "var(--gray2)" }, "Equity-ratio value estimate")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "independentOvervaluation", tone: "var(--gray2)" }, "Separate overassessment check")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "Even aside from the comps, does your assessment look too high compared with your FMV and the municipal equalization rate?")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "ORPTS data"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "ORPTS stands for the New York State Office of Real Property Tax Services. In this app, ORPTS Municipal Data Portal sales records are used for sale history and arm's-length market evidence. They help check whether FMV looks supported by real sale prices, but they do not by themselves choose which comparable homes are selected.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "armLengthSale", tone: "var(--gray2)" }, "Arm's-length sale")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "A normal market sale between unrelated parties. The tool uses these sales as stronger FMV evidence.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "grid", gap: 5 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "Non-arm's-length transfer"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "A transfer such as family/gift/related-party deal. The tool shows it in history but does not treat its price as reliable market value evidence."))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-3-find-property", className: "workflow-step-anchor", "data-workflow-step-id": "step-3-find-property", style: { marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, "Step 3 - Find your property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 6 } }, "Enter Your Address to Compare"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 12 } }, "Search by address or parcel ID to start the tax appeal assistant workflow for a specific property."), /* @__PURE__ */ import_react45.default.createElement(MyHomeBanner, { myHome, onUse: () => {
       if (myHome) {
         setNeighborAddr(myHome.address.split(" ").slice(0, 3).join(" "));
         setNeighborResult(null);
@@ -56061,9 +57763,16 @@ self.onmessage = function(ev){
         const relevanceKind = parcel?._grievanceRelevance?.kind || "neutral";
         const grievanceExplanation = parcel?._grievanceRelevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevanceKind);
         const packageDecision = parcel?._packageDecision || parcel?._selectionDiagnostics?.packageDecision || null;
+        const selectionIndicator = parcel?._selectionIndicator || parcel?._selectionDiagnostics?.selectionIndicator || null;
         const distanceLabel = Number.isFinite(parcel?._distanceMiles) ? formatComparableMiles(parcel._distanceMiles) : null;
         const cardAccentColor = grievanceRelevanceAccentColor(relevanceKind);
         const cardBorderColor = isIncludedInGrievance ? "rgba(22,163,74,.24)" : "var(--border)";
+        const riskFlags = Array.isArray(parcel?._riskFlags) ? parcel._riskFlags : [];
+        const adjustedAssessedValue = Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
+        const adjustmentBreakdown = parcel?._adjustmentBreakdown || {};
+        const adjustedAssessedDelta = Number.isFinite(adjustedAssessedValue) && Number.isFinite(Number(subject?.assessedValue)) ? adjustedAssessedValue - Number(subject.assessedValue) : null;
+        const adjustedSupportLabel = adjustmentBreakdown?.adjustedSupportLabel || null;
+        const adjustedSupportColor = adjustedSupportLabel === "Yes" ? "var(--green2)" : adjustedSupportLabel === "Marginal" ? "var(--amber2)" : adjustedSupportLabel === "No" ? "var(--red2)" : "var(--gray2)";
         const { border: ignoredContainerBorder, borderLeft: ignoredContainerBorderLeft, ...safeContainerStyle } = options.containerStyle || {};
         const baseComparableCardStyle = {
           background: isIncludedInGrievance ? "linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)" : "var(--card)",
@@ -56076,7 +57785,7 @@ self.onmessage = function(ev){
           display: "grid",
           gap: 14,
           minWidth: 0,
-          boxShadow: isIncludedInGrievance ? "0 8px 18px rgba(22,163,74,.06)" : "0 6px 16px rgba(15,23,42,.04)"
+          boxShadow: isIncludedInGrievance ? "0 6px 14px rgba(22,163,74,.05)" : "0 4px 12px rgba(15,23,42,.035)"
         };
         const containerStyle = {
           ...baseComparableCardStyle,
@@ -56110,28 +57819,75 @@ self.onmessage = function(ev){
         const grievanceToggleControl = options.showGrievanceToggle !== false ? /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("label", { style: grievanceToggleLabelStyle, onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ import_react45.default.createElement("input", { type: "checkbox", checked: isIncludedInGrievance, onClick: (e) => e.stopPropagation(), onChange: (e) => toggleGrievanceComp(parcel, e.target.checked), style: { accentColor: "#15803d", cursor: "pointer", width: 15, height: 15 } }), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 800, color: isIncludedInGrievance ? "var(--green2)" : "var(--gray2)" } }, "Include in grievance")), /* @__PURE__ */ import_react45.default.createElement("span", { style: grievanceToggleNoteStyle }, isIncludedInGrievance ? "Included in the live grievance package summary below." : "Excluded from the live grievance package summary below.")) : null;
         const packageDecisionCurrentIncluded = packageDecision?.status === "included";
         const packageDecisionOverrideNote = packageDecision && options.showGrievanceToggle !== false && packageDecisionCurrentIncluded !== isIncludedInGrievance ? "Current checkbox state reflects your manual override." : null;
-        const packageDecisionBox = packageDecision ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4, padding: "9px 10px", borderRadius: 10, background: packageDecision.status === "included" ? "rgba(37,99,235,.08)" : "rgba(148,163,184,.10)", border: `1px solid ${packageDecision.status === "included" ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.18)"}` } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: packageDecision.status === "included" ? "var(--blue3)" : "var(--gray2)" } }, "Default package"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, packageDecision.message), packageDecisionOverrideNote && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5 } }, packageDecisionOverrideNote)) : null;
+        const packageDecisionBox = packageDecision ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4, padding: "9px 10px", borderRadius: 10, background: packageDecision.status === "included" ? "rgba(37,99,235,.08)" : "rgba(148,163,184,.10)", border: `1px solid ${packageDecision.status === "included" ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.18)"}` } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: packageDecision.status === "included" ? "var(--blue3)" : "var(--gray2)" } }, "Default package"), selectionIndicator?.label && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: packageDecision.status === "included" ? "var(--blue3)" : "var(--gray2)" } }, selectionIndicator.label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, packageDecision.message), selectionIndicator?.message && selectionIndicator.message !== packageDecision.message && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5 } }, selectionIndicator.message), packageDecisionOverrideNote && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.5 } }, packageDecisionOverrideNote)) : null;
         const collapseFadeColor = isIncludedInGrievance ? "rgba(255,255,255,.98)" : "var(--card)";
-        const detailsToggleControl = isCollapsible ? /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: isExpanded ? { display: "flex", justifyContent: "center", paddingTop: 8 } : { position: "absolute", left: "50%", bottom: 10, transform: "translateX(-50%)", zIndex: 2 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: (e) => {
+        const detailsToggleControl = isCollapsible ? /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: isExpanded ? { display: "flex", justifyContent: "center", paddingTop: 10 } : { position: "absolute", left: "50%", bottom: 10, transform: "translateX(-50%)", zIndex: 2 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: (e) => {
           e.stopPropagation();
           options.onToggle && options.onToggle(parcel.parcelId);
-        }, style: { background: "rgba(248,250,252,.92)", border: "1px solid rgba(148,163,184,.24)", color: "var(--gray2)", borderRadius: 999, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", textAlign: "center", boxShadow: "0 10px 20px rgba(15,23,42,.08)" } }, isExpanded ? "\u2212 Hide details" : "+ Show details")) : null;
-        const header = /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10, alignContent: "start", background: "rgba(248,250,252,.72)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 12, padding: "12px", minWidth: 142, flex: "0 0 150px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(99,102,241,.10)", border: "1px solid rgba(99,102,241,.18)", borderRadius: 10, padding: "10px 11px", display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, letterSpacing: 0.45, textTransform: "uppercase", color: "var(--gray2)" } }, "Comparable"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 800, color: "#6366f1" } }, options.compLabel || "Comp " + (idx + 1))), grievanceToggleControl, packageDecisionBox), /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0, flex: "1 1 320px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 15, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId, parcel, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(parcel) }, parcel.address))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel)), /* @__PURE__ */ import_react45.default.createElement("span", { title: MATCHED_HOME_DETAILS_INFO, style: { fontFamily: "var(--fm)", fontSize: 10, fontWeight: 700, color: "var(--gray2)", border: "1px solid var(--border)", borderRadius: 999, padding: "1px 6px", cursor: "help" } }, "(i)"), /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true }), saleBadge && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: saleBadge.color, small: true, title: saleBadge.title }, saleBadge.label)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1, " | ", parcel.parcelId, " | ", parcelNeighborhoodName(parcel) || "Neighborhood unknown", distanceLabel ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | ", distanceLabel, " away") : null), options.metaLine && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, options.metaLine), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(parcel)), comparableProfileBadgeItems(parcel).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: parcel.parcelId + item, color: "#64748b", small: true }, item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: parcel._grievanceRelevance.background, border: `1px solid ${parcel._grievanceRelevance.border}`, borderRadius: 8, padding: "9px 10px", marginTop: 10, display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: grievanceRelevanceBadgeColor(relevanceKind), small: true }, parcel._grievanceRelevance.badge), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: parcel._grievanceRelevance.tone } }, parcel._grievanceRelevance.headline)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: parcel._grievanceRelevance.tone, lineHeight: 1.5 } }, grievanceExplanation.summaryHeadline), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: parcel._grievanceRelevance.tone, lineHeight: 1.55 } }, grievanceExplanation.summaryText), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Main reason:"), " ", grievanceExplanation.primaryReason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, grievanceExplanation.trustNote), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(255,255,255,.58)", border: "1px solid rgba(255,255,255,.48)", borderRadius: 8, padding: "8px 9px", marginTop: 4 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Why this support level?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 7, marginTop: 8 } }, grievanceExplanation.breakdownRows.map((row, rowIdx) => {
+        }, style: { background: isExpanded ? "rgba(239,246,255,.96)" : "linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(239,246,255,.98) 100%)", border: "1px solid rgba(37,99,235,.30)", color: "var(--blue3)", borderRadius: 999, padding: "9px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", textAlign: "center", boxShadow: "0 10px 20px rgba(37,99,235,.12)", minWidth: 150 } }, isExpanded ? "\u2212 Hide details" : "+ Show details")) : null;
+        const header = /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10, alignContent: "start", background: "rgba(248,250,252,.72)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 12, padding: "12px", minWidth: 142, flex: "0 0 150px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(99,102,241,.10)", border: "1px solid rgba(99,102,241,.18)", borderRadius: 10, padding: "10px 11px", display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, letterSpacing: 0.45, textTransform: "uppercase", color: "var(--gray2)" } }, "Comparable"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 800, color: "#6366f1" } }, options.compLabel || "Comp " + (idx + 1))), grievanceToggleControl, packageDecisionBox), /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0, flex: "1 1 320px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 15, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId, parcel, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(parcel) }, parcel.address))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel)), /* @__PURE__ */ import_react45.default.createElement(InlineInfoIcon, { text: MATCHED_HOME_DETAILS_INFO, tone: "var(--gray2)", small: true }), /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true }), saleBadge && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: saleBadge.color, small: true, title: saleBadge.title }, saleBadge.label)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1, " | ", parcel.parcelId, " | ", parcelNeighborhoodName(parcel) || "Neighborhood unknown", distanceLabel ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | ", distanceLabel, " away") : null), options.metaLine && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, options.metaLine), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#6366f1", small: true }, propClassLabel(parcel)), comparableProfileBadgeItems(parcel).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: parcel.parcelId + item, color: "#64748b", small: true }, item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: parcel._grievanceRelevance.background, border: `1px solid ${parcel._grievanceRelevance.border}`, borderRadius: 8, padding: "9px 10px", marginTop: 10, display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: grievanceRelevanceBadgeColor(relevanceKind), small: true }, parcel._grievanceRelevance.badge), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: parcel._grievanceRelevance.tone } }, parcel._grievanceRelevance.headline), parcel?._marginalSupport && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#f59e0b", small: true }, "Marginal support"), riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#ef4444", small: true }, `${riskFlags.length} risk flag${riskFlags.length === 1 ? "" : "s"} below`)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: parcel._grievanceRelevance.tone, lineHeight: 1.5 } }, grievanceExplanation.summaryHeadline), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: parcel._grievanceRelevance.tone, lineHeight: 1.55 } }, grievanceExplanation.summaryText), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Main reason:"), " ", grievanceExplanation.primaryReason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, grievanceExplanation.trustNote), parcel?._marginalSupport && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.24)", borderRadius: 8, padding: "8px 9px", fontSize: 10, color: "var(--amber2)", lineHeight: 1.55 } }, "Marginal support: the assessed-value gap is small enough that it may shrink or disappear after adjustments."), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(255,255,255,.58)", border: "1px solid rgba(255,255,255,.48)", borderRadius: 8, padding: "8px 9px", marginTop: 4 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Why this support level?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 7, marginTop: 8 } }, grievanceExplanation.breakdownRows.map((row, rowIdx) => {
           const tone = explanationStatusTone(row.status);
-          return /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-support-row-${rowIdx}`, style: { background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 8, padding: "8px 9px", display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)" } }, row.label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: tone.color } }, row.valueText)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", lineHeight: 1.5 } }, row.explanation));
+          return /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-support-row-${rowIdx}`, style: { background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 8, padding: "8px 9px", display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)" } }, row.label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: tone.color } }, row.valueText)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", lineHeight: 1.5 } }, row.explanation), row.whyItMatters ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Why it matters:"), " ", row.whyItMatters) : null);
         }))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10, flex: "1 1 320px", minWidth: 260 } }, /* @__PURE__ */ import_react45.default.createElement(StreetViewPreview, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, streetViewLatLng: streetViewLatLngForParcel(parcel) }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--amber)", fontWeight: 700 } }, $f(parcel.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700 } }, $f(parcel.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700, color: FC[eqFlagFast(parcel)] } }, eqRFast(parcel), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp equity")))));
-        return /* @__PURE__ */ import_react45.default.createElement("div", { key: cardKey, style: { ...containerStyle, position: "relative", overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, header), isExpanded && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, isAbsenteeFast(parcel) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Value comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "FMV", youValue: $f(subject.fullMarketValue), compValue: $f(parcel.fullMarketValue), deltaValue: formatSignedComparableMoney(delta.fmv), deltaTone: comparableDeltaTone(delta.fmv), deltaInfo: buildComparableDeltaInfo("fmv", delta.fmv) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Assessed", youValue: $f(subject.assessedValue), compValue: $f(parcel.assessedValue), deltaValue: formatSignedComparableMoney(delta.assessed), deltaTone: comparableDeltaTone(delta.assessed, true), deltaInfo: buildComparableDeltaInfo("assessed", delta.assessed) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Equity %", youValue: subjectProfile.equity != null ? subjectProfile.equity + "%" : "-", compValue: compProfile.equity != null ? compProfile.equity + "%" : "-", deltaValue: formatSignedComparableCount(delta.equity, "%"), deltaTone: comparableDeltaTone(delta.equity, true), deltaInfo: buildComparableDeltaInfo("equity", delta.equity) }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Physical comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Living area", youValue: subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-", compValue: compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-", deltaValue: delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-", deltaTone: comparableDeltaTone(delta.livingArea), deltaInfo: buildComparableDeltaInfo("livingArea", delta.livingArea) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Year built", youValue: subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-", compValue: compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-", deltaValue: delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-", deltaTone: comparableDeltaTone(delta.yearBuilt), deltaInfo: buildComparableDeltaInfo("yearBuilt", delta.yearBuilt) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Bedrooms", youValue: subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-", compValue: compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-", deltaValue: delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-", deltaTone: comparableDeltaTone(delta.bedrooms), deltaInfo: buildComparableDeltaInfo("bedrooms", delta.bedrooms) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Baths", youValue: subjectProfile.bathText || "-", compValue: compProfile.bathText || "-", deltaValue: delta.baths != null ? formatSignedComparableCount(delta.baths) : "-", deltaTone: comparableDeltaTone(delta.baths), deltaInfo: buildComparableDeltaInfo("baths", delta.baths) }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Profile match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Neighborhood", youValue: subjectProfile.neighborhood || "-", compValue: compProfile.neighborhood || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Class", youValue: subjectProfile.classLabel || "-", compValue: compProfile.classLabel || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Style", youValue: subjectProfile.style || "-", compValue: compProfile.style || "-" }))), renderSaleHistorySection(parcel, compProfile.livingArea, { title: "Sale history" }), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.14)", borderRadius: 8, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--blue3)", letterSpacing: 0.4, textTransform: "uppercase" } }, `Why this home was included${reasons.length ? ` (${reasons.length} reasons)` : ""}`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, reasons.length ? reasons.map((reason, reasonIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId + "-reason-" + reasonIdx, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55, overflowWrap: "anywhere" } }, "- ", reason)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "No additional selection notes were recorded for this comparable."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, usingFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Matched using: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, usingFields.join(", ")), unusedFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | Not used: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, unusedFields.join(", "))) : null, ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "This match relied on residential class and nearby location because detailed home characteristics were not available on both parcels."))))), !isExpanded && isCollapsible && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", "aria-hidden": "true", style: { position: "absolute", left: 6, right: 0, bottom: 0, height: 56, background: `linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`, pointerEvents: "none", zIndex: 1 } }), detailsToggleControl);
+        return /* @__PURE__ */ import_react45.default.createElement("div", { key: cardKey, style: { ...containerStyle, position: "relative", overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, header), isExpanded && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, isAbsenteeFast(parcel) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Value comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "FMV", youValue: $f(subject.fullMarketValue), compValue: $f(parcel.fullMarketValue), deltaValue: formatSignedComparableMoney(delta.fmv), deltaTone: comparableDeltaTone(delta.fmv), deltaInfo: buildComparableDeltaInfo("fmv", delta.fmv) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Assessed", youValue: $f(subject.assessedValue), compValue: $f(parcel.assessedValue), deltaValue: formatSignedComparableMoney(delta.assessed), deltaTone: comparableDeltaTone(delta.assessed, true), deltaInfo: buildComparableDeltaInfo("assessed", delta.assessed) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Equity %", youValue: subjectProfile.equity != null ? subjectProfile.equity + "%" : "-", compValue: compProfile.equity != null ? compProfile.equity + "%" : "-", deltaValue: formatSignedComparableCount(delta.equity, "%"), deltaTone: comparableDeltaTone(delta.equity, true), deltaInfo: buildComparableDeltaInfo("equity", delta.equity) }))), (adjustedAssessedValue != null || riskFlags.length > 0) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Adjustment and risk review"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(
+          CompareMetricCard,
+          {
+            label: "Adjusted AV",
+            youValue: $f(subject.assessedValue),
+            compValue: adjustedAssessedValue != null ? $f(adjustedAssessedValue) : "-",
+            deltaValue: adjustedAssessedDelta != null ? formatSignedComparableMoney(adjustedAssessedDelta) : "-",
+            deltaTone: comparableDeltaTone(adjustedAssessedDelta, true),
+            deltaInfo: adjustedAssessedValue != null ? parcel?._adjustmentNarrative || "Adjusted for size and bath differences using the neighborhood price-per-square-foot model and equalization rate." : "Adjusted assessed value could not be calculated from the available data."
+          }
+        ), /* @__PURE__ */ import_react45.default.createElement(
+          CompareMetricCard,
+          {
+            label: "Adjusted support",
+            youValue: "-",
+            compValue: adjustedSupportLabel || "-",
+            deltaValue: adjustedSupportLabel || "-",
+            deltaTone: adjustedSupportColor,
+            deltaInfo: adjustedSupportLabel === "Yes" ? "After adjustments, this comp still sits below your assessment." : adjustedSupportLabel === "Marginal" ? "After adjustments, this comp is close enough to your assessment that it only provides marginal support." : adjustedSupportLabel === "No" ? "After adjustments, this comp no longer sits below your assessment." : "Adjusted support could not be determined from the available data."
+          }
+        )), riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(239,68,68,.05)", border: "1px solid rgba(239,68,68,.16)", borderRadius: 8, padding: "10px 12px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--red2)", letterSpacing: 0.35, textTransform: "uppercase" } }, `Assessor challenge flags (${riskFlags.length})`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, riskFlags.map((flag, flagIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-risk-${flagIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", flag))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Physical comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Living area", youValue: subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-", compValue: compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-", deltaValue: delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-", deltaTone: comparableDeltaTone(delta.livingArea), deltaInfo: buildComparableDeltaInfo("livingArea", delta.livingArea) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Year built", youValue: subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-", compValue: compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-", deltaValue: delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-", deltaTone: comparableDeltaTone(delta.yearBuilt), deltaInfo: buildComparableDeltaInfo("yearBuilt", delta.yearBuilt) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Bedrooms", youValue: subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-", compValue: compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-", deltaValue: delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-", deltaTone: comparableDeltaTone(delta.bedrooms), deltaInfo: buildComparableDeltaInfo("bedrooms", delta.bedrooms) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Baths", youValue: subjectProfile.bathText || "-", compValue: compProfile.bathText || "-", deltaValue: delta.baths != null ? formatSignedComparableCount(delta.baths) : "-", deltaTone: comparableDeltaTone(delta.baths), deltaInfo: buildComparableDeltaInfo("baths", delta.baths) }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Profile match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Neighborhood", youValue: subjectProfile.neighborhood || "-", compValue: compProfile.neighborhood || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Class", youValue: subjectProfile.classLabel || "-", compValue: compProfile.classLabel || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Style", youValue: subjectProfile.style || "-", compValue: compProfile.style || "-" }))), renderSaleHistorySection(parcel, compProfile.livingArea, { title: "Sale history" }), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.14)", borderRadius: 8, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--blue3)", letterSpacing: 0.4, textTransform: "uppercase" } }, `Why this home was included${reasons.length ? ` (${reasons.length} reasons)` : ""}`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, reasons.length ? reasons.map((reason, reasonIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId + "-reason-" + reasonIdx, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55, overflowWrap: "anywhere" } }, "- ", reason)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "No additional selection notes were recorded for this comparable."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, usingFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Matched using: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, usingFields.join(", ")), unusedFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | Not used: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, unusedFields.join(", "))) : null, ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "This match relied on residential class and nearby location because detailed home characteristics were not available on both parcels."))))), !isExpanded && isCollapsible && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", "aria-hidden": "true", style: { position: "absolute", left: 6, right: 0, bottom: 0, height: 64, background: `linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`, pointerEvents: "none", zIndex: 1 } }), detailsToggleControl);
       };
-      return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { ref: compareResultRef, className: "fi", style: { display: "grid", gap: 14 } }, appealSummary && appealReadiness && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-4-appeal-summary", className: "workflow-step-anchor", "data-workflow-step-id": "step-4-appeal-summary" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 4 - See your appeal summary", title: "Should you file a grievance?", subtitle: "This summary uses the current comparable package, including any comp overrides you have selected." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: recommendationTheme?.background || "rgba(148,163,184,.12)", border: `1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`, borderRadius: 12, padding: "14px 16px", display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Recommendation"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: recommendationTheme?.color || "var(--gray2)" } }, appealSummary.recommendation)), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Case strength"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.15 } }, appealReadiness.caseStrengthBase), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.35 } }, appealReadiness.complaintReasonGuidance.displayLabel))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Potential assessed value reduction"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Supporting comparable homes found"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.supportingComparableHomes))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.7 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Key reason:"), " ", appealSummary.keyReason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(255,255,255,.24)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Recommended RP-524 complaint reason"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: "var(--gray2)" } }, appealReadiness.complaintReasonGuidance.selectionLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, appealReadiness.complaintReasonGuidance.why), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "minmax(0,1.4fr) minmax(260px,.9fr)", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Case assessment score"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel) } }, appealReadiness.score, " / 100")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "75-100 usually supports filing, 58-74 suggests filing with caution, 40-57 needs manual review, and 0-39 usually does not support filing. Downgrade rules can still lower the final recommendation. This is a decision aid, not a guarantee."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Why this score?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, appealReadiness.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `score-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Why this recommendation?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 10 } }, appealSummary.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `recommendation-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item))))))))), appealEvidence && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-5-review-evidence", className: "workflow-step-anchor", "data-workflow-step-id": "step-5-review-evidence" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 5 - Review evidence", title: "Evidence for and against your grievance", subtitle: "This section shows both the facts that help your argument and the facts the assessor may use in response." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(22,163,74,.08)", border: "1px solid rgba(22,163,74,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Evidence that supports your grievance"), appealEvidence.evidenceFor.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `for-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(220,38,38,.06)", border: "1px solid rgba(220,38,38,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--red2)" } }, "Evidence that may weaken your grievance"), appealEvidence.evidenceAgainst.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `against-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Neighborhood fairness benchmark"), neighborhoodBenchmark ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, neighborhoodBenchmark.scopeLabel, " | ", neighborhoodBenchmark.sampleSize, " parcels", neighborhoodBenchmark.usedFallback ? " | fallback sample used" : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Neighborhood median assessed value"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.assessedMedian != null ? $f(neighborhoodBenchmark.assessedMedian) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Neighborhood median FMV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.fmvMedian != null ? $f(neighborhoodBenchmark.fmvMedian) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Neighborhood median assessed per sq ft"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.assessedPerSqftMedian != null ? `$${Number(neighborhoodBenchmark.assessedPerSqftMedian).toFixed(2)}/sq ft` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Your assessed per sq ft"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.subjectAssessedPerSqft != null ? `$${Number(neighborhoodBenchmark.subjectAssessedPerSqft).toFixed(2)}/sq ft` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Gap from median assessed per sq ft"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (neighborhoodBenchmark.deltaAssessedPerSqft || 0) > 0 ? "var(--red2)" : (neighborhoodBenchmark.deltaAssessedPerSqft || 0) < 0 ? "var(--green2)" : "var(--gray)" } }, neighborhoodBenchmark.deltaAssessedPerSqft != null ? `${neighborhoodBenchmark.deltaAssessedPerSqft >= 0 ? "+" : ""}$${Number(neighborhoodBenchmark.deltaAssessedPerSqft).toFixed(2)}/sq ft` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Your assessed per sq ft percentile"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.assessedPerSqftPercentile != null ? `${Number(neighborhoodBenchmark.assessedPerSqftPercentile).toFixed(1)}th` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Neighborhood median equity ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.equityMedian != null ? neighborhoodBenchmark.equityMedian + "%" : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Your equity ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.subjectEquity != null ? neighborhoodBenchmark.subjectEquity + "%" : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Difference from neighborhood median"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (neighborhoodBenchmark.deltaEquity || 0) > 0 ? "var(--red2)" : (neighborhoodBenchmark.deltaEquity || 0) < 0 ? "var(--green2)" : "var(--gray)" } }, neighborhoodBenchmark.deltaEquity != null ? `${neighborhoodBenchmark.deltaEquity >= 0 ? "+" : ""}${neighborhoodBenchmark.deltaEquity}%` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Your equity ratio percentile"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, neighborhoodBenchmark.equityPercentile != null ? `${Number(neighborhoodBenchmark.equityPercentile).toFixed(1)}th` : "-"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, neighborhoodBenchmark.interpretation)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "A neighborhood benchmark could not be calculated from the current parcel set.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "What the assessor may say"), appealEvidence.assessorPushback.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `pushback-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-6-build-grievance", className: "workflow-step-anchor", "data-workflow-step-id": "step-6-build-grievance" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, "Step 6 - Build your grievance"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "var(--gray)", marginBottom: 8 } }, "Selected comparable evidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 12, maxWidth: 920 } }, "Use selected comps, narrative context, and side-by-side table evidence to build the ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "grievancePackage", tone: "var(--gray2)" }, "grievance package"), " you may use when filing."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 10, padding: "14px 16px", minWidth: 0, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: "100%", textAlign: "left", display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => setSubjectCardExpanded((v) => !v), style: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "fit-content" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 999, background: subjectCardExpanded ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.55)", fontFamily: "var(--fm)", fontSize: 14, lineHeight: 1 } }, subjectCardExpanded ? "-" : "+"), /* @__PURE__ */ import_react45.default.createElement("span", null, subjectCardExpanded ? "Hide full property details" : "Show full property details")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", marginBottom: 4, fontWeight: 600 } }, "Your Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 16, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: subject.address, zip: subject.zip, neighborhood: subject.neighborhood, parcelId: subject.parcelId, parcel: subject, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(subject) }, subject.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#2563eb", small: true }, propClassLabel(subject)), comparableProfileBadgeItems(subject).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: subject.parcelId + item, color: "#64748b", small: true }, item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel: subject, small: true }), subjectSaleBadge && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: subjectSaleBadge.color, small: true, title: subjectSaleBadge.title }, subjectSaleBadge.label)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginTop: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, color: "var(--amber)", fontWeight: 700 } }, $f(subject.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700 } }, $f(subject.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: FC[eqFlagFast(subject)] } }, eqRFast(subject), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Equity %")))), subjectCardExpanded && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, isAbsenteeFast(subject) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: subject, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel: subject, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.55 } }, subjectProfile.availablePhysicalFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Available home details for matching: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, subjectProfile.availablePhysicalFields.join(", ")), ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Residential inventory detail was not available on your parcel, so the comparison relied on class and nearby location signals.")), renderSaleHistorySection(subject, subjectProfile.livingArea, { title: "Your sale history", showExplainer: true, background: "rgba(255,255,255,.32)", border: "1px solid rgba(37,99,235,.20)", titleColor: "var(--blue3)" }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 4, fontWeight: 600 }, title: "Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available." }, "Best Comparable Homes (", displayNeighborResult?.neighbors?.length || 0, " comps)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, displayNeighborResult.comparableMode === "snapshot" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were loaded from a ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "shared comparable snapshot"), " and then grouped to show grievance-supporting comps first.") : displayNeighborResult.comparableMode === "physical" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were ranked for ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "physical similarity"), " to your parcel, with ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, displayNeighborResult.scopeNeighborhood || "Albany"), " preferred first.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class."), displayNeighborResult.usedInventory && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("br", null), "Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, effectiveNeighborResult.grievanceSupportCount ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "The default grievance package currently keeps ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--green2)" } }, effectiveNeighborResult.grievanceCandidates.length), " of the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0), " visible comps because they clear the support, quality, and confidence checks. Lower assessed value alone is not enough; the rest stay available for context or custom inclusion.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically.")), customGrievanceSelectionActive && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", lineHeight: 1.55, fontWeight: 600 } }, "Custom comp selection (", effectiveNeighborResult.grievanceCandidates.length, " of ", grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0, " included)"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setGrievanceCompOverrides({}), style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "Reset to default")), effectiveNeighborResult.grievanceCandidates.length > 0 ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average Full Market Value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " FMV avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average assessed value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgAssessed)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " assessed avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average equity ratio across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: (effectiveNeighborResult.grievanceDeltaEquity ?? 0) > 8 ? "var(--red2)" : (effectiveNeighborResult.grievanceDeltaEquity ?? 0) < -8 ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult.grievanceAvgEquity != null ? effectiveNeighborResult.grievanceAvgEquity + "%" : "-"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " equity avg"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.55, display: "grid", gap: 6 } }, effectiveNeighborResult.grievanceDeltaFMV != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your FMV is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, (effectiveNeighborResult.grievanceDeltaFMV >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaFMV))), effectiveNeighborResult.grievanceDeltaFMVPct != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (", effectiveNeighborResult.grievanceDeltaFMVPct >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaFMVPct.toFixed(1), "%)"), " versus the selected grievance comp average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("fmv", -effectiveNeighborResult.grievanceDeltaFMV, effectiveNeighborResult.grievanceCandidates.length), tone: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" })), effectiveNeighborResult.grievanceDeltaAssessed != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your assessed value is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" } }, (effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaAssessed))), " relative to the selected grievance assessed average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("assessed", -effectiveNeighborResult.grievanceDeltaAssessed, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" })), effectiveNeighborResult.grievanceDeltaEquity != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your equity ratio is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" } }, effectiveNeighborResult.grievanceDeltaEquity >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaEquity, "%"), " relative to the selected grievance comp average. ", effectiveNeighborResult.grievanceSignal, /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("equity", -effectiveNeighborResult.grievanceDeltaEquity, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" })))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(148,163,184,.10)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "No comps are currently included in the grievance package summary. Review the physical matches below and include only the homes you want carried into RP-524 support materials."))), effectiveNeighborResult.grievanceCandidates.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(168,85,247,.06)", border: "1px solid rgba(168,85,247,.18)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--purple)", marginBottom: 5 } }, "Side-by-Side Grievance Table"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Subject parcel plus the comps currently included in the grievance package. This table updates live when you include or remove comps.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 } }, grievanceComparisons.map((entry) => {
+      return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { ref: compareResultRef, className: "fi", style: { display: "grid", gap: 14 } }, appealSummary && appealReadiness && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-4-appeal-summary", className: "workflow-step-anchor", "data-workflow-step-id": "step-4-appeal-summary" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 4 - See your appeal summary", title: "Should you file a grievance?", subtitle: "This summary uses the current comparable package, including any comp overrides you have selected." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: recommendationTheme?.background || "rgba(148,163,184,.12)", border: `1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`, borderRadius: 12, padding: "14px 16px", display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Recommendation"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: recommendationTheme?.color || "var(--gray2)" } }, appealSummary.recommendation)), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Case strength"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.15 } }, appealReadiness.caseStrengthBase), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.35 } }, appealReadiness.complaintReasonGuidance.displayLabel))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Potential assessed value reduction"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Supporting comparable homes found"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.supportingComparableHomes))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Claim type"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray2)" } }, effectiveNeighborResult?.claimRecommendation?.label || "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "methodA", tone: "var(--gray2)" }, "Comp-based value estimate")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, Number.isFinite(effectiveNeighborResult?.suggestedValueMethodA) ? $f(effectiveNeighborResult.suggestedValueMethodA) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "methodB", tone: "var(--gray2)" }, "Equity-ratio value estimate")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, Number.isFinite(effectiveNeighborResult?.suggestedValueMethodB) ? $f(effectiveNeighborResult.suggestedValueMethodB) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "independentOvervaluation", tone: "var(--gray2)" }, "Separate overassessment check")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult?.overvaluationFlag?.active ? "Yes" : "No"))), effectiveNeighborResult?.scarWarning && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.24)", borderRadius: 10, padding: "10px 12px", fontSize: 11, color: "var(--amber2)", lineHeight: 1.6 } }, effectiveNeighborResult.scarWarning), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.7 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Key reason:"), " ", appealSummary.keyReason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(255,255,255,.24)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Recommended RP-524 complaint reason"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: "var(--gray2)" } }, appealReadiness.complaintReasonGuidance.selectionLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, appealReadiness.complaintReasonGuidance.why), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "minmax(0,1.4fr) minmax(260px,.9fr)", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Case assessment score"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel) } }, appealReadiness.score, " / 100")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "75-100 usually supports filing, 58-74 suggests filing with caution, 40-57 needs manual review, and 0-39 usually does not support filing. Downgrade rules can still lower the final recommendation. This is a decision aid, not a guarantee."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Why this score?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, appealReadiness.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `score-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Why this recommendation?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 10 } }, appealSummary.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `recommendation-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item))))))))), appealEvidence && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-5-review-evidence", className: "workflow-step-anchor", "data-workflow-step-id": "step-5-review-evidence" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 5 - Review evidence", title: "Evidence for and against your grievance", subtitle: "This section shows both the facts that help your argument and the facts the assessor may use in response." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 20, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(22,163,74,.08)", border: "1px solid rgba(22,163,74,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Evidence that supports your grievance"), appealEvidence.evidenceFor.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `for-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(220,38,38,.06)", border: "1px solid rgba(220,38,38,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--red2)" } }, "Evidence that may weaken your grievance"), appealEvidence.evidenceAgainst.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `against-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Market value estimate"), effectiveNeighborResult?.marketSaleModel?.available ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, effectiveNeighborResult.marketSaleModel.saleCount, " recent arm's-length sales", effectiveNeighborResult.marketSaleModel.expandedRadius ? " | radius expanded to 1.5 miles" : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Neighborhood median sale $/sq ft"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, `$${Number(effectiveNeighborResult.marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Estimated subject FMV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv != null ? $f(effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Current assessed value"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Implied gap"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (effectiveNeighborResult.marketSaleModel.impliedDifference || 0) > 0 ? "var(--red2)" : "var(--green2)" } }, effectiveNeighborResult.marketSaleModel.impliedDifference != null ? `${effectiveNeighborResult.marketSaleModel.impliedDifference >= 0 ? "+" : ""}${$f(Math.abs(effectiveNeighborResult.marketSaleModel.impliedDifference))}` : "-"))), effectiveNeighborResult.marketSaleModel.note && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, effectiveNeighborResult.marketSaleModel.note)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.marketSaleModel?.note || "Insufficient recent sales for market estimate.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Neighborhood equity distribution"), effectiveNeighborResult?.neighborhoodEquityModel?.available ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, (() => {
+        const neighborhoodEquityModel = effectiveNeighborResult.neighborhoodEquityModel;
+        const percentileExplanation = buildNeighborhoodPercentileExplanation(neighborhoodEquityModel);
+        const consistencyExplanation = buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel);
+        const plainSummary = buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel);
+        return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, effectiveNeighborResult.neighborhoodEquityModel.sampleSize, " sale-backed ratios | ", effectiveNeighborResult.neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : "Subject neighborhood sample"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Neighborhood median ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.medianRatio != null ? `${(effectiveNeighborResult.neighborhoodEquityModel.medianRatio * 100).toFixed(1)}%` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Your ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.subjectRatio != null ? `${(effectiveNeighborResult.neighborhoodEquityModel.subjectRatio * 100).toFixed(1)}%` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Your percentile"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.subjectPercentile != null ? `${Number(effectiveNeighborResult.neighborhoodEquityModel.subjectPercentile).toFixed(1)}th` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "cod", tone: "var(--gray2)" }, "COD")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (effectiveNeighborResult.neighborhoodEquityModel.cod || 0) > 15 ? "var(--red2)" : "var(--gray)" } }, effectiveNeighborResult.neighborhoodEquityModel.cod != null ? Number(effectiveNeighborResult.neighborhoodEquityModel.cod).toFixed(1) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "iaaoStandard", tone: "var(--gray2)" }, "IAAO standard")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, `<= ${Number(effectiveNeighborResult.neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`))), percentileExplanation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65 } }, percentileExplanation), consistencyExplanation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65 } }, consistencyExplanation), plainSummary && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65, fontWeight: 600 } }, plainSummary), neighborhoodBenchmark?.interpretation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Separate neighborhood benchmark:"), " ", neighborhoodBenchmark.interpretation), effectiveNeighborResult.neighborhoodEquityModel.codWarning && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult.neighborhoodEquityModel.codWarning));
+      })()) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.neighborhoodEquityModel?.note || "Insufficient sales data for neighborhood equity analysis.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "What the assessor may say"), appealEvidence.assessorPushback.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `pushback-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-6-build-grievance", className: "workflow-step-anchor", "data-workflow-step-id": "step-6-build-grievance" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, "Step 6 - Build your grievance"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "var(--gray)", marginBottom: 8 } }, "Selected comparable evidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 12, maxWidth: 920 } }, "Use selected comps, narrative context, and side-by-side table evidence to build the ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "grievancePackage", tone: "var(--gray2)" }, "grievance package"), " you may use when filing."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 10, padding: "14px 16px", minWidth: 0, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: "100%", textAlign: "left", display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => setSubjectCardExpanded((v) => !v), style: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "fit-content" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 999, background: subjectCardExpanded ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.55)", fontFamily: "var(--fm)", fontSize: 14, lineHeight: 1 } }, subjectCardExpanded ? "-" : "+"), /* @__PURE__ */ import_react45.default.createElement("span", null, subjectCardExpanded ? "Hide full property details" : "Show full property details")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", marginBottom: 4, fontWeight: 600 } }, "Your Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 16, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: subject.address, zip: subject.zip, neighborhood: subject.neighborhood, parcelId: subject.parcelId, parcel: subject, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(subject) }, subject.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", overflowWrap: "anywhere", wordBreak: "break-word" } }, subject.owner1 || "Owner unavailable", " | ", subject.parcelId, " | ", parcelNeighborhoodName(subject) || "Neighborhood unknown"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#2563eb", small: true }, propClassLabel(subject)), comparableProfileBadgeItems(subject).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: subject.parcelId + item, color: "#64748b", small: true }, item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel: subject, small: true }), subjectSaleBadge && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: subjectSaleBadge.color, small: true, title: subjectSaleBadge.title }, subjectSaleBadge.label)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginTop: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, color: "var(--amber)", fontWeight: 700 } }, $f(subject.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700 } }, $f(subject.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: FC[eqFlagFast(subject)] } }, eqRFast(subject), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Equity %")))), subjectCardExpanded && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, isAbsenteeFast(subject) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: subject, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel: subject, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.55 } }, subjectProfile.availablePhysicalFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Available home details for matching: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, subjectProfile.availablePhysicalFields.join(", ")), ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Residential inventory detail was not available on your parcel, so the comparison relied on class and nearby location signals.")), renderSaleHistorySection(subject, subjectProfile.livingArea, { title: "Your sale history", showExplainer: true, background: "rgba(255,255,255,.32)", border: "1px solid rgba(37,99,235,.20)", titleColor: "var(--blue3)" }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 4, fontWeight: 600 }, title: "Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available." }, effectiveNeighborResult?.analysisState === "research_only" ? "Research Comparables" : "Best Comparable Homes", " (", displayNeighborResult?.neighbors?.length || 0, " comps)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, displayNeighborResult.comparableMode === "snapshot" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were loaded from a ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "shared comparable snapshot"), " and then grouped to show grievance-supporting comps first.") : displayNeighborResult.comparableMode === "physical" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were ranked for ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "physical similarity"), " to your parcel, with ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, displayNeighborResult.scopeNeighborhood || "Albany"), " preferred first.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class."), displayNeighborResult.usedInventory && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("br", null), "Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, effectiveNeighborResult.grievanceSupportCount ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "The default grievance package currently keeps ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--green2)" } }, effectiveNeighborResult.grievanceCandidates.length), " of the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0), " visible comps because they clear the support, quality, and confidence checks. Lower assessed value alone is not enough; the rest stay available for context or custom inclusion.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, effectiveNeighborResult?.noPackageReasonText || "These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically.")), customGrievanceSelectionActive && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", lineHeight: 1.55, fontWeight: 600 } }, "Custom comp selection (", effectiveNeighborResult.grievanceCandidates.length, " of ", grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0, " included)"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setGrievanceCompOverrides({}), style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "Reset to default")), effectiveNeighborResult.grievanceCandidates.length > 0 ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average Full Market Value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " FMV avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average assessed value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgAssessed)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " assessed avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average equity ratio across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: (effectiveNeighborResult.grievanceDeltaEquity ?? 0) > 8 ? "var(--red2)" : (effectiveNeighborResult.grievanceDeltaEquity ?? 0) < -8 ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult.grievanceAvgEquity != null ? effectiveNeighborResult.grievanceAvgEquity + "%" : "-"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " equity avg"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.55, display: "grid", gap: 6 } }, effectiveNeighborResult.grievanceDeltaFMV != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your FMV is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, (effectiveNeighborResult.grievanceDeltaFMV >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaFMV))), effectiveNeighborResult.grievanceDeltaFMVPct != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (", effectiveNeighborResult.grievanceDeltaFMVPct >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaFMVPct.toFixed(1), "%)"), " versus the selected grievance comp average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("fmv", -effectiveNeighborResult.grievanceDeltaFMV, effectiveNeighborResult.grievanceCandidates.length), tone: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" })), effectiveNeighborResult.grievanceDeltaAssessed != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your assessed value is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" } }, (effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaAssessed))), " relative to the selected grievance assessed average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("assessed", -effectiveNeighborResult.grievanceDeltaAssessed, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" })), effectiveNeighborResult.grievanceDeltaEquity != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your equity ratio is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" } }, effectiveNeighborResult.grievanceDeltaEquity >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaEquity, "%"), " relative to the selected grievance comp average. ", effectiveNeighborResult.grievanceSignal, /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("equity", -effectiveNeighborResult.grievanceDeltaEquity, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" })))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(148,163,184,.10)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.noPackageReasonText || "No comps are currently included in the grievance package summary. Review the physical matches below and include only the homes you want carried into RP-524 support materials."))), effectiveNeighborResult.grievanceCandidates.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(168,85,247,.06)", border: "1px solid rgba(168,85,247,.18)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(
+        ComparableMapFeatureCard,
+        {
+          subject,
+          comparables: effectiveNeighborResult.grievanceCandidates,
+          onOpen: () => setComparableMapOpen(true)
+        }
+      ), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "none" } }, /* @__PURE__ */ import_react45.default.createElement(
+        "button",
+        {
+          type: "button",
+          className: "print-hide",
+          onClick: () => setComparableMapOpen(true),
+          style: { display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.22)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }
+        },
+        /* @__PURE__ */ import_react45.default.createElement("span", { "aria-hidden": "true", style: { fontSize: 13, lineHeight: 1 } }, "\u{1F4CD}"),
+        /* @__PURE__ */ import_react45.default.createElement("span", null, "Comparable map")
+      )), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--purple)", marginBottom: 5 } }, "Side-by-Side Grievance Table"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Subject parcel plus the comps currently included in the grievance package. This table updates live when you include or remove comps."))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 } }, grievanceComparisons.map((entry) => {
         const parcel = entry.parcel;
         const isSubject = entry.kind === "subject";
         const profileRows = comparableProfileTableRows(parcel);
         const delta = parcel._compDelta || null;
-        return /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId, style: { background: isSubject ? "rgba(37,99,235,.08)" : "var(--card)", border: isSubject ? "1px solid rgba(37,99,235,.26)" : "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: isSubject ? "#2563eb" : "#8b5cf6", small: true }, entry.label), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel)), /* @__PURE__ */ import_react45.default.createElement("span", { title: MATCHED_HOME_DETAILS_INFO, style: { fontFamily: "var(--fm)", fontSize: 10, fontWeight: 700, color: "var(--gray2)", border: "1px solid var(--border)", borderRadius: 999, padding: "1px 6px", cursor: "help" } }, "(i)"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginTop: 8, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId, parcel, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(parcel) }, parcel.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, profileRows.map(([label, value]) => {
+        const adjustedAv = !isSubject && Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
+        const adjustedDelta = !isSubject && adjustedAv != null && Number.isFinite(Number(subject?.assessedValue)) ? adjustedAv - Number(subject.assessedValue) : null;
+        const adjustedSupport = !isSubject ? parcel?._adjustmentBreakdown?.adjustedSupportLabel || null : null;
+        const riskFlags = !isSubject && Array.isArray(parcel?._riskFlags) ? parcel._riskFlags : [];
+        return /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId, style: { background: isSubject ? "rgba(37,99,235,.08)" : "var(--card)", border: isSubject ? "1px solid rgba(37,99,235,.26)" : "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: isSubject ? "#2563eb" : "#8b5cf6", small: true }, entry.label), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel)), /* @__PURE__ */ import_react45.default.createElement(InlineInfoIcon, { text: MATCHED_HOME_DETAILS_INFO, tone: "var(--gray2)", small: true }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginTop: 8, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId, parcel, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(parcel) }, parcel.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, profileRows.map(([label, value]) => {
           const valueColor = !isSubject && label === "Assessed" ? comparableDeltaTone(delta?.assessed, true) : "inherit";
           return /* @__PURE__ */ import_react45.default.createElement("div", { key: label, style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: label === "Assessed" ? 700 : 600, color: valueColor, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, value));
-        }), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Assessed vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.assessed, true) } }, formatSignedComparableMoney(delta?.assessed))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("assessed", delta?.assessed), tone: comparableDeltaTone(delta?.assessed, true) })), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Equity vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.equity, true) } }, formatSignedComparableCount(delta?.equity, "%"))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("equity", delta?.equity), tone: comparableDeltaTone(delta?.equity, true) }))));
-      }))), (displayNeighborResult?.neighbors?.length || 0) > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 32, padding: "8px 2px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray2)" } }, "Detailed comparables"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 }, title: "These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package." }, "Best Comparable Parcels (", displayNeighborResult?.neighbors?.length || 0, " comps)")), displayNeighborResult.neighbors.map((parcel, idx) => renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx === 0, onToggle: toggleComparableCard }))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", textAlign: "center", padding: 20 } }, "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."), (displayNeighborResult?.neighbors?.length || 0) > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginTop: 12, marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 4 } }, "Broadened search for ", subject.address), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, maxWidth: 760 } }, "Your original Best Comparable Homes stay above unchanged. Use this optional search only when you want to widen the research area without changing the default grievance package.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: runBroadenedSearch, style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, broadenedSearchButtonLabel), broadenedSearchRan && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowBroadenedResults((v) => !v), style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, showBroadenedResults ? "Hide broadened results" : "Show broadened results"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "Current broadened scope: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray)" } }, broadenedSearchScopeLabel), ". Each click broadens farther from same-ZIP matches to 2 miles and then 4 miles."), broadenedSearchRan && !showBroadenedResults && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Broadened results are hidden. Your original local comps remain visible above."), broadenedSearchRan && showBroadenedResults && !broadenedComparables.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "No additional comps were found within the current broadened search area after excluding the default local list.")), (displayNeighborResult?.neighbors?.length || 0) > 0 && broadenedSearchRan && showBroadenedResults && broadenedComparables.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 6 } }, "Broadened search results"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, "Ordered by ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--blue3)" } }, "best grievance support first"), ", then overall comparable quality, then broadened area, distance, and FMV closeness."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 28, padding: "8px 2px" } }, broadenedComparables.map((parcel, idx) => {
+        }), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Assessed vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.assessed, true) } }, formatSignedComparableMoney(delta?.assessed))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("assessed", delta?.assessed), tone: comparableDeltaTone(delta?.assessed, true) })), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Adjusted AV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: adjustedDelta != null ? comparableDeltaTone(adjustedDelta, true) : "var(--gray2)" } }, adjustedAv != null ? $f(adjustedAv) : "-")), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: adjustedAv != null ? parcel?._adjustmentNarrative || "Adjusted for size and bath differences." : "Adjusted assessed value is not available for this comp.", tone: adjustedDelta != null ? comparableDeltaTone(adjustedDelta, true) : "var(--gray2)" })), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Adjusted support"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: adjustedSupport === "Yes" ? "var(--green2)" : adjustedSupport === "Marginal" ? "var(--amber2)" : adjustedSupport === "No" ? "var(--red2)" : "var(--gray2)" } }, adjustedSupport || "-"))), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Equity vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.equity, true) } }, formatSignedComparableCount(delta?.equity, "%"))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("equity", delta?.equity), tone: comparableDeltaTone(delta?.equity, true) })), !isSubject && riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--red2)", lineHeight: 1.55 } }, `${riskFlags.length} assessor challenge flag${riskFlags.length === 1 ? "" : "s"} recorded for this comp.`)));
+      }))), (displayNeighborResult?.neighbors?.length || 0) > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 48, padding: "12px 4px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray2)" } }, "Detailed comparables"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 }, title: "These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package." }, effectiveNeighborResult?.analysisState === "research_only" ? `Research-only comparable parcels (${displayNeighborResult?.neighbors?.length || 0} comps)` : `Best Comparable Parcels (${displayNeighborResult?.neighbors?.length || 0} comps)`)), displayNeighborResult.neighbors.map((parcel, idx) => renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx === 0, onToggle: toggleComparableCard }))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", textAlign: "center", padding: 20 } }, displayNeighborResult?.noPackageReasonText || "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."), (displayNeighborResult?.neighbors?.length || 0) > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginTop: 12, marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 4 } }, "Broadened search for ", subject.address), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, maxWidth: 760 } }, "Your original Best Comparable Homes stay above unchanged. Use this optional search only when you want to widen the research area without changing the default grievance package.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: runBroadenedSearch, style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, broadenedSearchButtonLabel), broadenedSearchRan && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowBroadenedResults((v) => !v), style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, showBroadenedResults ? "Hide broadened results" : "Show broadened results"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "Current broadened scope: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray)" } }, broadenedSearchScopeLabel), ". Each click broadens farther from same-ZIP matches to 2 miles and then 4 miles."), broadenedSearchRan && !showBroadenedResults && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Broadened results are hidden. Your original local comps remain visible above."), broadenedSearchRan && showBroadenedResults && !broadenedComparables.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "No additional comps were found within the current broadened search area after excluding the default local list.")), (displayNeighborResult?.neighbors?.length || 0) > 0 && broadenedSearchRan && showBroadenedResults && broadenedComparables.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 6 } }, "Broadened search results"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, "Ordered by ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--blue3)" } }, "best grievance support first"), ", then overall comparable quality, then broadened area, distance, and FMV closeness."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 40, padding: "12px 4px" } }, broadenedComparables.map((parcel, idx) => {
         const expanded = !!expandedBroadenedIds[parcel.parcelId];
         const distanceLabel = formatComparableMiles(parcel._broadenDistanceMiles);
         const isIncluded = isParcelIncludedInGrievance(parcel);
@@ -56152,9 +57908,20 @@ self.onmessage = function(ev){
         activeStepId: activeWorkflowStepId,
         availableStepIds: availableWorkflowStepIds,
         onSelectStep: scrollToWorkflowStep,
+        isLoading: workflowDataLoading,
         isMobile: true,
         mobileOpen: workflowNavMobileOpen,
         onToggleMobile: setWorkflowNavMobileOpen
+      }
+    ), /* @__PURE__ */ import_react45.default.createElement(
+      ComparableMapModal,
+      {
+        open: comparableMapOpen && !!displayNeighborResult?.p && selectedGrievanceComps.length > 0,
+        onClose: () => setComparableMapOpen(false),
+        subject: displayNeighborResult?.p || null,
+        comparables: selectedGrievanceComps,
+        parcelGeometry,
+        ownerPortfolioIndex
       }
     ))), view === "school" && /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement(InfoBox, { icon: "School", title: "What Is School Tax Burden - And Why Does It Matter?", color: "#a78bfa" }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "School taxes are typically the largest single component of your Albany property tax bill"), " - often 60-70% of the total. They fund the Albany City School District: teacher salaries, building maintenance, transportation, special education, and more. Your school tax is calculated by multiplying the school district's tax rate by your ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "school taxable value"), " - which is different from your assessed value if you have any school-specific exemptions.", /* @__PURE__ */ import_react45.default.createElement("br", null), /* @__PURE__ */ import_react45.default.createElement("br", null), "The ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "School Tax Burden %"), " shown here is: School Taxable Value / Full Market Value x 100. A result of 100% means you have zero school tax relief - you are paying on the full assessed value. A result of 75% means exemptions (like STAR) have reduced your school-taxable amount by 25% of market value. Lower is better for the homeowner. ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--white)" } }, "Every homeowner who lives in their primary residence should have at minimum the Basic STAR exemption reducing this number."), " If yours shows 100%, you may be leaving money on the table."), /* @__PURE__ */ import_react45.default.createElement(Card, { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 600, fontFamily: "var(--fd)", marginBottom: 8 } }, "School Tax Burden by Property (Ranked Highest to Lowest)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 14 } }, "Red = no school tax relief (100% burden). Amber = partial relief. Green = significant school exemptions applied. A homestead parcel showing red may be missing STAR."), /* @__PURE__ */ import_react45.default.createElement(ResponsiveContainer, { width: "100%", height: 200 }, /* @__PURE__ */ import_react45.default.createElement(BarChart, { data: schoolBurden.slice(0, 10).map((p) => ({ address: p.address.split(" ").slice(0, 2).join(" "), pct: parseFloat(p.schoolBurden) || 0 })) }, /* @__PURE__ */ import_react45.default.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,.05)" }), /* @__PURE__ */ import_react45.default.createElement(XAxis, { dataKey: "address", tick: { fontSize: 9, fill: "#94a3b8" } }), /* @__PURE__ */ import_react45.default.createElement(YAxis, { tick: { fontSize: 10, fill: "#94a3b8" }, tickFormatter: (v) => v + "%", domain: [0, 110] }), /* @__PURE__ */ import_react45.default.createElement(Tooltip, { ...TT, formatter: (v) => [v + "%", "School Burden"] }), /* @__PURE__ */ import_react45.default.createElement(Bar, { dataKey: "pct", radius: [4, 4, 0, 0] }, schoolBurden.slice(0, 10).map((p, i) => /* @__PURE__ */ import_react45.default.createElement(Cell, { key: i, fill: parseFloat(p.schoolBurden) > 95 ? "#dc2626" : parseFloat(p.schoolBurden) < 80 ? "#22c55e" : "#f59e0b" })))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 8 } }, schoolBurden.slice(0, 12).map((p) => /* @__PURE__ */ import_react45.default.createElement("div", { key: p.parcelId, style: { background: myHome?.parcelId === p.parcelId ? "rgba(34,197,94,.06)" : "var(--card2)", border: `1px solid ${myHome?.parcelId === p.parcelId ? "rgba(34,197,94,.3)" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontWeight: 600, fontSize: 14 } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: p.address, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId }, p.address)), myHome?.parcelId === p.parcelId && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#22c55e", small: true }, "My Home")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginTop: 2 } }, p.owner1, " | School taxable: ", $f(p.schoolTaxable)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 3 } }, parseFloat(p.schoolBurden) > 95 && p.parcelType === "HOMESTEAD" ? "Warning: homestead with no school tax relief - may qualify for STAR" : parseFloat(p.schoolBurden) < 80 ? "School exemptions are reducing taxable value below 80% of market" : "Partial school tax relief applied")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 14, textAlign: "right", alignItems: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--green2)" } }, $f(p.schoolGap)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "School savings")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: parseFloat(p.schoolBurden) > 95 ? "rgba(220,38,38,.15)" : parseFloat(p.schoolBurden) < 80 ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${parseFloat(p.schoolBurden) > 95 ? "rgba(220,38,38,.3)" : parseFloat(p.schoolBurden) < 80 ? "rgba(34,197,94,.3)" : "rgba(245,158,11,.3)"}`, borderRadius: 8, padding: "6px 12px", textAlign: "center" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: parseFloat(p.schoolBurden) > 95 ? "var(--red2)" : parseFloat(p.schoolBurden) < 80 ? "var(--green2)" : "var(--amber)" } }, p.schoolBurden, "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 9, color: "var(--gray)" } }, "of FMV taxed"))))))));
   };

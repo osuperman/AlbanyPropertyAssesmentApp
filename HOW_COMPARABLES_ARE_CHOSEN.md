@@ -1,162 +1,249 @@
 # How Comparable Homes Are Chosen
 
-This application uses a two-stage process.
+This is the short, user-facing summary of the grievance engine.
 
-First, it builds a visible list of the best physical matches for the subject property. Then it builds a smaller default grievance package from that list for RP-524 support.
+The authoritative implementation reference is [GRIEVANCE_APP_COMPLETE_SPEC.md](/C:/Users/steph/OneDrive/Documents/claude/albany_real_estate/GRIEVANCE_APP_COMPLETE_SPEC.md). If this summary and the full spec ever differ, the full spec controls.
 
-## 1. Visible Comparable List
+## 1. What the app is doing
 
-The visible list is meant for research and review. It shows up to 12 homes that are physically credible matches.
+The app builds comparables in two layers:
 
-The app starts by filtering out homes that are clearly not comparable. Examples include:
+1. A visible list of up to 12 homes that are the best physical matches to your property.
+2. A narrower default grievance package that keeps only the comps that still support a grievance after the fairness checks are applied.
 
-- The same parcel as the subject
+The visible list answers:
+
+"Which homes look most similar to mine?"
+
+The grievance package answers:
+
+"Which of those homes are actually useful evidence for a tax grievance?"
+
+## 2. What data the app compares
+
+For your home and each candidate comp, the app uses the roll data it has available, including:
+
+- Property class
+- Neighborhood, ZIP, and distance
+- Living area
+- Year built
+- Bedrooms and baths
+- Style
+- Assessed value
+- Full market value (FMV)
+- Equity ratio
+- Assessed value per square foot
+- Recent ORPTS arm's-length sale history when available
+
+## 3. Hard reject rules
+
+A comp is rejected before scoring if it is clearly too different or unusable, including cases like:
+
+- Same parcel as the subject
 - Incompatible residential class
-- Missing both assessed value and full market value
+- Missing both assessed value and FMV
 - Too far away
-- Major gaps in living area, year built, beds, or baths
+- Living area more than 45% different
+- Year built more than 60 years different
+- Bedrooms more than 2 different
+- Baths more than 2.5 different
 
-After that, the app gives each remaining home a comparable quality score. That score is based on:
+Albany runs in strict geography mode by default, so distance is capped at 2.0 miles for the main comparable engine.
+
+## 4. Physical match score
+
+Each surviving comp gets a quality score based on:
 
 - Residential class compatibility
 - Location similarity
-- Living area
-- Year built
-- Bedrooms
-- Bathrooms
-- Style family
-- Full market value alignment
+- Living area similarity
+- Year built similarity
+- Bedroom similarity
+- Bath similarity
+- Style-family similarity
+- FMV alignment
 
-Only homes with enough quality remain in the visible list.
+The app then subtracts penalties for missing or weak data, such as missing living area, missing year built, uncertain style normalization, or being outside the subject neighborhood and more than 1 mile away.
 
-## 2. Data Confidence Check
+This quality score controls whether a home belongs in the visible list and whether it is strong enough to be considered for the default package.
 
-The app also assigns a data confidence score.
+## 5. Data confidence score
 
-This score goes down when important fields are missing or incomplete, such as:
+Separately, each comp gets a data confidence score starting at 100.
+
+The score is reduced when important fields are missing or uncertain, such as:
 
 - Living area
 - Assessed value
-- Full market value
+- FMV
 - Year built
-- Beds or baths
+- Bedrooms
+- Baths
 - Style normalization
-- Distance calculation
+- Distance
 
-This matters because a comp may look close at first glance, but weak data makes it less reliable as evidence.
+This is why a home can look similar but still be weaker evidence if the underlying data are incomplete.
 
-## 3. Grievance Support Score
+## 6. Why lower assessed value alone is not enough
 
-The default grievance package is not based on lower assessed value alone.
+A lower assessed value is only the starting point.
 
-Each comp also gets a grievance support score. This score looks at normalized value evidence, including:
+The app also checks:
 
-- Assessed value difference
-- Equity ratio difference
-- Assessed value per square foot difference
+- Assessed value per square foot
+- Equity ratio
+- Recent sale evidence
 
-In plain terms, the app asks:
+These checks matter because a comp may be lower simply because it is a smaller or lower-value home overall, not because it was treated more favorably by the assessor.
 
-- Is the comp assessed lower than the subject?
-- Is the comp carrying a lower effective assessment ratio?
-- Is the comp assessed lower on a per-square-foot basis?
+### Example: lower assessed value, but still not strong evidence
 
-If those normalized signals do not support the subject, a lower raw assessed value by itself is not enough.
+Just because a comp has a lower assessed value than your home doesn't mean the assessor was more generous with it. What matters is how the assessed value compares to the home's full market value - that ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same.
 
-Example:
+If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp's assessed value might be lower simply because it's a smaller or lower-value home overall - not because it got a better deal from the assessor.
 
-- The comp is 9% lower in assessed value
-- The comp's full market value is also lower
-- The equity ratio is effectively the same
-- The assessed value per square foot is effectively the same
+For a comp to be strong grievance evidence, you want to see that it was assessed at a lower proportion of its market value than your home - meaning the assessor undervalued it relative to what it's actually worth, compared to how they valued yours.
 
-That is not strong unequal-assessment evidence. It usually means the comp is lower mostly because it is a lower-value or smaller home overall, not because it is clearly being assessed more favorably.
+## 7. Grievance support score
 
-A lower assessed value does not automatically mean better grievance evidence if the comp is also proportionally lower in full market value or size.
+Each visible comp gets a separate grievance support score.
 
-## 4. Default Grievance Package
+That score combines:
 
-The smaller RP-524 package is built from the visible comps, but only if a home clears all three gates:
+- Raw assessed value advantage
+- Assessed value per square foot advantage
+- Equity ratio advantage
+- Recent arm's-length sale evidence
+- Penalties when normalized metrics are tied
+- Penalties for weak quality or weak confidence
 
-- Comparable quality score of at least 50
-- Data confidence score of at least 60
-- Positive grievance support score
+Support labels are:
 
-From that pool, the app usually keeps 3 to 5 homes.
+- Strong support
+- Moderate support
+- Weak support
+- Neutral
+- Weakens case
 
-It favors stronger evidence first:
+## 8. Visible list versus default grievance package
 
-- Strong support and moderate support comps are preferred
-- Weak-support comps are used only if needed to avoid an overly thin package
+The app does not automatically include every visible comp in the grievance package.
 
-It also applies diversity and outlier controls:
+To make the default package, a comp must pass all three gates:
 
-- No more than 2 comps from the same street
-- Strong comps are not excluded solely because another nearby strong comp makes a similar argument
-- Moderate or weaker comps can still be skipped if a nearby comp is stronger on quality, confidence, and support
-- Extreme low-value outliers can be excluded
+- Quality score at least 50
+- Data confidence score at least 60
+- Grievance support score above 0
 
-That means two strong-support homes from the same neighborhood with near-identical characteristics may now stay together in the default package as corroborating evidence.
+The package is then sorted with the best grievance evidence first and assembled using these rules:
 
-## 5. Why Some Visible Homes Are Not Auto-Selected
+- Usually keep 3 to 5 homes
+- Prefer strong and moderate support first
+- Limit same-street concentration
+- Exclude low-end assessed outliers
+- Suppress weaker duplicates when a stronger nearby comp already makes the same point
+- Keep corroborating strong comps together when they independently strengthen the case
+- Try to preserve bracketing on living area and year built when possible
 
-A home may still appear in the visible list but stay out of the default grievance package because:
+If visible comps exist but none clear those gates, the app now shows a `Research only` outcome instead of acting like the system failed.
 
-- It is a good physical match but does not support the grievance after normalization
-- It has too much missing data
-- The default package already reached its 3 to 5 comp target
-- The package already includes 2 comps from the same street
-- For moderate or weaker comps, a stronger comp already covers the same street or neighborhood evidence
-- It looks like an outlier compared with the rest of the selected package
+That means:
 
-That is intentional. The visible list is broader research context. The grievance package is narrower filing evidence.
+- physically similar homes were found
+- they remain visible for research and manual review
+- they are not treated as default grievance evidence
 
-## 6. Manual Override
+The app also explains why no package was built:
 
-Users can still include or remove comps manually.
+- No physical matches
+- Neutral after normalization
+- Favorable direction, but quality or confidence was too weak
+- Mixed research-only result
 
-When that happens, the app updates the following live from the current selection:
+## 9. Suggested requested assessed value
 
-- Grievance summary
-- Suggested requested assessed value
-- Auto-generated narrative
-- Side-by-side grievance table
+The app uses stricter rules for the suggested filing value than it uses for package inclusion.
 
-## 7. How The App Names The RP-524 Complaint Reason
+A comp must clear stronger thresholds before it can influence the suggested value.
 
-The app now shows the likely filing basis directly in the workflow instead of leaving the user to infer it from the notes.
+The engine then calculates:
 
-In Step 2, the case-strength card shows:
+- Comp-based value estimate: asks, "If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?" The app calculates this from the assessed values of the strongest qualifying comps, using a weighted median or a two-comp fallback.
+- Equity-ratio value estimate: asks, "If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?" The app calculates this by multiplying your FMV by the median qualifying comp equity ratio.
 
-- The overall strength level, such as `Strong`, `Moderate`, or `Weak`
-- The likely RP-524 basis on its own line, such as `Unequal Assessment` or `Excessive Assessment`
+The final suggested requested assessed value is the lower of those two methods.
 
-In Step 5, the filing helper also tells the user which complaint box to check and why.
+If the data are too thin, too spread out, or too tied on equity ratio, the app does not force a number and instead flags the result for manual review.
 
-The app currently uses comparable-home evidence to recommend these grounds:
+## 10. Independent models outside the comp package
 
-- `Unequal Assessment` when the subject carries a higher effective assessment ratio than the selected comp package
-- `Excessive Assessment` when the subject's full market value still appears too high compared with the selected comp package
-- `Unequal + Excessive Assessment` when both of those signals are supported
-- `Manual Review Needed` when the current comp package does not clearly support either basis
+The app also runs additional models that do not depend only on the selected comps:
 
-The app does not automatically recommend `Unlawful Assessment` or `Misclassification` from comparable-home data alone.
+- Separate overassessment check: asks, "Even aside from the comps, does your assessment look too high compared with your FMV and the municipality's equalization rate?" The app compares your assessed value to FMV times the municipal equalization rate.
+- Market value estimate from recent neighborhood arm's-length sales
+- Neighborhood equity distribution panel, including percentile, COD (Coefficient of Dispersion), and the IAAO residential COD benchmark of 15.0 or below
+- Subject sale logic for the subject's own recent arm's-length sale
 
-Those two grounds usually require separate evidence, such as:
+These models can support or weaken the overall grievance even when the selected comp package is mixed.
 
-- A classification error
-- A homestead or non-homestead allocation error
-- An exemption issue
-- A parcel identity, boundary, or roll-description problem
+They also matter when nearby homes are very uniform.
 
-So if the app recommends unequal or excessive assessment, that recommendation is based on the selected comps and the normalized value checks. If a user believes the real issue is unlawful assessment or misclassification, they may still choose that ground manually, but they would need outside proof beyond the comparable package.
+If visible comps have tightly clustered equity ratios, the app treats that as weaker unequal-assessment evidence and may shift the explanation toward excessive assessment instead, using:
 
-## 8. Short Version
+- Equalization-based overvaluation
+- Recent arm's-length sale evidence
+- Neighborhood equity percentile
 
-The app does not ask only, "Which homes are assessed lower?"
+## 11. ORPTS sales data and arm's-length sales
 
-It asks a stricter question:
+The app uses ORPTS sales data as market evidence, not as a blind ranking shortcut.
 
-"Which nearby homes are physically similar, have reliable data, and still support the grievance after normalized value checks?"
+Arm's-length sales are used to:
 
-That is why the default grievance package is smaller than the visible list.
+- Add or reduce support for individual comps
+- Estimate neighborhood sale price per square foot
+- Build the market value estimate panel
+- Build the neighborhood equity distribution panel
+- Evaluate the subject's own recent sale against the current FMV
+
+Non-arm's-length transfers are shown in sale history for context, but they are not treated as normal market-value evidence.
+
+## 12. Broadened search
+
+Broadened search is a research-only expansion beyond the main visible list.
+
+It can show additional comps from:
+
+- Same-neighborhood overflow or same street
+- Same ZIP and nearby streets
+- Within 2 miles
+- Within the outer city-strict radius
+
+These broadened comps are ordered by:
+
+- Best grievance support first
+- Then quality score
+- Then tier
+- Then distance
+- Then FMV closeness
+
+They are shown separately so the default package stays focused on the strongest local evidence.
+
+## 13. If you want to change the logic
+
+Do not edit this summary file as if it were the engine.
+
+Edit [GRIEVANCE_APP_COMPLETE_SPEC.md](/C:/Users/steph/OneDrive/Documents/claude/albany_real_estate/GRIEVANCE_APP_COMPLETE_SPEC.md) if you want to redefine the logic in a way that can be implemented exactly.
+
+That full spec is written to be detailed enough to reproduce:
+
+- Inputs
+- Hard exclusions
+- Score weights
+- Gates
+- Sorting
+- Package assembly rules
+- Value recommendation rules
+- Market-sale logic
+- Neighborhood equity logic
+- Edge-case handling

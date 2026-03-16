@@ -127,7 +127,7 @@ const colorForBoundaryLabel = label => {
   return BOUNDARY_PALETTE[Math.abs(hash) % BOUNDARY_PALETTE.length];
 };
 
-export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, utils }) => {
+export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, compactMode = false, subjectParcelId = null, compactTitle = "", compactSubtitle = "", utils }) => {
   const {
     normalizeParcelId,
     FC,
@@ -170,17 +170,19 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
   };
   const SI = { background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "7px 11px", fontSize: 12, cursor: "pointer" };
 
+  const normalizedSubjectParcelId = normalizeParcelId(subjectParcelId || "");
+  const initialCompactSelectedParcelId = subjectParcelId || null;
   const [colorBy, setColorBy] = useState(advanced ? "fmv" : "equity");
   const [viewPreset, setViewPreset] = useState("fairness");
   const [addrSearch, setAddrSearch] = useState("");
-  const [selectedParcelId, setSelectedParcelId] = useState(null);
+  const [selectedParcelId, setSelectedParcelId] = useState(() => compactMode ? initialCompactSelectedParcelId : null);
   const [showParcelPoints, setShowParcelPoints] = useState(false);
   const [showPropertyOverlay, setShowPropertyOverlay] = useState(true);
   const [zoomDisplay, setZoomDisplay] = useState(0);
   const [viewport, setViewport] = useState(null);
   const [mapRuntimeReady, setMapRuntimeReady] = useState(() => !!(getLeafletRuntime() && getProj4Runtime()));
   const [mapStatus, setMapStatus] = useState("");
-  const [showNeighborhoodOverlay, setShowNeighborhoodOverlay] = useState(true);
+  const [showNeighborhoodOverlay, setShowNeighborhoodOverlay] = useState(!compactMode);
   const [showAssociationOverlay, setShowAssociationOverlay] = useState(false);
   const [legendOpen, setLegendOpen] = useState({ coloring: true, boundaries: true });
   const [ownerPortfolioOpen, setOwnerPortfolioOpen] = useState(false);
@@ -202,6 +204,13 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     setColorBy(residentPresetMap[viewPreset] || "equity");
     setShowAssociationOverlay(false);
   }, [advanced, viewPreset]);
+
+  useEffect(() => {
+    if (!compactMode || !initialCompactSelectedParcelId) return;
+    setSelectedParcelId(current => current || initialCompactSelectedParcelId);
+    setShowNeighborhoodOverlay(false);
+    setShowAssociationOverlay(false);
+  }, [compactMode, initialCompactSelectedParcelId]);
 
   useEffect(() => {
     if (mapRuntimeReady) return;
@@ -288,7 +297,25 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
   }, [neighborhoodAssociations, projectPoint]);
   const hasNeighborhoodOverlayData = neighborhoodFeatures.length > 0;
   const hasAssociationOverlayData = associationFeatures.length > 0;
-  const compareIds = useMemo(() => new Set((compareList || []).map(p => p.parcelId)), [compareList]);
+  const compareIndexById = useMemo(() => {
+    const map = new Map();
+    (compareList || []).forEach((parcel, index) => {
+      const id = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+      if (id) map.set(id, index + 1);
+    });
+    return map;
+  }, [compareList, normalizeParcelId]);
+  const compareIds = useMemo(() => new Set(compareIndexById.keys()), [compareIndexById]);
+  const getParcelRole = useCallback(parcel => {
+    const id = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+    if (!id) return { kind: "other", label: "Parcel", color: "#64748b", outline: "#475569" };
+    if (normalizedSubjectParcelId && id === normalizedSubjectParcelId) return { kind: "subject", label: "Subject parcel", color: "#f59e0b", outline: "#b45309" };
+    if (compareIndexById.has(id)) {
+      const index = compareIndexById.get(id);
+      return { kind: "compare", index, label: `Included comp ${index}`, color: "#2563eb", outline: "#1d4ed8" };
+    }
+    return { kind: "other", label: "Parcel", color: "#64748b", outline: "#475569" };
+  }, [compareIndexById, normalizeParcelId, normalizedSubjectParcelId]);
   const boundaryLegendItems = useMemo(() => {
     const items = [];
     if (showNeighborhoodOverlay && hasNeighborhoodOverlayData) {
@@ -570,13 +597,16 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       const isSelected = selectedParcelId === item.p.parcelId;
       const isHighlighted = hlSet ? hlSet.has(item.p.parcelId) : false;
       const isMuted = !!(hlSet && !isHighlighted && !isSelected);
+      const parcelRole = compactMode ? getParcelRole(item.p) : null;
+      const baseColor = compactMode && parcelRole ? parcelRole.color : colorForParcel(item.p);
+      const outlineColor = compactMode && parcelRole ? parcelRole.outline : colorForParcel(item.p);
       const layer = L.polygon(latLngs, {
         renderer: rendererRef.current,
-        color: isSelected ? "#0f172a" : (isHighlighted ? "#ffffff" : colorForParcel(item.p)),
-        weight: isSelected ? 2.4 : (isHighlighted ? 1.8 : 1.1),
+        color: isSelected ? "#0f172a" : (isHighlighted ? "#ffffff" : outlineColor),
+        weight: isSelected ? 2.4 : (compactMode && parcelRole ? (parcelRole.kind === "subject" ? 2.2 : 2.0) : (isHighlighted ? 1.8 : 1.1)),
         opacity: isMuted ? 0.28 : (isSelected ? 0.98 : 0.92),
-        fillColor: isSelected ? "#ffffff" : colorForParcel(item.p),
-        fillOpacity: isMuted ? 0.16 : (isSelected ? 0.72 : (advanced ? 0.62 : 0.56)),
+        fillColor: isSelected ? "#ffffff" : baseColor,
+        fillOpacity: isMuted ? 0.16 : (isSelected ? 0.72 : (compactMode && parcelRole ? (parcelRole.kind === "subject" ? 0.64 : 0.48) : (advanced ? 0.62 : 0.56))),
       });
       layer.on("click", evt => {
         L.DomEvent.stopPropagation(evt);
@@ -586,7 +616,7 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
         L.DomEvent.stopPropagation(evt);
         focusParcel(item.p.parcelId, 18);
       });
-      layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
+      layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${compactMode && parcelRole ? `${parcelRole.label}<br/>` : ""}${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
       layer.addTo(polygonLayer);
       polygonVisibleCount += 1;
     }
@@ -613,14 +643,16 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       const isSelected = selectedParcelId === item.p.parcelId;
       const isHighlighted = hlSet ? hlSet.has(item.p.parcelId) : false;
       const isMuted = !!(hlSet && !isHighlighted && !isSelected);
+      const parcelRole = compactMode ? getParcelRole(item.p) : null;
+      const baseColor = compactMode && parcelRole ? parcelRole.color : colorForParcel(item.p);
       const layer = L.circleMarker(item.latLng, {
         renderer: rendererRef.current,
-        radius: isSelected ? 8 : (isHighlighted ? 6.5 : (item.pointFallback ? 4 : 3.25)),
+        radius: isSelected ? 8 : (compactMode && parcelRole ? (parcelRole.kind === "subject" ? 7.2 : 6.2) : (isHighlighted ? 6.5 : (item.pointFallback ? 4 : 3.25))),
         color: isSelected ? "#0f172a" : "#ffffff",
-        weight: isSelected ? 2 : 1.1,
+        weight: isSelected ? 2 : (compactMode && parcelRole ? 1.5 : 1.1),
         opacity: isMuted ? 0.34 : 0.96,
-        fillColor: isSelected ? "#ffffff" : colorForParcel(item.p),
-        fillOpacity: isMuted ? 0.18 : (item.pointFallback ? 0.9 : 0.72),
+        fillColor: isSelected ? "#ffffff" : baseColor,
+        fillOpacity: isMuted ? 0.18 : (compactMode && parcelRole ? 0.9 : (item.pointFallback ? 0.9 : 0.72)),
       });
       layer.on("click", evt => {
         L.DomEvent.stopPropagation(evt);
@@ -630,13 +662,46 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
         L.DomEvent.stopPropagation(evt);
         focusParcel(item.p.parcelId, 18);
       });
-      layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
+      layer.bindTooltip(`${item.p.address || item.p.parcelId}<br/>${compactMode && parcelRole ? `${parcelRole.label}<br/>` : ""}${item.p.owner1 || "Unknown owner"}`, { sticky: true, direction: "top", opacity: 0.92 });
       layer.addTo(pointLayer);
       pointVisibleCount += 1;
     }
     if (pointVisibleCount) {
       pointLayer.addTo(map);
       dynamicLayersRef.current.push(pointLayer);
+    }
+    if (compactMode) {
+      const labelLayer = L.layerGroup();
+      const labeledKeys = new Set();
+      for (const item of visibleItems) {
+        const parcelRole = getParcelRole(item.p);
+        if (!parcelRole || (parcelRole.kind !== "subject" && parcelRole.kind !== "compare") || !item.latLng) continue;
+        const labelKey = parcelRole.kind === "subject" ? "subject" : `compare-${parcelRole.index}`;
+        if (labeledKeys.has(labelKey)) continue;
+        labeledKeys.add(labelKey);
+        const bubbleBg = parcelRole.kind === "subject" ? "rgba(245,158,11,.96)" : "rgba(37,99,235,.96)";
+        const bubbleBorder = parcelRole.kind === "subject" ? "rgba(180,83,9,.88)" : "rgba(29,78,216,.9)";
+        const bubbleText = parcelRole.kind === "subject" ? "#7c2d12" : "#ffffff";
+        const labelText = parcelRole.kind === "subject" ? "Subject" : `Comp ${parcelRole.index}`;
+        const marker = L.marker(item.latLng, {
+          interactive: false,
+          keyboard: false,
+          zIndexOffset: parcelRole.kind === "subject" ? 1400 : 1300,
+          icon: L.divIcon({
+            className: "compact-map-label",
+            iconSize: [parcelRole.kind === "subject" ? 74 : 60, 36],
+            iconAnchor: [parcelRole.kind === "subject" ? 37 : 30, 34],
+            html: `<div style="transform:translate(-50%,-120%);pointer-events:none;">
+              <div style="display:inline-flex;align-items:center;justify-content:center;min-width:${parcelRole.kind === "subject" ? 62 : 48}px;height:28px;padding:0 10px;border-radius:999px;background:${bubbleBg};border:1px solid ${bubbleBorder};box-shadow:0 10px 24px rgba(15,23,42,.18);font:700 11px/1 Arial,sans-serif;color:${bubbleText};white-space:nowrap;">${labelText}</div>
+            </div>`,
+          }),
+        });
+        marker.addTo(labelLayer);
+      }
+      if (labeledKeys.size) {
+        labelLayer.addTo(map);
+        dynamicLayersRef.current.push(labelLayer);
+      }
     }
 
     setRenderStats({
@@ -697,73 +762,98 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     const group = getOwnerPortfolioGroup(selectedParcel);
     return group && group.propertyCount > 1 && Array.isArray(group.parcels) ? group : null;
   }, [getOwnerPortfolioGroup, selectedParcel]);
-  const selectedInCompare = selectedParcel ? compareIds.has(selectedParcel.parcelId) : false;
+  const selectedInCompare = selectedParcel ? compareIds.has(normalizeParcelId(selectedParcel.parcelId)) : false;
+  const selectedParcelRole = selectedParcel ? getParcelRole(selectedParcel) : null;
+  const compactCompareCount = compareList.length;
   const legendItems = LEGEND[colorBy] || [];
   const overlayNotice = useMemo(() => {
+    if (compactMode) {
+      if (!hasParcelGeometry) return "Parcel boundary geometry is unavailable for one or more selected parcels, so point locations are shown where needed.";
+      if (renderStats.pointCapped || renderStats.polygonCapped) return "This map view is trimmed for speed. Zoom in for complete parcel detail.";
+      return "Only your parcel and the grievance comps currently included in the package are shown here.";
+    }
     if (zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM) return `Zoom in to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries.`;
     if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Parcel boundaries are active. Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
     if (renderStats.polygonCapped || renderStats.pointCapped) return "This view is trimmed for speed. Zoom in for complete parcel detail.";
     if (!hasParcelGeometry) return "Point locations are active because parcel boundary geometry is not loaded.";
     return null;
-  }, [hasParcelGeometry, renderStats.pointCapped, renderStats.polygonCapped, zoomDisplay]);
+  }, [compactMode, hasParcelGeometry, renderStats.pointCapped, renderStats.polygonCapped, zoomDisplay]);
 
   return (
     <div className="fi">
-      <SectionTitle>Application Map</SectionTitle>
-      <Sub>{hasParcelGeometry
-        ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace."
-        : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."}</Sub>
-      <Card style={{ marginBottom: 14 }}>
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "var(--gray)", fontWeight: 700 }}>{advanced ? "Color by" : "Resident view"}</span>
-            {advanced
-              ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setColorBy(k)} style={{ background: colorBy === k ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k ? "var(--teal)" : "var(--border)"}`, color: colorBy === k ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{l}</button>
-                ))
-              : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setViewPreset(k)} style={{ background: viewPreset === k ? "var(--blue)" : "var(--card2)", border: `1px solid ${viewPreset === k ? "var(--blue)" : "var(--border)"}`, color: viewPreset === k ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{l}</button>
-                ))}
-            {advanced ? (
-              <>
-                <button onClick={() => setShowPropertyOverlay(v => !v)} disabled={!hasParcelGeometry} style={{ background: (hasParcelGeometry && showPropertyOverlay) ? "rgba(13,148,136,.16)" : "var(--card2)", border: `1px solid ${(hasParcelGeometry && showPropertyOverlay) ? "rgba(13,148,136,.35)" : "var(--border)"}`, color: hasParcelGeometry ? (showPropertyOverlay ? "var(--teal2)" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasParcelGeometry ? "pointer" : "not-allowed", opacity: hasParcelGeometry ? 1 : .72 }}>Parcel boundaries</button>
-                <button onClick={() => setShowParcelPoints(v => !v)} style={{ background: showParcelPoints ? "rgba(37,99,235,.16)" : "var(--card2)", border: `1px solid ${showParcelPoints ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: showParcelPoints ? "var(--blue3)" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{hasParcelGeometry ? "Show point markers" : "Point locations"}</button>
-                <button onClick={() => setShowNeighborhoodOverlay(v => !v)} disabled={!hasNeighborhoodOverlayData} style={{ background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? (showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : .72 }}>Neighborhood boundaries</button>
-                <button onClick={() => setShowAssociationOverlay(v => !v)} disabled={!hasAssociationOverlayData} style={{ background: showAssociationOverlay ? "rgba(124,58,237,.14)" : "var(--card2)", border: `1px solid ${showAssociationOverlay ? "rgba(124,58,237,.28)" : "var(--border)"}`, color: hasAssociationOverlayData ? (showAssociationOverlay ? "#7c3aed" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasAssociationOverlayData ? "pointer" : "not-allowed", opacity: hasAssociationOverlayData ? 1 : .72 }}>Association boundaries</button>
-              </>
-            ) : (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
-                <div style={{ fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", flex: "1 1 280px" }}>
-                  {({ fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." })[viewPreset]}
+      {!compactMode ? (
+        <>
+          <SectionTitle>Application Map</SectionTitle>
+          <Sub>{hasParcelGeometry
+            ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace."
+            : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."}</Sub>
+          <Card style={{ marginBottom: 14 }}>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "var(--gray)", fontWeight: 700 }}>{advanced ? "Color by" : "Resident view"}</span>
+                {advanced
+                  ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k, l]) => (
+                      <button key={k} onClick={() => setColorBy(k)} style={{ background: colorBy === k ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k ? "var(--teal)" : "var(--border)"}`, color: colorBy === k ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{l}</button>
+                    ))
+                  : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k, l]) => (
+                      <button key={k} onClick={() => setViewPreset(k)} style={{ background: viewPreset === k ? "var(--blue)" : "var(--card2)", border: `1px solid ${viewPreset === k ? "var(--blue)" : "var(--border)"}`, color: viewPreset === k ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{l}</button>
+                    ))}
+                {advanced ? (
+                  <>
+                    <button onClick={() => setShowPropertyOverlay(v => !v)} disabled={!hasParcelGeometry} style={{ background: (hasParcelGeometry && showPropertyOverlay) ? "rgba(13,148,136,.16)" : "var(--card2)", border: `1px solid ${(hasParcelGeometry && showPropertyOverlay) ? "rgba(13,148,136,.35)" : "var(--border)"}`, color: hasParcelGeometry ? (showPropertyOverlay ? "var(--teal2)" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasParcelGeometry ? "pointer" : "not-allowed", opacity: hasParcelGeometry ? 1 : .72 }}>Parcel boundaries</button>
+                    <button onClick={() => setShowParcelPoints(v => !v)} style={{ background: showParcelPoints ? "rgba(37,99,235,.16)" : "var(--card2)", border: `1px solid ${showParcelPoints ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: showParcelPoints ? "var(--blue3)" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{hasParcelGeometry ? "Show point markers" : "Point locations"}</button>
+                    <button onClick={() => setShowNeighborhoodOverlay(v => !v)} disabled={!hasNeighborhoodOverlayData} style={{ background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? (showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : .72 }}>Neighborhood boundaries</button>
+                    <button onClick={() => setShowAssociationOverlay(v => !v)} disabled={!hasAssociationOverlayData} style={{ background: showAssociationOverlay ? "rgba(124,58,237,.14)" : "var(--card2)", border: `1px solid ${showAssociationOverlay ? "rgba(124,58,237,.28)" : "var(--border)"}`, color: hasAssociationOverlayData ? (showAssociationOverlay ? "#7c3aed" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasAssociationOverlayData ? "pointer" : "not-allowed", opacity: hasAssociationOverlayData ? 1 : .72 }}>Association boundaries</button>
+                  </>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", flex: "1 1 280px" }}>
+                      {({ fairness: "Compare assessment fairness across nearby parcels.", tax_relief: "See where exemptions are already on record.", ownership: "Highlight likely absentee ownership across the neighborhood.", market: "View parcel values without opening research controls." })[viewPreset]}
+                    </div>
+                    <button onClick={() => setShowNeighborhoodOverlay(v => !v)} disabled={!hasNeighborhoodOverlayData} style={{ background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? (showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : .72 }}>Neighborhood boundaries</button>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" }}>
+                  <button onClick={() => stepZoom(1)} style={{ ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>+</button>
+                  <button onClick={() => stepZoom(-1)} style={{ ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>-</button>
+                  <button onClick={resetView} style={{ ...SI, fontSize: 11, padding: "7px 11px" }}>Reset view</button>
+                  <span style={{ fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" }}>{zoomDisplay ? `z${zoomDisplay}` : "..."}</span>
                 </div>
-                <button onClick={() => setShowNeighborhoodOverlay(v => !v)} disabled={!hasNeighborhoodOverlayData} style={{ background: showNeighborhoodOverlay ? "rgba(29,78,216,.14)" : "var(--card2)", border: `1px solid ${showNeighborhoodOverlay ? "rgba(29,78,216,.28)" : "var(--border)"}`, color: hasNeighborhoodOverlayData ? (showNeighborhoodOverlay ? "#1d4ed8" : "var(--gray)") : "var(--gray3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: hasNeighborhoodOverlayData ? "pointer" : "not-allowed", opacity: hasNeighborhoodOverlayData ? 1 : .72 }}>Neighborhood boundaries</button>
               </div>
-            )}
-            <div style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" }}>
-              <button onClick={() => stepZoom(1)} style={{ ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>+</button>
-              <button onClick={() => stepZoom(-1)} style={{ ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>-</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <AddressAutocompleteInput parcels={parcels} value={addrSearch} onChange={setAddrSearch} onSelectParcel={p => { setAddrSearch(p.address); focusParcel(p.parcelId, 18); }} onEnter={() => { if (searchMatches[0]) focusParcel(searchMatches[0].parcelId, 18); }} placeholder="Search address, owner, or parcel ID" inputStyle={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }} wrapperStyle={{ flex: 1, minWidth: 220 }} />
+                {addrSearch && <button onClick={() => setAddrSearch("")} style={{ ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" }}>Clear</button>}
+                {searchMatches.length > 1 && <button onClick={fitSearchMatches} style={{ ...SI, fontSize: 11, padding: "7px 11px" }}>Fit matches</button>}
+                <span style={{ fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" }}>{hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"}</span>
+                <span style={{ fontSize: 12, color: "var(--gray2)" }}>{mapStatus}</span>
+              </div>
+            </div>
+          </Card>
+        </>
+      ) : (
+        <Card style={{ marginBottom: 14, background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.16)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+              <div style={{ fontSize: 11, color: "var(--blue3)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>{compactTitle || "Visual evidence map"}</div>
+              <div style={{ fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, marginTop: 6 }}>{compactSubtitle || `This simplified map shows your property and the ${compactCompareCount} comparable home${compactCompareCount === 1 ? "" : "s"} currently included in the grievance package.`}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Badge color="#f59e0b">Subject parcel</Badge>
+              <Badge color="#2563eb">{compactCompareCount} grievance comp{compactCompareCount === 1 ? "" : "s"}</Badge>
               <button onClick={resetView} style={{ ...SI, fontSize: 11, padding: "7px 11px" }}>Reset view</button>
-              <span style={{ fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" }}>{zoomDisplay ? `z${zoomDisplay}` : "..."}</span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <AddressAutocompleteInput parcels={parcels} value={addrSearch} onChange={setAddrSearch} onSelectParcel={p => { setAddrSearch(p.address); focusParcel(p.parcelId, 18); }} onEnter={() => { if (searchMatches[0]) focusParcel(searchMatches[0].parcelId, 18); }} placeholder="Search address, owner, or parcel ID" inputStyle={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }} wrapperStyle={{ flex: 1, minWidth: 220 }} />
-            {addrSearch && <button onClick={() => setAddrSearch("")} style={{ ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" }}>Clear</button>}
-            {searchMatches.length > 1 && <button onClick={fitSearchMatches} style={{ ...SI, fontSize: 11, padding: "7px 11px" }}>Fit matches</button>}
-            <span style={{ fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" }}>{hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"}</span>
-            <span style={{ fontSize: 12, color: "var(--gray2)" }}>{mapStatus}</span>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       <div className="leaflet-layout">
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
             <div>
-              <div style={{ fontSize: 11, color: "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Application map workspace</div>
-              <div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4 }}>{hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`}</div>
+              <div style={{ fontSize: 11, color: compactMode ? "var(--blue3)" : "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{compactMode ? "Grievance comparable map" : "Application map workspace"}</div>
+              <div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4 }}>{compactMode ? "Only the subject parcel and the currently included grievance comps are shown." : (hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`)}</div>
             </div>
-            <div style={{ fontSize: 12, color: "var(--gray2)" }}>{selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : `${renderStats.visible.toLocaleString()} visible parcels`}</div>
+            <div style={{ fontSize: 12, color: "var(--gray2)" }}>{selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : (compactMode ? `${Math.max(renderStats.visible - compactCompareCount, 0)} subject + ${compactCompareCount} comp${compactCompareCount === 1 ? "" : "s"}` : `${renderStats.visible.toLocaleString()} visible parcels`)}</div>
           </div>
           <div style={{ position: "relative", borderTop: "none" }}>
             {!mapRuntimeReady ? (
@@ -782,7 +872,7 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
               </div>
             )}
             <div style={{ position: "absolute", bottom: 10, left: 12, right: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", pointerEvents: "none" }}>
-              <div style={{ background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" }}>{renderStats.visible.toLocaleString()} visible parcels | {renderStats.polygons.toLocaleString()} parcel boundaries | {renderStats.points.toLocaleString()} markers{renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : ""}{renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""}</div>
+              <div style={{ background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" }}>{compactMode ? `1 subject parcel | ${compactCompareCount} grievance comp${compactCompareCount === 1 ? "" : "s"} | ${renderStats.polygons.toLocaleString()} parcel boundaries | ${renderStats.points.toLocaleString()} markers` : `${renderStats.visible.toLocaleString()} visible parcels | ${renderStats.polygons.toLocaleString()} parcel boundaries | ${renderStats.points.toLocaleString()} markers${renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : ""}${renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""}`}</div>
               <div style={{ background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" }}>Scroll to zoom | Drag to pan | Click to inspect | Double-click parcel to fit</div>
             </div>
           </div>
@@ -791,20 +881,22 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
         <Card style={{ padding: 0, overflow: "hidden", minWidth: 0 }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, color: advanced ? "var(--teal2)" : "var(--blue3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{selectedParcel ? "Selected parcel" : "Map inspector"}</div>
+              <div style={{ fontSize: 11, color: compactMode ? "var(--blue3)" : (advanced ? "var(--teal2)" : "var(--blue3)"), fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{selectedParcel ? "Selected parcel" : "Map inspector"}</div>
               <div style={{ fontFamily: "var(--fd)", fontSize: 20, fontWeight: 800, marginTop: 6, minWidth: 0, lineHeight: 1.08, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel ? <a href={selectedParcelMapsUrl} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedParcel.address || selectedParcel.parcelId}</a> : (addrSearch ? "Search results" : "Use the map")}</div>
             </div>
-            {selectedParcel && <button onClick={() => setSelectedParcelId(null)} aria-label="Close selected parcel" style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}>x</button>}
+            {selectedParcel && !compactMode && <button onClick={() => setSelectedParcelId(null)} aria-label="Close selected parcel" style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}>x</button>}
           </div>
           <div style={{ padding: "14px 16px", display: "grid", gap: 14, minWidth: 0 }}>
             {selectedParcel ? <>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 }}>
+                {compactMode && selectedParcelRole?.kind === "subject" && <Badge color="#f59e0b">Subject parcel</Badge>}
+                {compactMode && selectedParcelRole?.kind === "compare" && <Badge color="#2563eb">{selectedParcelRole.label}</Badge>}
                 <Badge color="#6366f1">{propClassLabel(selectedParcel)}</Badge>
                 <Badge color={selectedItem?.geom ? "#0d9488" : "#f59e0b"}>{selectedItem?.geom ? "Boundary loaded" : "Point location only"}</Badge>
                 <Badge color={FC[eqFlagFast(selectedParcel)]}>{FL[eqFlagFast(selectedParcel)]}</Badge>
                 {isAbsenteeFast(selectedParcel) && <Badge color="#f97316">Absentee</Badge>}
               </div>
-              {isAbsenteeFast(selectedParcel) && <details style={{ background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" }}><summary style={{ cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" }}>Why flagged as absentee?</summary><div style={{ display: "grid", gap: 4, marginTop: 8 }}><div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 }}>{getAbsenteeModelFast(selectedParcel).label} ({getAbsenteeModelFast(selectedParcel).confidence}, score {getAbsenteeModelFast(selectedParcel).score})</div>{(getAbsenteeModelFast(selectedParcel).signals?.length ? getAbsenteeModelFast(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => <div key={`${selectedParcel.parcelId}-absentee-${idx}`} style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 }}>{signal}</div>)}</div></details>}
+              {!compactMode && isAbsenteeFast(selectedParcel) && <details style={{ background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" }}><summary style={{ cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" }}>Why flagged as absentee?</summary><div style={{ display: "grid", gap: 4, marginTop: 8 }}><div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 }}>{getAbsenteeModelFast(selectedParcel).label} ({getAbsenteeModelFast(selectedParcel).confidence}, score {getAbsenteeModelFast(selectedParcel).score})</div>{(getAbsenteeModelFast(selectedParcel).signals?.length ? getAbsenteeModelFast(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => <div key={`${selectedParcel.parcelId}-absentee-${idx}`} style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 }}>{signal}</div>)}</div></details>}
               <div className="metric-grid-2" style={{ display: "grid", gap: 10, minWidth: 0 }}>
                 <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Full market value</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{$f(selectedParcel.fullMarketValue)}</div></div>
                 <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Assessed value</div><div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{$f(selectedParcel.assessedValue)}</div></div>
@@ -824,7 +916,7 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
                   </div>
                 </div>
               )}
-              {selectedOwnerPortfolio && (
+              {!compactMode && selectedOwnerPortfolio && (
                 <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 }}>
                   <button
                     type="button"
@@ -867,10 +959,10 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
                     </div>
                   )}
                 </div>
-              )}              {selectedWarnings.length > 0 && <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" }}>{selectedWarnings.slice(0, 4).map(w => <div key={w} style={{ fontSize: 12, color: "var(--gray2)" }}>{w.replace(/_/g, " ")}</div>)}</div>}
+              )}              {!compactMode && selectedWarnings.length > 0 && <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" }}>{selectedWarnings.slice(0, 4).map(w => <div key={w} style={{ fontSize: 12, color: "var(--gray2)" }}>{w.replace(/_/g, " ")}</div>)}</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 }}>
                 <button onClick={() => focusParcel(selectedParcel.parcelId, 18)} style={{ background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>Center on parcel</button>
-                {typeof onCompare === "function" && <button onClick={() => onCompare(selectedParcel)} style={{ background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>{selectedInCompare ? "In Compare" : "+ Compare"}</button>}
+                {!compactMode && typeof onCompare === "function" && <button onClick={() => onCompare(selectedParcel)} style={{ background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>{selectedInCompare ? "In Compare" : "+ Compare"}</button>}
               </div>
             </> : addrSearch ? <>
               <div style={{ display: "grid", gap: 8 }}>

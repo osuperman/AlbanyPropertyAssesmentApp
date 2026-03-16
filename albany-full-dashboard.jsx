@@ -5,6 +5,22 @@ import { LeafletMapView } from "./leaflet-map.jsx";
 import { AddressAutocompleteInput, findBestAddressMatch } from "./address-autocomplete.jsx";
 import propertyTypeClassificationCodes from "./property-type-classification-codes.json";
 import grievanceSettings from "./grievance-settings.json";
+import grievanceEngine from "./grievance-engine.js";
+
+const {
+  analyzeComparableCandidate: analyzeComparableCandidateWithSpec,
+  annotateComparablePackageDecisions: annotateComparablePackageDecisionsWithSpec,
+  buildBroadenedComparableResult: buildBroadenedComparableResultWithSpec,
+  computeClaimRecommendation: computeClaimRecommendationWithSpec,
+  computeMarketSaleModel: computeMarketSaleModelWithSpec,
+  computeNeighborhoodEquityModel: computeNeighborhoodEquityModelWithSpec,
+  computeOvervaluationFlag: computeOvervaluationFlagWithSpec,
+  computeSubjectSaleSignal: computeSubjectSaleSignalWithSpec,
+  selectGrievancePackage: selectGrievancePackageWithSpec,
+  sortGrievanceCandidatePool: sortGrievanceCandidatePoolWithSpec,
+  sortVisibleComparableCandidates: sortVisibleComparableCandidatesWithSpec,
+  summarizeGrievancePackage: summarizeGrievancePackageWithSpec,
+} = grievanceEngine;
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ GLOBAL STYLES ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
 const GS = () => (
@@ -119,6 +135,7 @@ const StickyStepNavigator = ({
   activeStepId,
   availableStepIds,
   onSelectStep,
+  isLoading = false,
   isMobile = false,
   mobileOpen = false,
   onToggleMobile = () => {},
@@ -198,6 +215,7 @@ const StickyStepNavigator = ({
             <div style={{display:"grid",gap:2}}>
               <div style={{fontSize:10,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7}}>{activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`}</div>
               <div style={{fontSize:13,fontWeight:800,color:"var(--gray)"}}>{activeStep?.label || "Workflow steps"}</div>
+              {isLoading ? <div style={{fontSize:10,color:"var(--amber2)",fontWeight:700,lineHeight:1.45}}>Loading data... more steps unlock when analysis is ready.</div> : null}
             </div>
             <button type="button" onClick={() => onToggleMobile(false)} style={{background:"rgba(148,163,184,.12)",border:"1px solid rgba(148,163,184,.22)",color:"var(--gray2)",borderRadius:999,padding:"7px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Close</button>
           </div>
@@ -209,6 +227,7 @@ const StickyStepNavigator = ({
           <div style={{display:"grid",gap:2,minWidth:0}}>
             <div style={{fontSize:10,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7}}>{activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`}</div>
             <div style={{fontSize:12,fontWeight:800,color:"var(--gray)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeStep?.label || "Workflow steps"}</div>
+            {isLoading ? <div style={{fontSize:10,color:"var(--amber2)",fontWeight:700,lineHeight:1.4}}>Loading data...</div> : null}
           </div>
           <button type="button" onClick={() => onToggleMobile(!mobileOpen)} aria-expanded={mobileOpen} aria-haspopup="dialog" style={{background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.20)",color:"var(--blue3)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:800,cursor:"pointer",flexShrink:0}}>{mobileOpen ? "Hide steps" : "Show steps"}</button>
         </div>
@@ -223,6 +242,7 @@ const StickyStepNavigator = ({
           <div style={{fontSize:10,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.8}}>{activeStep ? `Step ${activeStep.stepNumber} of ${totalSteps}` : `${totalSteps} steps`}</div>
           <div style={{fontSize:14,fontWeight:800,color:"var(--gray)"}}>{activeStep?.label || "Workflow steps"}</div>
           <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.5}}>Jump to any major step in the grievance workflow.</div>
+          {isLoading ? <div style={{fontSize:10,color:"var(--amber2)",fontWeight:700,lineHeight:1.45}}>Loading data... more steps unlock when analysis is ready.</div> : null}
         </div>
         <div style={{display:"grid",gap:8}}>
           {steps.map(step => renderStepButton(step, false))}
@@ -451,18 +471,23 @@ const SALE_CONDITION_LABELS = {
   cond_signif_pers: "Significant personal property",
   cond_uniformed_party: "Uniformed services party",
 };
-const ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal open-market sale between unrelated buyers and sellers. This kind of sale is called an 'arm's-length' sale. The tool uses arm's-length sales to anchor market-value checks, compare assessed value against real sale prices, and add or reduce support in the grievance summary.";
+const ARM_LENGTH_SALE_HISTORY_EXPLAINER = "The sale shown below was a normal open-market sale between unrelated buyers and sellers. This kind of sale is called an 'arm's-length' sale. In this app, ORPTS arm's-length sales are used to anchor market-value checks, compare assessed value against real sale prices, and add or reduce support in the grievance summary.";
 const NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER = "Some past transfers on this home were gifts or family moves, not normal market sales. These are called 'non-arm's-length' transfers. The tool keeps them in history, but it does not use those transfer prices as market-value evidence in the grievance scoring.";
 const ARM_LENGTH_DEFINITION = "Arm's-length means a normal open-market sale between unrelated buyers and sellers.";
-const SALES_DATA_SOURCE_NOTE = "Sales data source: Office of Real Property Tax Services (ORPTS) Municipal Data Portal.";
+const SALES_DATA_SOURCE_NOTE = "Sales data source: New York State Office of Real Property Tax Services (ORPTS) Municipal Data Portal. Used here for sale history and arm's-length market evidence.";
 const MATCHED_HOME_DETAILS_INFO = 'See "Why this home was included" for details.';
 const TERM_HELP = {
   fmv: "Estimated full market value of your property.",
   assessedValue: "The value the city uses to calculate your taxes.",
   equityRatio: "Assessed value divided by market value. It helps compare whether homes are assessed consistently.",
+  cod: "Coefficient of Dispersion. It measures how tightly neighborhood assessment ratios cluster together. Lower usually means more uniform assessments.",
+  iaaoStandard: "The International Association of Assessing Officers benchmark for acceptable assessment uniformity. In this app, COD at or below 15.0 is treated as meeting the residential uniformity standard.",
   armLengthSale: "A normal market sale between unrelated buyers and sellers.",
   comparableHome: "A home used to compare against yours because it is similar in location and physical details.",
   grievancePackage: "The set of selected comps and narrative materials you may use when filing RP-524.",
+  methodA: "A comp-based value estimate. It asks: if we look at the best comparable homes, what assessed value do they suggest you should ask for?",
+  methodB: "An equity-ratio value estimate. It asks: if your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?",
+  independentOvervaluation: "A separate overassessment check. It asks: even aside from the comps, does your assessment look too high compared with your FMV and the municipality's equalization rate?",
   rp524: "The New York form used to challenge your property assessment.",
 };
 const TAX_APPEAL_NEXT_STEPS = [
@@ -562,6 +587,8 @@ const doesSaleBuyerMatchParcelOwner = (parcel, sale) => {
 };
 const getMostRecentSale = (parcel, salesByParcelId) => getParcelSales(parcel, salesByParcelId)[0] || null;
 const getMostRecentArmsLengthSale = (parcel, salesByParcelId) => getParcelSales(parcel, salesByParcelId).find(sale => isArmLengthSale(sale) && Number(sale?.sale_price) > 0) || null;
+const SALE_TO_FMV_LOW_SIGNAL_RATIO = 0.9;
+const SALE_TO_FMV_HIGH_SIGNAL_RATIO = 1.05;
 const isRecentArmsLengthSale = (sale, years=3) => {
   if(!sale || !isArmLengthSale(sale)) return false;
   const dt = parseSalesDate(sale.sale_dte) || parseSalesDate(sale.deed_dte);
@@ -571,6 +598,42 @@ const isRecentArmsLengthSale = (sale, years=3) => {
   return dt >= cutoff;
 };
 const getSalePricePerSqFt = (sale, livingArea) => Number.isFinite(Number(sale?.sale_price)) && Number(sale.sale_price) > 0 && Number.isFinite(Number(livingArea)) && Number(livingArea) > 0 ? Number(sale.sale_price) / Number(livingArea) : null;
+const getSaleToFullMarketRatio = (parcel, sale) => Number.isFinite(Number(sale?.sale_price)) && Number(sale.sale_price) > 0 && Number.isFinite(Number(parcel?.fullMarketValue)) && Number(parcel.fullMarketValue) > 0
+  ? Number(sale.sale_price) / Number(parcel.fullMarketValue)
+  : null;
+const classifyRecentArmLengthSaleEvidence = (parcel, salesByParcelId, { role="subject", years=3 }={}) => {
+  const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
+  if(!sale || !isRecentArmsLengthSale(sale, years)) return null;
+  const ratio = getSaleToFullMarketRatio(parcel, sale);
+  let status = "neutral";
+  if(Number.isFinite(ratio)){
+    if(role==="subject"){
+      if(ratio <= SALE_TO_FMV_LOW_SIGNAL_RATIO) status = "supports";
+      else if(ratio >= SALE_TO_FMV_HIGH_SIGNAL_RATIO) status = "weakens";
+    }else{
+      if(ratio >= SALE_TO_FMV_HIGH_SIGNAL_RATIO) status = "supports";
+      else if(ratio <= SALE_TO_FMV_LOW_SIGNAL_RATIO) status = "weakens";
+    }
+  }
+  return { sale, ratio, status, role };
+};
+const buildCompSaleEvidenceSentence = (parcel, saleEvidence) => {
+  if(!parcel || !saleEvidence?.sale || saleEvidence.status==="neutral") return "";
+  const sale = saleEvidence.sale;
+  const soldText = `sold on ${formatSalesDate(sale.sale_dte || sale.deed_dte)} for ${formatSalePrice(sale.sale_price)}`;
+  if(Array.isArray(saleEvidence.reasons) && saleEvidence.reasons.length){
+    return `Recent arm's-length sale evidence at ${parcel.address}: it ${soldText}. ${saleEvidence.reasons.join(" ")}`;
+  }
+  if(saleEvidence.status==="supports") return `Recent arm's-length sale evidence at ${parcel.address} also supports market context: it ${soldText}, which supports the grievance signal.`;
+  return `Recent arm's-length sale evidence at ${parcel.address} is less favorable: it ${soldText}, which weakens the grievance signal.`;
+};
+const buildSaleHistoryExplainer = (latestSale, armLengthSale) => {
+  if(latestSale && isArmLengthSale(latestSale)) return ARM_LENGTH_SALE_HISTORY_EXPLAINER;
+  if(latestSale && armLengthSale){
+    return `${NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER} The price-per-square-foot line below uses the most recent arm's-length sale from ${formatSalesDate(armLengthSale.sale_dte || armLengthSale.deed_dte)}.`;
+  }
+  return NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER;
+};
 const buildSaleHeaderBadge = (parcel, salesByParcelId) => {
   const sales = getParcelSales(parcel, salesByParcelId);
   if(!sales.length) return null;
@@ -1652,6 +1715,152 @@ const StreetViewModal = ({open, onClose, address, zip, neighborhood, streetViewS
     </div>
   </div>;
 };
+const MapPinIcon = ({ color = "#2563eb", size = 18 }) => {
+  const circleSize = Math.max(8, Math.round(size * 0.56));
+  const stemWidth = Math.max(2, Math.round(size * 0.12));
+  const stemHeight = Math.max(6, Math.round(size * 0.36));
+  const tipSize = Math.max(5, Math.round(size * 0.34));
+  return <span aria-hidden="true" style={{ position:"relative", display:"inline-flex", width:size, height:size + stemHeight, alignItems:"flex-start", justifyContent:"center", flexShrink:0 }}>
+    <span style={{ width:circleSize, height:circleSize, borderRadius:"50%", background:color, border:"2px solid rgba(255,255,255,.88)", boxShadow:`0 2px 8px ${color}44`, position:"relative", zIndex:2 }} />
+    <span style={{ position:"absolute", top:circleSize - 1, width:stemWidth, height:stemHeight, background:color, borderRadius:999, zIndex:1 }} />
+    <span style={{ position:"absolute", top:circleSize + stemHeight - 2, width:0, height:0, borderLeft:`${Math.round(tipSize / 2)}px solid transparent`, borderRight:`${Math.round(tipSize / 2)}px solid transparent`, borderTop:`${tipSize}px solid ${color}`, zIndex:1 }} />
+  </span>;
+};
+const ComparableMapFeatureCard = ({ subject, comparables = [], onOpen }) => {
+  const compCount = comparables.length;
+  const neighborhoodLabel = parcelNeighborhoodName(subject) || subject?.neighborhood || "your neighborhood";
+  const previewItems = (comparables || []).slice(0, 4);
+  return <button
+    type="button"
+    className="print-hide"
+    onClick={onOpen}
+    style={{ width:"100%", textAlign:"left", background:"linear-gradient(135deg, rgba(37,99,235,.14) 0%, rgba(168,85,247,.12) 52%, rgba(255,255,255,.92) 100%)", border:"1px solid rgba(37,99,235,.24)", borderRadius:14, padding:"14px 16px", display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:14, alignItems:"stretch", cursor:"pointer", boxShadow:"0 14px 34px rgba(37,99,235,.08)" }}
+  >
+    <div style={{ display:"grid", gap:10, minWidth:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+        <span style={{ display:"inline-flex", alignItems:"center", gap:8, background:"rgba(255,255,255,.82)", border:"1px solid rgba(37,99,235,.18)", borderRadius:999, padding:"6px 10px", fontSize:10, fontWeight:800, color:"var(--blue3)", letterSpacing:.5, textTransform:"uppercase" }}>
+          <MapPinIcon color="#2563eb" size={14} />
+          Visual evidence map
+        </span>
+        <span style={{ background:"rgba(245,158,11,.14)", border:"1px solid rgba(245,158,11,.22)", color:"#b45309", borderRadius:999, padding:"5px 9px", fontSize:10, fontWeight:800 }}>1 subject</span>
+        <span style={{ background:"rgba(37,99,235,.12)", border:"1px solid rgba(37,99,235,.20)", color:"var(--blue3)", borderRadius:999, padding:"5px 9px", fontSize:10, fontWeight:800 }}>{compCount} selected comp{compCount===1?"":"s"}</span>
+        <span style={{ background:"rgba(22,163,74,.10)", border:"1px solid rgba(22,163,74,.18)", color:"var(--green2)", borderRadius:999, padding:"5px 9px", fontSize:10, fontWeight:800 }}>Live with your selections</span>
+        <span style={{ background:"rgba(139,92,246,.10)", border:"1px solid rgba(139,92,246,.18)", color:"var(--purple)", borderRadius:999, padding:"5px 9px", fontSize:10, fontWeight:800 }}>Included in your packet</span>
+      </div>
+      <div style={{ fontFamily:"var(--fd)", fontSize:18, fontWeight:800, color:"var(--gray)" }}>See your parcel and grievance comps on one map</div>
+      <div style={{ fontSize:12, color:"var(--gray2)", lineHeight:1.7, maxWidth:640 }}>This map shows whether your supporting comps are truly nearby and in the same neighborhood context. It updates instantly when you include or remove comps from the grievance package, and the same map overview is now printed in your downloaded grievance packet.</div>
+      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+        <span style={{ fontSize:11, color:"var(--gray2)" }}>Focus area:</span>
+        <span style={{ fontSize:11, fontWeight:700, color:"var(--gray)" }}>{neighborhoodLabel}</span>
+        {subject?.address && <span style={{ fontSize:11, color:"var(--gray2)" }}>Subject: <b style={{ color:"var(--gray)" }}>{subject.address}</b></span>}
+      </div>
+    </div>
+    <div style={{ minWidth:0, display:"grid", gap:10 }}>
+      <div style={{ position:"relative", minHeight:132, borderRadius:12, overflow:"hidden", border:"1px solid rgba(37,99,235,.18)", background:"linear-gradient(180deg, rgba(239,246,255,.98) 0%, rgba(224,231,255,.95) 100%)" }}>
+        <div style={{ position:"absolute", inset:0, background:"linear-gradient(90deg, transparent 0, transparent 23%, rgba(148,163,184,.16) 23%, rgba(148,163,184,.16) 24%, transparent 24%, transparent 49%, rgba(148,163,184,.14) 49%, rgba(148,163,184,.14) 50%, transparent 50%, transparent 74%, rgba(148,163,184,.14) 74%, rgba(148,163,184,.14) 75%, transparent 75%), linear-gradient(180deg, transparent 0, transparent 28%, rgba(148,163,184,.14) 28%, rgba(148,163,184,.14) 29%, transparent 29%, transparent 58%, rgba(148,163,184,.14) 58%, rgba(148,163,184,.14) 59%, transparent 59%)" }} />
+        <div style={{ position:"absolute", inset:0, padding:"12px 14px" }}>
+          <div style={{ position:"absolute", left:"18%", top:"56%", display:"grid", justifyItems:"center", gap:3 }}>
+            <MapPinIcon color="#f59e0b" size={16} />
+            <span style={{ fontSize:10, fontWeight:800, color:"#b45309", background:"rgba(255,255,255,.82)", border:"1px solid rgba(245,158,11,.18)", borderRadius:999, padding:"2px 6px" }}>Subject</span>
+          </div>
+          {previewItems.map((parcel, idx) => {
+            const positions = [
+              { left:"58%", top:"18%" },
+              { left:"74%", top:"44%" },
+              { left:"52%", top:"68%" },
+              { left:"34%", top:"24%" },
+            ];
+            const pos = positions[idx] || positions[positions.length - 1];
+            return <div key={`preview-comp-${parcel.parcelId || idx}`} style={{ position:"absolute", left:pos.left, top:pos.top, display:"grid", justifyItems:"center", gap:3 }}>
+              <MapPinIcon color="#2563eb" size={15} />
+              <span style={{ fontSize:10, fontWeight:800, color:"var(--blue3)", background:"rgba(255,255,255,.82)", border:"1px solid rgba(37,99,235,.18)", borderRadius:999, padding:"2px 6px" }}>{`Comp ${idx + 1}`}</span>
+            </div>;
+          })}
+        </div>
+      </div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", fontSize:10, color:"var(--gray2)" }}>
+            <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}><MapPinIcon color="#f59e0b" size={12} /> Subject parcel</span>
+            <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}><MapPinIcon color="#2563eb" size={12} /> Included grievance comps</span>
+          </div>
+        <span style={{ fontSize:11, fontWeight:800, color:"var(--blue3)" }}>Open interactive map</span>
+      </div>
+    </div>
+  </button>;
+};
+const ComparableMapModal = ({ open, onClose, subject, comparables = [], parcelGeometry = null, ownerPortfolioIndex = null }) => {
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return undefined;
+    const onKeyDown = event => {
+      if (event.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+  const modalParcels = useMemo(() => {
+    if (!subject) return [];
+    const seen = new Set();
+    return [subject].concat(comparables || []).filter(parcel => {
+      const id = normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [comparables, subject]);
+  const jumpRequest = useMemo(() => {
+    if (!open || !subject) return null;
+    const compKey = (comparables || []).map(parcel => normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)).filter(Boolean).join(",");
+    return {
+      token: `grievance-comp-map:${normalizeParcelId(subject?.parcelId)}:${compKey}`,
+      address: subject.address || "",
+      parcelId: subject.parcelId || "",
+      parcel: subject,
+    };
+  }, [comparables, open, subject]);
+  if (!open || !subject) return null;
+  return <div
+    role="dialog"
+    aria-modal="true"
+    aria-label={`Comparable map for ${subject.address || subject.parcelId}`}
+    onClick={() => onClose?.()}
+    style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(15,23,42,.72)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}
+  >
+    <div onClick={e => e.stopPropagation()} style={{ width:"min(1320px,100%)", maxHeight:"min(90vh,980px)", background:"var(--card)", borderRadius:14, border:"1px solid rgba(148,163,184,.3)", boxShadow:"0 24px 64px rgba(15,23,42,.45)", display:"grid", gridTemplateRows:"auto minmax(0,1fr)", overflow:"hidden" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, padding:"14px 16px", borderBottom:"1px solid var(--border)", background:"rgba(255,255,255,.96)" }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontFamily:"var(--fd)", fontSize:16, fontWeight:700, overflowWrap:"anywhere", wordBreak:"break-word" }}>Visual evidence map</div>
+          <div style={{ fontSize:11, color:"var(--gray2)", marginTop:4, lineHeight:1.55 }}>{subject.address || subject.parcelId} | {comparables.length} grievance comp{comparables.length === 1 ? "" : "s"}</div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", justifyContent:"flex-end" }}>
+          <div style={{ fontSize:11, color:"var(--gray2)", lineHeight:1.5, textAlign:"right" }}>This simplified view uses the application map engine but only shows your property and the comps currently included in the grievance package.</div>
+          <button
+            type="button"
+            onClick={() => onClose?.()}
+            style={{ background:"rgba(37,99,235,.08)", border:"1px solid rgba(37,99,235,.22)", color:"var(--blue3)", borderRadius:999, padding:"7px 11px", fontSize:11, fontWeight:700, cursor:"pointer" }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+      <div style={{ background:"var(--bg2)", minHeight:360, overflowY:"auto", padding:16 }}>
+        <MapView
+          parcels={modalParcels}
+          parcelGeometry={parcelGeometry}
+          compareList={comparables}
+          onCompare={null}
+          onDrill={null}
+          jumpRequest={jumpRequest}
+          advanced={false}
+          ownerPortfolioIndex={ownerPortfolioIndex}
+          compactMode={true}
+          subjectParcelId={subject.parcelId}
+          compactTitle="Visual evidence map"
+          compactSubtitle={`This simplified map shows your property and the ${comparables.length} home${comparables.length === 1 ? "" : "s"} currently included in the grievance package.`}
+        />
+      </div>
+    </div>
+  </div>;
+};
 const StreetViewPreview = ({address, zip, neighborhood, streetViewLatLng=null, stopPropagation=true, height=168}) => {
   const [streetViewOpen, setStreetViewOpen] = useState(false);
   const [metadataState, setMetadataState] = useState("loading");
@@ -2052,6 +2261,7 @@ const appealCaseStrengthColor = (label="do_not_recommend") => {
   if(label==="strong") return "var(--green2)";
   if(label==="moderate") return "var(--blue3)";
   if(label==="weak") return "var(--amber2)";
+  if(label==="research_only") return "var(--gray2)";
   return "var(--red2)";
 };
 const buildComparableProfile = p => {
@@ -2163,6 +2373,40 @@ const grievanceResourceUrls = {
 };
 const comparableSupportDisplayStatus = kind => kind==="strong_support" || kind==="moderate_support" ? "supports" : kind==="weak_support" || kind==="neutral" ? "neutral" : "weakens";
 const explanationStatusTone = status => status==="supports" ? { color: "var(--green2)", background: "rgba(22,163,74,.08)", border: "rgba(22,163,74,.20)" } : status==="weakens" ? { color: "var(--red2)", background: "rgba(220,38,38,.06)", border: "rgba(220,38,38,.18)" } : { color: "var(--gray2)", background: "rgba(148,163,184,.10)", border: "rgba(148,163,184,.18)" };
+const grievanceBreakdownWhyItMatters = (row, { tiedLowerValueHome=false }={}) => {
+  if(!row?.label) return "";
+  if(row.label==="Raw assessed value"){
+    if(row.status==="supports") return "A lower assessed value is the starting point. It can support an argument that your home is over-assessed.";
+    if(row.status==="weakens") return "A higher assessed value on the comp cuts against an over-assessment argument for your home.";
+    return "When raw assessed values are about the same, this check is mostly neutral by itself.";
+  }
+  if(row.label==="Assessed value per sq ft"){
+    if(row.status==="supports") return "This adjusts for size differences, so lower assessed value per sq ft is stronger apples-to-apples support.";
+    if(row.status==="weakens") return "If the comp is higher per sq ft, that can weaken the case even when raw assessed value is lower.";
+    return tiedLowerValueHome
+      ? "This apples-to-apples check is neutral, which suggests the raw gap may come from overall size/value differences rather than favorable treatment."
+      : "This is the main apples-to-apples size adjustment. If it is similar, the raw gap alone is less decisive.";
+  }
+  if(row.label==="Equity ratio"){
+    if(row.status==="supports") return "A lower equity ratio means the comp is assessed at a lower share of market value, which is strong unequal-assessment evidence.";
+    if(row.status==="weakens") return "A higher equity ratio means the comp was not treated more favorably, which weakens unequal-assessment evidence.";
+    return "This is neutral: the assessor treated both homes at a similar share of market value. Good for comparability, but not strong unequal-treatment evidence on its own.";
+  }
+  if(row.label==="Physical match quality"){
+    if(row.status==="supports") return "Closer physical similarity makes the comparison more defensible to a review board.";
+    if(row.status==="weakens") return "Loose physical similarity lowers the credibility of the comp as grievance evidence.";
+    return "Reasonable similarity helps context, but stronger physical matches are usually more persuasive.";
+  }
+  if(row.label==="Data confidence"){
+    if(row.status==="supports") return "High data coverage increases trust in this comp's metrics and conclusions.";
+    if(row.status==="weakens") return "Missing or uncertain data reduce how much weight this comp should carry.";
+    return "Medium confidence means usable evidence, but with caution where data are thin.";
+  }
+  if(row.label==="Final support level"){
+    return "The final support label combines all checks above, not raw assessed value alone.";
+  }
+  return "";
+};
 const buildGrievanceComparableExplanation = (subject, comp, kind="neutral") => {
   const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
   const confidenceNotes = Array.isArray(comp?._selectionDiagnostics?.confidenceNotes) ? comp._selectionDiagnostics.confidenceNotes : [];
@@ -2239,6 +2483,9 @@ const buildGrievanceComparableExplanation = (subject, comp, kind="neutral") => {
             ? "This comp is similar enough to matter, but its assessment pattern cuts against the grievance."
             : "This comp is useful context, but it does not clearly support or weaken the grievance on its own.",
   });
+  for(const row of breakdownRows){
+    row.whyItMatters = grievanceBreakdownWhyItMatters(row, { tiedLowerValueHome });
+  }
 
   const primaryReason = tiedLowerValueHome
     ? "Lower raw assessment is not backed up by stronger normalized metrics."
@@ -2480,51 +2727,22 @@ const buildGrievancePackageLimitations = (packageComps=[]) => {
   if(packageComps.some(comp=>Number(comp?._comparableQualityScore) < 55)) limitations.push("at least one selected comp is only a loose physical match");
   return limitations;
 };
-const buildSelectedGrievancePackage = (subject, subjectProfile, comps=[]) => {
+const buildSelectedGrievancePackage = (subject, subjectProfile, comps=[], options={}) => {
   const packageComps = (Array.isArray(comps) ? comps : []).filter(Boolean);
-  const subjectEquity = subjectProfile?.equity;
-  const grievanceAvgFMV = packageComps.length ? Math.round(packageComps.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/packageComps.length) : null;
-  const grievanceAvgAssessed = packageComps.length ? Math.round(packageComps.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/packageComps.length) : null;
-  const grievanceAvgEquity = packageComps.length ? meanComparableValue(packageComps.map(comp=>comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
-  const grievanceDeltaFMV = grievanceAvgFMV!=null ? subject.fullMarketValue-grievanceAvgFMV : null;
-  const grievanceDeltaFMVPct = (grievanceAvgFMV && grievanceDeltaFMV!=null) ? (grievanceDeltaFMV/grievanceAvgFMV)*100 : null;
-  const grievanceDeltaAssessed = grievanceAvgAssessed!=null ? subject.assessedValue-grievanceAvgAssessed : null;
-  const grievanceDeltaEquity = (grievanceAvgEquity!=null && subjectEquity!=null) ? roundComparableNumber(subjectEquity-grievanceAvgEquity, 1) : null;
-  const grievanceSignal = grievanceDeltaEquity==null ? null : (grievanceDeltaEquity>=3 ? "Selected grievance comps carry lower equity ratios than your home." : grievanceDeltaEquity<=-3 ? "Selected grievance comps carry higher equity ratios than your home." : "Selected grievance comps show equity ratios in line with your home.");
-  const grievanceSupportCount = packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0).length;
-  const grievanceModerateOrBetterCount = packageComps.filter(comp=>["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind)).length;
-  const grievanceAverageSupportScore = meanComparableValue(packageComps.map(comp=>comp?._grievanceSupportScore), 1);
-  const grievanceAverageQualityScore = meanComparableValue(packageComps.map(comp=>comp?._comparableQualityScore), 1);
-  const grievanceAverageConfidenceScore = meanComparableValue(packageComps.map(comp=>comp?._dataConfidenceScore), 1);
-  const normalizedMetricSupport = buildNormalizedMetricSupportState(packageComps);
-  const packageLimitations = buildGrievancePackageLimitations(packageComps);
-  const suggestedRequestedValue = buildSuggestedRequestedValue(subjectProfile, packageComps);
+  const equalizationRate = Number.isFinite(Number(options?.meta?.uniformPercentOfValue)) ? Number(options.meta.uniformPercentOfValue) / 100 : null;
+  const summary = summarizeGrievancePackageWithSpec({
+    subject,
+    subjectProfile,
+    visibleComps: options?.visibleComps || packageComps,
+    selectedComps: packageComps,
+    parcels: options?.parcels || [],
+    salesByParcelId: options?.salesByParcelId || null,
+    equalizationRate,
+    currentDate: options?.currentDate || new Date(),
+  });
   return {
-    grievanceSupportPool: packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0),
-    grievanceCandidatePool: packageComps.filter(comp=>Number(comp?._grievanceSupportScore) > 0),
-    grievanceCandidates: packageComps,
-    grievancePackage: packageComps,
-    grievanceAvgFMV,
-    grievanceAvgAssessed,
-    grievanceAvgEquity,
-    grievanceDeltaFMV,
-    grievanceDeltaFMVPct,
-    grievanceDeltaAssessed,
-    grievanceDeltaEquity,
-    grievanceSignal,
-    grievanceSupportCount,
-    grievanceModerateOrBetterCount,
-    grievanceAverageSupportScore,
-    grievanceAverageQualityScore,
-    grievanceAverageConfidenceScore,
-    normalizedMetricSupport,
-    packageLimitations,
-    suggestedRequestedAssessedValue: suggestedRequestedValue.value,
-    suggestedRequestedAssessedValueMethod: suggestedRequestedValue.method,
-    suggestedRequestedAssessedValueReviewManually: suggestedRequestedValue.reviewManually,
-    suggestedRequestedAssessedValueNote: suggestedRequestedValue.note,
-    suggestedRequestedAssessedValueEligibleCount: suggestedRequestedValue.eligibleCount,
-    grievancePackageAllSupportive: packageComps.length>0 && grievanceSupportCount===packageComps.length,
+    ...summary,
+    grievanceDeltaFMVPct: (summary.grievanceAvgFMV && summary.grievanceDeltaFMV!=null) ? (summary.grievanceDeltaFMV / summary.grievanceAvgFMV) * 100 : null,
   };
 };
 const buildGrievanceStrengthAssessment = (subject, neighborResult, totalComparableCount=0) => {
@@ -2557,6 +2775,61 @@ const buildGrievanceStrengthAssessment = (subject, neighborResult, totalComparab
   const normalizedSentence = neighborResult?.normalizedMetricSupport?.detail || "Normalized metric support has not been evaluated yet.";
   return { label, color, detail: `${supportSentence} ${qualitySentence} ${normalizedSentence}` };
 };
+const describeApproximateShare = (pct) => {
+  const value = Number(pct);
+  if(!Number.isFinite(value)) return "an unknown share";
+  if(value < 15) return "about one-tenth";
+  if(value < 25) return "about one-fifth";
+  if(value < 40) return "about one-third";
+  if(value < 48) return "about two-fifths";
+  if(value <= 52) return "about half";
+  if(value < 65) return "about three-fifths";
+  if(value < 80) return "about two-thirds";
+  if(value < 90) return "about four-fifths";
+  return "almost all";
+};
+const buildNeighborhoodPercentileExplanation = (model) => {
+  const percentile = Number(model?.subjectPercentile);
+  if(!Number.isFinite(percentile)) return "";
+  const lowerShare = describeApproximateShare(percentile);
+  const higherShare = describeApproximateShare(100 - percentile);
+  const sampleArea = model?.scope === "zip" ? "your ZIP-code area" : "your neighborhood";
+  if(percentile >= 75){
+    return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than only ${higherShare}. That places you toward the high end of the range and makes you look more like an upper-end outlier.`;
+  }
+  if(percentile >= 55){
+    return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That puts you above the middle of the range, but not at the very top.`;
+  }
+  if(percentile >= 35){
+    return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That leaves you near the middle of the range rather than at the very top.`;
+  }
+  return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That puts you in the lower half of the range, not as an outlier at the top.`;
+};
+const buildNeighborhoodConsistencyExplanation = (model) => {
+  const cod = Number(model?.cod);
+  const iaao = Number(model?.iaaoStandard || 15);
+  if(!Number.isFinite(cod)) return "";
+  const uniform = cod <= iaao;
+  return uniform
+    ? `Neighborhood consistency: COD ${cod.toFixed(1)}. Assessments here are considered uniform by professional standards because the IAAO benchmark is ${iaao.toFixed(1)} or lower. In plain language, most similar homes are being assessed at about the same share of their market value.`
+    : `Neighborhood consistency: COD ${cod.toFixed(1)}. Assessments here are not considered uniform by professional standards because the IAAO benchmark is ${iaao.toFixed(1)} or lower. In plain language, similar homes are not all being assessed at the same share of market value.`;
+};
+const buildNeighborhoodEquityPlainSummary = (model) => {
+  const percentile = Number(model?.subjectPercentile);
+  const cod = Number(model?.cod);
+  const iaao = Number(model?.iaaoStandard || 15);
+  if(!Number.isFinite(percentile) || !Number.isFinite(cod)) return "";
+  if(percentile < 55 && cod <= iaao){
+    return "Taken together, these numbers say your home is not unusually highly assessed compared with similar homes, and the neighborhood's assessments are generally consistent.";
+  }
+  if(percentile >= 75 && cod <= iaao){
+    return "Taken together, these numbers say your home looks high compared with similar homes, even though the neighborhood's assessments are otherwise fairly consistent.";
+  }
+  if(percentile < 55 && cod > iaao){
+    return "Taken together, these numbers say your home does not stand out as unusually high, but the neighborhood's assessments are not very consistent overall.";
+  }
+  return "Taken together, these numbers say your home looks high compared with similar homes, and the neighborhood's assessments also appear uneven overall.";
+};
 const buildGrievanceNarrative = (subject, subjectProfile, neighborResult, salesByParcelId=null, neighborhoodBenchmark=null) => {
   const selectedComps = neighborResult?.grievanceCandidates || [];
   if(!selectedComps.length || neighborResult?.grievanceAvgAssessed == null || neighborResult?.grievanceDeltaAssessed == null) return "";
@@ -2565,11 +2838,10 @@ const buildGrievanceNarrative = (subject, subjectProfile, neighborResult, salesB
   const strongOrModerate = selectedComps.filter(parcel=>["strong_support", "moderate_support"].includes(parcel?._grievanceRelevance?.kind));
   const supportiveComps = selectedComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0);
   const compExamples = formatNarrativeCompList((strongOrModerate.length ? strongOrModerate : supportiveComps.length ? supportiveComps : selectedComps).slice(0, 3));
-  const saleSentences = selectedComps.slice(0, 4).map(parcel => {
-    const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
-    if(!sale || !isRecentArmsLengthSale(sale, 3)) return "";
-    return `Recent arm's-length sale evidence also exists at ${parcel.address}, which sold on ${formatSalesDate(sale.sale_dte || sale.deed_dte)} for ${formatSalePrice(sale.sale_price)}.`;
-  }).filter(Boolean);
+  const saleSentences = selectedComps
+    .map(parcel => buildCompSaleEvidenceSentence(parcel, parcel?._saleEvidence || parcel?.saleEvidence || null))
+    .filter(Boolean)
+    .slice(0, 3);
   const normalizedState = neighborResult?.normalizedMetricSupport || buildNormalizedMetricSupportState(selectedComps);
   const benchmarkLabel = neighborhoodBenchmark?.interpretationLabel || "neutral";
   const benchmarkSentence = neighborhoodBenchmark
@@ -2608,76 +2880,46 @@ const grievanceDayLabel = (meta={}, subject=null) => {
   };
 };
 const buildComplaintReasonGuidance = (subject, subjectProfile, neighborResult, neighborhoodBenchmark=null) => {
-  const subjectEquity = Number(subjectProfile?.equity);
-  const packageEquity = Number(neighborResult?.grievanceAvgEquity);
-  const equityGapPoints = Number.isFinite(subjectEquity) && Number.isFinite(packageEquity)
-    ? roundComparableNumber(subjectEquity - packageEquity, 1)
-    : null;
-  const fullMarketValueGap = Number(neighborResult?.grievanceDeltaFMV);
-  const unequalSupport = Number.isFinite(equityGapPoints) && equityGapPoints >= 1;
-  const excessiveSupport = Number.isFinite(fullMarketValueGap) && fullMarketValueGap > 0;
-  const benchmarkSupport = neighborhoodBenchmark?.interpretationLabel==="supportive" || neighborhoodBenchmark?.interpretationLabel==="mild_support";
-  const sameClass = isResidentialPropClass(subject?.propClass);
+  const claimRecommendation = neighborResult?.claimRecommendation || computeClaimRecommendationWithSpec(neighborResult?.grievanceCandidates || [], neighborResult?.overvaluationFlag || computeOvervaluationFlagWithSpec(subject, Number.isFinite(Number(neighborResult?.overvaluationFlag?.equalizationRate)) ? Number(neighborResult.overvaluationFlag.equalizationRate) : null));
+  const comparisonSetLabel = neighborResult?.analysisState==="research_only" ? "visible comps" : "selected comps";
   const unlawfulNotSupportedNote = "This app does not detect unlawful-assessment grounds from comparable-home data. Use that box only if you have separate proof such as a wholly exempt property, a boundary/location error, or another roll-authority problem.";
   const misclassificationNotSupportedNote = "This app does not detect misclassification from comparable-home data. Use that box only if the parcel is placed in the wrong tax class or homestead/non-homestead allocation, which usually requires separate classification evidence.";
-  if(unequalSupport && excessiveSupport){
-    const why = `Check both "Unequal assessment" and "Excessive assessment" in RP-524 Part Three. Unequal is stronger because your equity ratio is ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"} above the selected comp package, and excessive is also supported because your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average.`;
-    return {
-      primaryCode: "unequal",
-      primaryLabel: "Unequal Assessment",
-      displayLabel: "Unequal + Excessive Assessment",
-      secondaryCode: "excessive",
-      secondaryLabel: "Excessive Assessment",
-      selectionLabel: 'Check "Unequal assessment" and "Excessive assessment"',
-      why,
-      shortWhy: `Unequal is stronger because your equity ratio is ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"} above the selected comp package, and excessive is also supported because your current full market value still sits above the comp package average.`,
-      narrativeSentence: "The current evidence supports both unequal-assessment and excessive-assessment arguments, with unequal assessment slightly stronger.",
-      unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
-      unlawfulNotSupportedNote,
-      misclassificationNotSupportedNote,
-      appSupportsComparableGroundsOnly: true,
-    };
-  }
-  if(unequalSupport){
-    const benchmarkTail = benchmarkSupport ? " The neighborhood fairness benchmark also leans in the same direction." : "";
-    const why = `Check "Unequal assessment" in RP-524 Part Three because your property carries a higher effective assessment ratio than the selected comparable package by ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"}.${benchmarkTail}`;
+  if(claimRecommendation?.code==="UNEQUAL"){
+    const why = `${claimRecommendation.reason}${neighborhoodBenchmark?.interpretationLabel==="supportive" || neighborhoodBenchmark?.interpretationLabel==="mild_support" ? ` ${neighborhoodBenchmark.interpretation}` : ""}`;
     return {
       primaryCode: "unequal",
       primaryLabel: "Unequal Assessment",
       displayLabel: "Unequal Assessment",
       secondaryCode: null,
       secondaryLabel: "",
-      selectionLabel: 'Check "Unequal assessment"',
+      selectionLabel: claimRecommendation.selectionLabel,
       why,
-      shortWhy: `Your property carries a higher effective assessment ratio than the selected comp package by ${Math.abs(equityGapPoints).toFixed(1)} point${Math.abs(equityGapPoints)===1?"":"s"}.${benchmarkTail}`.trim(),
-      narrativeSentence: "The stronger RP-524 basis appears to be unequal assessment because the subject carries a higher effective assessment ratio than the selected comps.",
+      shortWhy: claimRecommendation.reason,
+      narrativeSentence: `The stronger RP-524 basis appears to be unequal assessment because the ${comparisonSetLabel} show meaningful equity-ratio variation.`,
       unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
       unlawfulNotSupportedNote,
       misclassificationNotSupportedNote,
       appSupportsComparableGroundsOnly: true,
     };
   }
-  if(excessiveSupport){
-    const why = `Check "Excessive assessment" in RP-524 Part Three because your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average, which points to overvaluation more than unequal treatment.`;
+  if(claimRecommendation?.code==="EXCESSIVE" || claimRecommendation?.code==="EXCESSIVE_PRIMARY"){
     return {
       primaryCode: "excessive",
       primaryLabel: "Excessive Assessment",
       displayLabel: "Excessive Assessment",
-      secondaryCode: null,
-      secondaryLabel: "",
-      selectionLabel: 'Check "Excessive assessment"',
-      why,
-      shortWhy: `Your current full market value is ${$f(Math.abs(fullMarketValueGap))} above the selected comp package average, which points to overvaluation more than unequal treatment.`,
-      narrativeSentence: "The stronger RP-524 basis appears to be excessive assessment because the subject's full market value remains above the selected comp package.",
+      secondaryCode: claimRecommendation.code==="EXCESSIVE_PRIMARY" ? "unequal_secondary" : null,
+      secondaryLabel: claimRecommendation.code==="EXCESSIVE_PRIMARY" ? "Unequal Assessment (Secondary)" : "",
+      selectionLabel: claimRecommendation.selectionLabel || 'Check "Excessive assessment"',
+      why: claimRecommendation.reason,
+      shortWhy: claimRecommendation.reason,
+      narrativeSentence: `The stronger RP-524 basis appears to be excessive assessment because the ${comparisonSetLabel} do not show enough equity-ratio spread to make unequal assessment the cleaner primary argument.`,
       unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
       unlawfulNotSupportedNote,
       misclassificationNotSupportedNote,
       appSupportsComparableGroundsOnly: true,
     };
   }
-  const manualReviewWhy = sameClass
-    ? `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.`
-    : `The current comparable package does not clearly support unequal or excessive assessment, and the app does not have enough classification evidence to recommend unlawful or misclassification grounds.`;
+  const manualReviewWhy = `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.`;
   return {
     primaryCode: "manual_review",
     primaryLabel: "Manual Review Needed",
@@ -2705,6 +2947,7 @@ const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, met
   const assessedReduction = suggestedValue != null && Number.isFinite(subject?.assessedValue) ? Math.max(subject.assessedValue - suggestedValue, 0) : null;
   const grievanceDay = grievanceDayLabel(meta, subject);
   const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
+  const claimRecommendation = neighborResult?.claimRecommendation || null;
   const checklist = [
     { label: "Owner name", value: subject?.owner1 || "-", note: "RP-524 owner or complainant field" },
     { label: "Mailing address", value: mailingAddress || "-", note: "Use the assessment roll mailing address unless it needs correction" },
@@ -2715,10 +2958,14 @@ const buildGrievanceFilingHelper = (subject, subjectProfile, neighborResult, met
     { label: "Current assessed value", value: Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-", note: "Roll value from the assessment record" },
     { label: "Current full market value", value: Number.isFinite(subject?.fullMarketValue) ? $f(subject.fullMarketValue) : "-", note: "Roll full market value" },
     { label: "Equity ratio", value: subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-", note: "Useful grievance talking point from this app" },
+    { label: "Recommended claim type", value: claimRecommendation?.label || "-", note: claimRecommendation?.reason || "Claim type could not be determined from the current package." },
     { label: "Recommended RP-524 complaint reason", value: complaintReasonGuidance.selectionLabel, note: complaintReasonGuidance.why },
     { label: `${labelPrefix} FMV average`, value: Number.isFinite(neighborResult?.grievanceAvgFMV) ? $f(neighborResult.grievanceAvgFMV) : "-", note: `${labelPrefix} average FMV for the homes currently included in the grievance package` },
     { label: `${labelPrefix} assessed average`, value: supportingCompAssessedAverage, note: `${labelPrefix} average assessed value for the homes currently included in the grievance package` },
-    { label: "Suggested requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueMethod==="weighted_median" ? "Weighted median of the strongest selected grievance comps." : neighborResult?.suggestedRequestedAssessedValueMethod==="lower_of_weighted_average_or_midpoint" ? "Conservative value from the two strongest selected grievance comps." : (neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the selected package does not support an automatic requested value.") },
+    { label: "Comp-based value estimate", value: Number.isFinite(neighborResult?.suggestedValueMethodA) ? $f(neighborResult.suggestedValueMethodA) : "-", note: "If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?" },
+    { label: "Equity-ratio value estimate", value: Number.isFinite(neighborResult?.suggestedValueMethodB) ? $f(neighborResult?.suggestedValueMethodB) : "-", note: "If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?" },
+    { label: "Suggested requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueMethod==="method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : neighborResult?.suggestedRequestedAssessedValueMethod==="method_a" ? "The comp-based value estimate produced the lower filing recommendation." : (neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the selected package does not support an automatic requested value.") },
+    { label: "Separate overassessment check", value: neighborResult?.overvaluationFlag?.active ? "Yes" : "No", note: neighborResult?.overvaluationFlag?.message || "The separate overassessment check is unavailable because the equalization-rate benchmark is not available." },
     { label: "Potential assessed value reduction", value: assessedReduction!=null ? $f(assessedReduction) : "-", note: assessedReduction!=null ? `Dollar tax savings are not shown here because tax rates are not loaded in Neighbor Compare. Use the Savings Estimator tab and your current tax bill to convert this ${$f(assessedReduction)} assessment reduction into annual dollar savings.` : "A suggested requested value is needed before the reduction amount can be calculated.", action: assessedReduction!=null ? "open_estimator" : null },
     { label: `${labelPrefix} list`, value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}% | ${parcel?._grievanceRelevance?.badge || "Assessment signal unavailable"}`).join("; ") : "-", note: neighborResult?.grievancePackageCustom ? "This list reflects your current custom grievance selection." : "The default grievance package keeps only comps with positive grievance-support scores and sufficient quality/confidence." },
   ];
@@ -2765,6 +3012,7 @@ const humanCaseStrengthLabel = label => {
   if(label==="strong") return "Strong";
   if(label==="moderate") return "Moderate";
   if(label==="weak") return "Weak";
+  if(label==="research_only") return "Research only";
   return "Do Not Recommend";
 };
 const buildCaseNormalizedMetricSupport = (selectedComps=[]) => {
@@ -2873,6 +3121,16 @@ const buildNeighborhoodBenchmark = (subject, subjectProfile, parcels=[]) => {
 const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighborhoodBenchmark=null, totalComparableCount=0, salesByParcelId=null}) => {
   const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
   const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
+  const marketSaleModel = neighborResult?.marketSaleModel || null;
+  const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+  const overvaluationFlag = neighborResult?.overvaluationFlag || null;
+  const subjectSaleModel = neighborResult?.subjectSaleModel || computeSubjectSaleSignalWithSpec(subject, salesByParcelId, new Date());
+  const claimRecommendation = neighborResult?.claimRecommendation || null;
+  const analysisState = neighborResult?.analysisState || (selectedComps.length ? "grievance_package" : visibleComps.length ? "research_only" : "no_matches");
+  const noPackageReasonCode = neighborResult?.noPackageReasonCode || (analysisState==="no_matches" ? "no_physical_matches" : analysisState==="research_only" ? "mixed_research_only" : null);
+  const noPackageReasonText = neighborResult?.noPackageReasonText || (analysisState==="no_matches"
+    ? "No comparable homes were found within the current search parameters, so the app could not build a grievance package."
+    : "");
   const supportingSelected = selectedComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0);
   const moderateOrBetterSelected = selectedComps.filter(parcel=>["strong_support", "moderate_support"].includes(parcel?._grievanceRelevance?.kind));
   const supportingVisible = visibleComps.filter(parcel=>Number(parcel?._grievanceSupportScore) > 0);
@@ -2883,8 +3141,15 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
   const topSupportAverage = meanComparableValue(selectedComps.map(parcel=>parcel?._grievanceSupportScore).filter(Number.isFinite).sort((a,b)=>b-a).slice(0, 3), 1) || 0;
   const avgQuality = meanComparableValue(selectedComps.map(parcel=>parcel?._comparableQualityScore), 1) || 0;
   const avgConfidence = meanComparableValue(selectedComps.map(parcel=>parcel?._dataConfidenceScore), 1) || 0;
-  const normalizedMetricModel = buildCaseNormalizedMetricSupport(selectedComps);
-  const benchmarkContribution = neighborhoodBenchmark?.interpretationLabel==="supportive" ? 10 : neighborhoodBenchmark?.interpretationLabel==="mild_support" ? 6 : 0;
+  const fallbackNormalizedMetricModel = buildCaseNormalizedMetricSupport(selectedComps);
+  const normalizedMetricModel = neighborResult?.normalizedMetricSupport && Number.isFinite(Number(neighborResult.normalizedMetricSupport.score))
+    ? neighborResult.normalizedMetricSupport
+    : {
+        ...fallbackNormalizedMetricModel,
+        label: neighborResult?.normalizedMetricSupport?.label || fallbackNormalizedMetricModel.label,
+        detail: neighborResult?.normalizedMetricSupport?.detail || fallbackNormalizedMetricModel.detail,
+      };
+  const benchmarkContribution = overvaluationFlag?.active ? 10 : neighborhoodEquityModel?.codWarning ? 8 : neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) >= 75 ? 6 : 0;
   const weakensShare = visibleCount > 0 ? weakensVisible.length / visibleCount : 0;
   const score = clampNumber(Math.round(
     clampNumber(topSupportAverage / 35, 0, 1) * 35 +
@@ -2910,39 +3175,62 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
     caseStrengthLabel = "moderate";
     downgradeReasons.push("A strong rating is not allowed when the neighborhood benchmark is neutral and equity ratios are at parity.");
   }
-  const recommendedAction = caseStrengthLabel==="strong"
-    ? "recommend_filing"
-    : caseStrengthLabel==="moderate"
-      ? "recommend_filing_with_caution"
-      : caseStrengthLabel==="weak"
-        ? "review_manually"
-        : "do_not_recommend";
+  if(selectedComps.length===1 && (caseStrengthLabel==="strong" || caseStrengthLabel==="moderate")){
+    caseStrengthLabel = "weak";
+    downgradeReasons.push("Only 1 comparable is selected. A single comp is not enough support for more than a weak case assessment.");
+  }
+  const researchOnlySignals = !!(
+    overvaluationFlag?.active ||
+    (marketSaleModel?.available && Number(marketSaleModel?.impliedDifference) > 0) ||
+    (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel?.subjectPercentile) >= 75) ||
+    subjectSaleModel?.status==="supports"
+  );
+  if(analysisState==="research_only") caseStrengthLabel = "research_only";
+  if(analysisState==="no_matches" && !selectedComps.length) caseStrengthLabel = "do_not_recommend";
+  const recommendedAction = caseStrengthLabel==="research_only"
+    ? (researchOnlySignals ? "review_manually" : "do_not_recommend")
+    : caseStrengthLabel==="strong"
+      ? "recommend_filing"
+      : caseStrengthLabel==="moderate"
+        ? "recommend_filing_with_caution"
+        : caseStrengthLabel==="weak"
+          ? "review_manually"
+          : "do_not_recommend";
   const scoreReasons = [];
-  if(moderateOrBetterSelected.length){
+  if(analysisState==="research_only" || analysisState==="no_matches"){
+    if(noPackageReasonText) scoreReasons.push(noPackageReasonText);
+  }else if(moderateOrBetterSelected.length){
     scoreReasons.push(`${moderateOrBetterSelected.length} selected comps are moderate support or better.`);
   }else if(supportingSelected.length){
     scoreReasons.push(`${supportingSelected.length} selected comps still show some positive grievance support.`);
   }else{
     scoreReasons.push("No selected comps currently produce a positive grievance-support score.");
   }
-  scoreReasons.push(`Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`);
-  const normalizedMetricReason = normalizedMetricModel.label==="supportive" && moderateOrBetterSelected.length < 3 && weakensVisible.length > 0
-    ? "The selected comp's normalized metrics support the grievance, but the overall case is still limited by thin support and opposing visible comps."
-    : normalizedMetricModel.detail;
-  scoreReasons.push(normalizedMetricReason);
-  if(neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
-  if(weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length===1?" weakens":"s weaken"} the case.`);
-  const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
-  if(subjectSale && isRecentArmsLengthSale(subjectSale, 3) && Number(subjectSale?.sale_price) > 0 && Number(subject?.fullMarketValue) > 0){
-    const ratio = Number(subjectSale.sale_price) / Number(subject.fullMarketValue);
-    if(ratio <= 0.9) scoreReasons.push("Your own recent arm's-length sale is below the current full market value estimate.");
-    else if(ratio >= 1.05) scoreReasons.push("Your own recent arm's-length sale is close to or above the current full market value estimate.");
+  if(selectedComps.length){
+    scoreReasons.push(`Average comp quality is ${avgQuality.toFixed(1)} and average data confidence is ${avgConfidence.toFixed(1)}.`);
+    const normalizedMetricReason = normalizedMetricModel.label==="supportive" && moderateOrBetterSelected.length < 3 && weakensVisible.length > 0
+      ? "The selected comp's normalized metrics support the grievance, but the overall case is still limited by thin support and opposing visible comps."
+      : normalizedMetricModel.detail;
+    scoreReasons.push(normalizedMetricReason);
+    if(selectedComps.length===1) scoreReasons.push("Only 1 comparable is selected. A single comp is not enough support for more than a weak case assessment.");
+  }else if(visibleComps.length){
+    scoreReasons.push(`Visible research comps found: ${visibleComps.length}. None cleared the full package gates for automatic filing support.`);
   }
+  if(overvaluationFlag?.active) scoreReasons.push(`An independent overvaluation check is positive: your assessed value exceeds the equalization-rate benchmark by ${$f(overvaluationFlag.overvaluationExcess)}.`);
+  if(marketSaleModel?.available) scoreReasons.push(`Recent neighborhood sale evidence implies an estimated market value of ${$f(marketSaleModel.estimatedSubjectFmv)} for your home.`);
+  else if(marketSaleModel?.note) scoreReasons.push(marketSaleModel.note);
+  if(neighborhoodEquityModel?.available) scoreReasons.push(`Your neighborhood equity percentile is ${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th, with a COD (consistency measure) of ${Number(neighborhoodEquityModel.cod).toFixed(1)}.`);
+  if(neighborhoodEquityModel?.codWarning) scoreReasons.push(neighborhoodEquityModel.codWarning);
+  else if(neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
+  if(analysisState==="research_only" && claimRecommendation?.reason) scoreReasons.push(claimRecommendation.reason);
+  if(weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length===1?" weakens":"s weaken"} the case.`);
+  if(subjectSaleModel?.status==="supports") scoreReasons.push("Your own recent arm's-length sale is below the current full market value estimate.");
+  else if(subjectSaleModel?.status==="weakens") scoreReasons.push("Your own recent arm's-length sale is close to or above the current full market value estimate.");
   const complaintReasonGuidance = buildComplaintReasonGuidance(subject, subjectProfile, neighborResult, neighborhoodBenchmark);
   const caseStrengthDisplay = `${humanCaseStrengthLabel(caseStrengthLabel)} (${complaintReasonGuidance.displayLabel})`;
   return {
     score,
-    caseBand: caseStrengthLabel==="strong" ? "strong case" : caseStrengthLabel==="moderate" ? "possible case" : caseStrengthLabel==="weak" ? "weak case" : "do not recommend",
+    caseBand: caseStrengthLabel==="strong" ? "strong case" : caseStrengthLabel==="moderate" ? "possible case" : caseStrengthLabel==="weak" ? "weak case" : caseStrengthLabel==="research_only" ? "research only" : "do not recommend",
     supportingSelectedCount: supportingSelected.length,
     moderateOrBetterCount: moderateOrBetterSelected.length,
     visibleSupportCount: supportingVisible.length,
@@ -2960,6 +3248,10 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
     caseStrengthLabel,
     caseStrength: caseStrengthDisplay,
     caseStrengthBase: humanCaseStrengthLabel(caseStrengthLabel),
+    analysisState,
+    noPackageReasonCode,
+    noPackageReasonText,
+    selectionOutcomeCounts: neighborResult?.selectionOutcomeCounts || null,
     complaintReasonGuidance,
     why: [...new Set(scoreReasons)].slice(0, 6),
   };
@@ -2981,11 +3273,15 @@ const buildAppealRecommendation = ({subject, neighborResult, readiness}) => {
         : "Do not recommend";
   let keyReason = "The current evidence does not clearly point to a supported lower assessment.";
   if(readiness.recommendedAction==="recommend_filing"){
-    keyReason = `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the package points toward a lower supported assessment.`;
+    keyReason = `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the package points toward a lower supported assessment under ${neighborResult?.claimRecommendation?.label || "the current claim model"}.`;
   }else if(readiness.recommendedAction==="recommend_filing_with_caution"){
-    keyReason = "Some selected comps support filing, but the evidence still has meaningful limitations.";
+    keyReason = "Some selected comps support filing, but the evidence still has meaningful limitations or counter-signals.";
   }else if(readiness.recommendedAction==="review_manually"){
-    keyReason = "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
+    keyReason = readiness.caseStrengthLabel==="research_only"
+      ? (neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence.")
+      : "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
+  }else if(readiness.caseStrengthLabel==="research_only"){
+    keyReason = neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence.";
   }
   return {
     recommendation,
@@ -3002,8 +3298,16 @@ const buildAppealRecommendation = ({subject, neighborResult, readiness}) => {
 const buildAppealEvidence = ({subject, subjectProfile, neighborResult, readiness, neighborhoodBenchmark, salesByParcelId=null}) => {
   const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
   const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
+  const marketSaleModel = neighborResult?.marketSaleModel || null;
+  const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+  const overvaluationFlag = neighborResult?.overvaluationFlag || null;
+  const subjectSaleModel = neighborResult?.subjectSaleModel || computeSubjectSaleSignalWithSpec(subject, salesByParcelId, new Date());
+  const analysisState = neighborResult?.analysisState || (selectedComps.length ? "grievance_package" : visibleComps.length ? "research_only" : "no_matches");
   const supportItems = [];
   const againstItems = [];
+  if((analysisState==="research_only" || analysisState==="no_matches") && neighborResult?.noPackageReasonText){
+    againstItems.push(neighborResult.noPackageReasonText);
+  }
   if(readiness.moderateOrBetterCount){
     supportItems.push(`${readiness.moderateOrBetterCount} selected comp${readiness.moderateOrBetterCount===1?" is":"s are"} moderate support or better.`);
   }
@@ -3013,34 +3317,52 @@ const buildAppealEvidence = ({subject, subjectProfile, neighborResult, readiness
   if(readiness.normalizedMetricLabel==="supportive" || readiness.normalizedMetricLabel==="mixed_supportive"){
     supportItems.push("Normalized metrics support the grievance more than raw assessed value alone.");
   }
+  if(overvaluationFlag?.active){
+    supportItems.push(`An independent overvaluation check supports the case because your assessed value is ${$f(overvaluationFlag.overvaluationExcess)} above the equalization-rate benchmark.`);
+  }
+  if(marketSaleModel?.available){
+    supportItems.push(`Recent arm's-length sales suggest a market value around ${$f(marketSaleModel.estimatedSubjectFmv)} for your home.`);
+  }
+  if(neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) >= 75){
+    supportItems.push(`Your neighborhood equity percentile is ${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th, which leans high relative to the sale-backed neighborhood sample.`);
+  }
+  if(neighborhoodEquityModel?.codWarning){
+    supportItems.push(neighborhoodEquityModel.codWarning);
+  }
+  if(analysisState==="research_only" && /^EXCESSIVE/.test(neighborResult?.claimRecommendation?.code || "")){
+    supportItems.push(neighborResult.claimRecommendation.reason);
+  }
   if(neighborhoodBenchmark?.interpretationLabel==="supportive" || neighborhoodBenchmark?.interpretationLabel==="mild_support"){
     supportItems.push(neighborhoodBenchmark.interpretation);
   }
-  const supportiveSales = selectedComps.filter(parcel=>{
-    if(!(Number(parcel?._grievanceSupportScore) > 0)) return false;
-    const sale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
-    return sale && isRecentArmsLengthSale(sale, 3);
-  });
+  const compSaleEvidence = selectedComps
+    .filter(parcel=>Number(parcel?._grievanceSupportScore) > 0)
+    .map(parcel=>({ parcel, evidence: parcel?._saleEvidence || parcel?.saleEvidence || null }))
+    .filter(entry=>entry.evidence?.qualifies);
+  const supportiveSales = compSaleEvidence.filter(entry=>entry.evidence.status==="supports");
+  const weakeningSales = compSaleEvidence.filter(entry=>entry.evidence.status==="weakens");
   if(supportiveSales.length){
-    supportItems.push(`${supportiveSales.length} selected supporting comp${supportiveSales.length===1?" has":"s have"} recent arm's-length sales.`);
+    supportItems.push(`${supportiveSales.length} selected supporting comp${supportiveSales.length===1?" has":"s have"} recent arm's-length sale evidence that supports the grievance.`);
+  }
+  if(weakeningSales.length){
+    againstItems.push(`${weakeningSales.length} selected supporting comp${weakeningSales.length===1?" has":"s have"} recent arm's-length sale evidence that weakens the grievance signal.`);
   }
   const weakensVisible = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind === "weakens_case");
   if(weakensVisible.length){
     againstItems.push(`${weakensVisible.length} visible comp${weakensVisible.length===1?" weakens":"s weaken"} the case and could be used as assessor counter-evidence.`);
   }
   if(readiness.selectedEquityParity) againstItems.push("Selected comps have equity ratios close to yours, which weakens the unequal-assessment argument.");
+  if(neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) < 55) againstItems.push("The neighborhood equity distribution does not place your parcel unusually high in the sale-backed sample.");
   if(neighborhoodBenchmark?.interpretationLabel==="neutral") againstItems.push("The neighborhood benchmark is neutral.");
   if(selectedComps.length < 3) againstItems.push("Fewer than 3 comps are selected in the package.");
   if(neighborResult?.suggestedRequestedAssessedValueReviewManually) againstItems.push("The suggested requested value needs manual review because the selected comp values are spread out.");
-  const subjectSale = getMostRecentArmsLengthSale(subject, salesByParcelId);
-  if(subjectSale && isRecentArmsLengthSale(subjectSale, 3) && Number(subjectSale?.sale_price) > 0 && Number(subject?.fullMarketValue) > 0){
-    const ratio = Number(subjectSale.sale_price) / Number(subject.fullMarketValue);
-    if(ratio >= 0.95){
-      againstItems.push("A recent arm's-length sale of the subject may support the current full market value estimate.");
-    }else if(ratio <= 0.9){
-      supportItems.push("A recent arm's-length sale of the subject sits below the current full market value estimate.");
-    }
+  if(subjectSaleModel?.status==="weakens"){
+    againstItems.push("A recent arm's-length sale of the subject may support the current full market value estimate.");
+  }else if(subjectSaleModel?.status==="supports"){
+    supportItems.push("A recent arm's-length sale of the subject sits below the current full market value estimate.");
   }
+  const riskFlagCount = selectedComps.reduce((sum, comp)=>sum + ((comp?._riskFlags || []).length ? 1 : 0), 0);
+  if(riskFlagCount) againstItems.push(`${riskFlagCount} selected comp${riskFlagCount===1?" carries":"s carry"} assessor challenge flags such as size, neighborhood, bath, or sale-history issues.`);
   if(!supportItems.length) supportItems.push("The current package does not yet contain a strong, well-supported filing signal.");
   if(!againstItems.length) againstItems.push("No major counter-signals stand out in the current comparable set.");
   return {
@@ -3055,6 +3377,129 @@ const escapePrintableHtml = (value) => (value == null ? "" : String(value))
   .replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;")
   .replace(/'/g, "&#39;");
+const comparablePrintableLatLng = (parcel, profileOverride=null) => {
+  const profile = profileOverride || parcel?._compProfile || buildComparableProfile(parcel);
+  const lat = Number(profile?.latitude ?? parcel?.latitude);
+  const lng = Number(profile?.longitude ?? parcel?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+};
+const buildComparableMapPreviewHtml = ({ subject, selectedComps=[] }={}) => {
+  if(!subject || !selectedComps.length) return "";
+  const subjectProfile = subject?._compProfile || buildComparableProfile(subject);
+  const subjectLatLng = comparablePrintableLatLng(subject, subjectProfile);
+  const compEntries = (selectedComps || []).map((parcel, idx) => {
+    const profile = parcel?._compProfile || buildComparableProfile(parcel);
+    return {
+      parcel,
+      profile,
+      index: idx + 1,
+      latLng: comparablePrintableLatLng(parcel, profile),
+    };
+  });
+  const plottedEntries = [
+    { kind:"subject", label:"Subject", color:"#f59e0b", textColor:"#7c2d12", parcel:subject, profile:subjectProfile, latLng:subjectLatLng },
+    ...compEntries.filter(entry => entry.latLng).map(entry => ({
+      kind:"compare",
+      label:`Comp ${entry.index}`,
+      color:"#2563eb",
+      textColor:"#ffffff",
+      parcel:entry.parcel,
+      profile:entry.profile,
+      latLng:entry.latLng,
+      index:entry.index,
+    })),
+  ].filter(entry => entry.latLng);
+  if(plottedEntries.length < 2) return "";
+  const latitudes = plottedEntries.map(entry => entry.latLng[0]);
+  const longitudes = plottedEntries.map(entry => entry.latLng[1]);
+  const minLatBase = Math.min(...latitudes);
+  const maxLatBase = Math.max(...latitudes);
+  const minLngBase = Math.min(...longitudes);
+  const maxLngBase = Math.max(...longitudes);
+  const latSpanBase = Math.max(maxLatBase - minLatBase, 0.0018);
+  const lngSpanBase = Math.max(maxLngBase - minLngBase, 0.0018);
+  const minLat = minLatBase - latSpanBase * 0.16;
+  const maxLat = maxLatBase + latSpanBase * 0.16;
+  const minLng = minLngBase - lngSpanBase * 0.16;
+  const maxLng = maxLngBase + lngSpanBase * 0.16;
+  const width = 820;
+  const height = 430;
+  const padX = 44;
+  const padY = 34;
+  const toPlotPoint = ([lat, lng]) => {
+    const x = padX + ((lng - minLng) / Math.max(maxLng - minLng, 0.000001)) * (width - padX * 2);
+    const y = padY + (1 - ((lat - minLat) / Math.max(maxLat - minLat, 0.000001))) * (height - padY * 2);
+    return [Number.isFinite(x) ? x : width / 2, Number.isFinite(y) ? y : height / 2];
+  };
+  const plottedWithCoords = plottedEntries.map(entry => ({
+    ...entry,
+    plot: toPlotPoint(entry.latLng),
+  }));
+  const subjectPoint = plottedWithCoords.find(entry => entry.kind==="subject") || null;
+  const gridLines = [0.2, 0.4, 0.6, 0.8].map(stop => {
+    const x = padX + ((width - padX * 2) * stop);
+    const y = padY + ((height - padY * 2) * stop);
+    return `<g>
+      <line x1="${x.toFixed(1)}" y1="${padY}" x2="${x.toFixed(1)}" y2="${height - padY}" stroke="rgba(148,163,184,.28)" stroke-width="1" />
+      <line x1="${padX}" y1="${y.toFixed(1)}" x2="${width - padX}" y2="${y.toFixed(1)}" stroke="rgba(148,163,184,.22)" stroke-width="1" />
+    </g>`;
+  }).join("");
+  const compLines = subjectPoint ? plottedWithCoords.filter(entry => entry.kind==="compare").map(entry => `<line x1="${subjectPoint.plot[0].toFixed(1)}" y1="${subjectPoint.plot[1].toFixed(1)}" x2="${entry.plot[0].toFixed(1)}" y2="${entry.plot[1].toFixed(1)}" stroke="rgba(37,99,235,.26)" stroke-width="2.4" stroke-dasharray="7 6" />`).join("") : "";
+  const mapMarkers = plottedWithCoords.map(entry => {
+    const [x, y] = entry.plot;
+    const badgeText = entry.kind==="subject" ? "S" : String(entry.index);
+    const bubbleWidth = entry.kind==="subject" ? 34 : 26;
+    const badgeFill = entry.kind==="subject" ? "#f59e0b" : "#2563eb";
+    const badgeTextColor = entry.kind==="subject" ? "#7c2d12" : "#ffffff";
+    const labelText = escapePrintableHtml(entry.kind==="subject" ? `Subject | ${entry.parcel?.address || entry.parcel?.parcelId || "Parcel"}` : `Comp ${entry.index} | ${entry.parcel?.address || entry.parcel?.parcelId || "Comparable"}`);
+    const labelY = y - 20;
+    return `<g>
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${entry.kind==="subject" ? 12 : 10}" fill="${badgeFill}" stroke="#ffffff" stroke-width="3" />
+      <text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${badgeTextColor}">${badgeText}</text>
+      <rect x="${Math.max(12, x - 8)}" y="${Math.max(10, labelY - 13)}" rx="12" ry="12" width="${Math.min(286, Math.max(120, labelText.length * 5.8))}" height="24" fill="rgba(255,255,255,.94)" stroke="${badgeFill}" stroke-width="1.2" />
+      <text x="${Math.max(24, x + 4)}" y="${Math.max(26, labelY + 3)}" font-size="11" font-weight="700" fill="#0f172a">${labelText}</text>
+    </g>`;
+  }).join("");
+  const missingCoordsCount = compEntries.filter(entry => !entry.latLng).length;
+  const legendItems = [
+    `<div class="print-map-legend-item">
+      <span class="print-map-chip subject">Subject</span>
+      <div><strong>${escapePrintableHtml(subject?.address || subject?.parcelId || "Subject parcel")}</strong><div class="print-map-legend-meta">${escapePrintableHtml(subject?.owner1 || subject?.parcelId || "")}</div></div>
+    </div>`,
+    ...compEntries.map(entry => `<div class="print-map-legend-item">
+      <span class="print-map-chip compare">Comp ${entry.index}</span>
+      <div><strong>${escapePrintableHtml(entry.parcel?.address || entry.parcel?.parcelId || `Comp ${entry.index}`)}</strong><div class="print-map-legend-meta">${escapePrintableHtml(entry.parcel?.owner1 || entry.parcel?.parcelId || "")}</div></div>
+    </div>`),
+  ].join("");
+  return `
+    <section class="section">
+      <h2>Comparable map overview</h2>
+      <p>This simplified map is included in the packet so you can show where the subject parcel and the selected grievance comps sit relative to one another.</p>
+      <div class="print-map-shell">
+        <div class="print-map-frame">
+          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Comparable map overview" class="print-map-svg">
+            <defs>
+              <linearGradient id="compMapBg" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#eff6ff" />
+                <stop offset="100%" stop-color="#eef2ff" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="${width}" height="${height}" rx="22" fill="url(#compMapBg)" />
+            <rect x="${padX - 10}" y="${padY - 10}" width="${width - (padX - 10) * 2}" height="${height - (padY - 10) * 2}" rx="18" fill="rgba(255,255,255,.58)" stroke="rgba(148,163,184,.26)" stroke-width="1.5" />
+            ${gridLines}
+            ${compLines}
+            ${mapMarkers}
+          </svg>
+        </div>
+        <div class="print-map-legend">
+          <div class="print-map-legend-title">Map legend</div>
+          ${legendItems}
+          <div class="print-map-note">Gold marks the subject parcel. Blue numbered markers show the grievance comps included in this packet.</div>
+          ${missingCoordsCount ? `<div class="print-map-note">Location data was unavailable for ${missingCoordsCount} selected comp${missingCoordsCount===1?"":"s"}, so they are listed in the report but not plotted on this map.</div>` : ""}
+        </div>
+      </div>
+    </section>`;
+};
 const buildComparablePrintReportHtml = ({
   subject,
   subjectProfile,
@@ -3076,14 +3521,20 @@ const buildComparablePrintReportHtml = ({
     : selectedComps;
   const generatedAt = new Date().toLocaleString();
   const summaryLabelPrefix = neighborResult?.grievancePackageCustom ? "Selected grievance comp" : "Supporting comp";
+  const claimRecommendation = neighborResult?.claimRecommendation || null;
+  const overvaluationFlag = neighborResult?.overvaluationFlag || null;
+  const marketSaleModel = neighborResult?.marketSaleModel || null;
+  const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+  const subjectSaleModel = neighborResult?.subjectSaleModel || null;
+  const comparableMapHtml = buildComparableMapPreviewHtml({ subject, selectedComps });
   const selectionMethodHtml = `
     <section class="section">
       <h2>How comparable homes are chosen</h2>
       <ul>
-        <li>The visible comparable list starts with residential class compatibility, location, living area, year built, beds, baths, style, and full market value alignment. It keeps up to 12 physically credible matches.</li>
-        <li>The default grievance package is narrower. A home must clear the quality gate, the data-confidence gate, and a positive grievance-support score. Lower assessed value alone is not enough.</li>
-        <li>When enough evidence exists, the package usually keeps 3 to 5 homes. It favors strong or moderate support first, limits over-concentration from the same street, and avoids weaker duplicates.</li>
-        <li>The homeowner can still include or remove comps manually. The summary, narrative, and suggested requested value update from that live selection.</li>
+        <li>The full visible list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</li>
+        <li>A narrower default grievance package is then suggested. A comp must clear the quality gate, the data-confidence gate, and earn positive grievance support from raw assessed value plus normalized metrics.</li>
+        <li>Lower assessed value alone is not enough. The app also checks assessed value per square foot, equity ratio, recent arm's-length sale evidence, and package-assembly rules such as same-street limits and corroborating strong comps.</li>
+        <li>The complete authoritative rules are documented in GRIEVANCE_APP_COMPLETE_SPEC.md. This printable report is a user-facing summary of that engine.</li>
       </ul>
     </section>`;
   const checklistRows = (grievanceHelper?.checklist || []).map(item => `
@@ -3098,7 +3549,13 @@ const buildComparablePrintReportHtml = ({
     const profile = parcel?._compProfile || buildComparableProfile(parcel);
     const delta = parcel?._compDelta || {};
     const relevance = parcel?._grievanceRelevance || classifyGrievanceComparable(subject, parcel);
+    const explanation = relevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevance?.kind || "neutral");
     const reasons = (parcel?._compReasons || []).map(reason => `<li>${escapePrintableHtml(reason)}</li>`).join("");
+    const riskFlags = (parcel?._riskFlags || []).map(flag => `<li>${escapePrintableHtml(flag)}</li>`).join("");
+    const adjustedAv = Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
+    const adjustedDelta = adjustedAv!=null && Number.isFinite(Number(subject?.assessedValue)) ? adjustedAv - Number(subject.assessedValue) : null;
+    const adjustedSupport = parcel?._adjustmentBreakdown?.adjustedSupportLabel || null;
+    const supportBreakdownRows = (explanation?.breakdownRows || []).map(row => `<li><strong>${escapePrintableHtml(row.label)}:</strong> ${escapePrintableHtml(row.valueText)}. ${escapePrintableHtml(row.explanation)}${row.whyItMatters ? ` Why it matters: ${escapePrintableHtml(row.whyItMatters)}` : ""}</li>`).join("");
     return `
       <section class="comp-card ${escapePrintableHtml(relevance.kind)}">
         <div class="comp-head">
@@ -3108,19 +3565,26 @@ const buildComparablePrintReportHtml = ({
           </div>
           <div class="status ${escapePrintableHtml(relevance.kind)}">${escapePrintableHtml(relevance.badge)}</div>
         </div>
-        <div class="status-copy"><strong>${escapePrintableHtml(relevance.headline)}.</strong> ${escapePrintableHtml(relevance.detail)}</div>
+        <div class="status-copy"><strong>${escapePrintableHtml(explanation.summaryHeadline)}.</strong> ${escapePrintableHtml(explanation.summaryText)}</div>
+        <div class="status-copy"><strong>Main reason:</strong> ${escapePrintableHtml(explanation.primaryReason)}</div>
+        ${parcel?._marginalSupport ? `<div class="status-copy"><strong>Marginal support:</strong> Small assessed value gap may disappear after adjustments.</div>` : ""}
         <table>
           <thead><tr><th>Metric</th><th>You</th><th>Comp</th><th>Delta</th></tr></thead>
           <tbody>
             <tr><td>Assessed</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml($f(parcel?.assessedValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.assessed))}</td></tr>
+            <tr><td>Adjusted AV</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml(adjustedAv!=null ? $f(adjustedAv) : "-")}</td><td>${escapePrintableHtml(adjustedDelta!=null ? formatSignedComparableMoney(adjustedDelta) : "-")}</td></tr>
             <tr><td>FMV</td><td>${escapePrintableHtml($f(subject?.fullMarketValue))}</td><td>${escapePrintableHtml($f(parcel?.fullMarketValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.fmv))}</td></tr>
             <tr><td>Equity %</td><td>${escapePrintableHtml(subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-")}</td><td>${escapePrintableHtml(profile?.equity != null ? profile.equity + "%" : "-")}</td><td>${escapePrintableHtml(formatSignedComparableCount(delta.equity, "%"))}</td></tr>
             <tr><td>Living area</td><td>${escapePrintableHtml(subjectProfile?.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(profile?.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-")}</td></tr>
             <tr><td>Year built</td><td>${escapePrintableHtml(subjectProfile?.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(profile?.yearBuilt != null ? String(profile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-")}</td></tr>
             <tr><td>Bedrooms</td><td>${escapePrintableHtml(subjectProfile?.bedrooms != null ? String(subjectProfile.bedrooms) : "-")}</td><td>${escapePrintableHtml(profile?.bedrooms != null ? String(profile.bedrooms) : "-")}</td><td>${escapePrintableHtml(delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-")}</td></tr>
             <tr><td>Baths</td><td>${escapePrintableHtml(subjectProfile?.bathText || "-")}</td><td>${escapePrintableHtml(profile?.bathText || "-")}</td><td>${escapePrintableHtml(delta.baths != null ? formatSignedComparableCount(delta.baths) : "-")}</td></tr>
+            <tr><td>Adjusted support</td><td>-</td><td>${escapePrintableHtml(adjustedSupport || "-")}</td><td>${escapePrintableHtml(parcel?._adjustmentNarrative || "-")}</td></tr>
           </tbody>
         </table>
+        ${(supportBreakdownRows || "") ? `<div class="why-title">Why this support level</div><ul>${supportBreakdownRows}</ul>` : ""}
+        ${parcel?._adjustmentNarrative ? `<div class="status-copy"><strong>Adjustment narrative:</strong> ${escapePrintableHtml(parcel._adjustmentNarrative)}</div>` : ""}
+        ${riskFlags ? `<div class="why-title">Assessor challenge flags</div><ul>${riskFlags}</ul>` : ""}
         <div class="why-title">Why this home was included</div>
         <ul>${reasons || "<li>No selection reasons were recorded for this comp.</li>"}</ul>
       </section>`;
@@ -3135,10 +3599,15 @@ const buildComparablePrintReportHtml = ({
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(selectedComps.length))}</div><div>Selected grievance comps</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(neighborResult.grievanceModerateOrBetterCount ?? 0))}</div><div>Moderate support or better</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Suggested requested assessed value</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedValueMethodA != null ? $f(neighborResult.suggestedValueMethodA) : "-")}</div><div>Comp-based value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedValueMethodB != null ? $f(neighborResult.suggestedValueMethodB) : "-")}</div><div>Equity-ratio value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "-")}</div><div>Recommended claim type</div></div>
       </div>
       <p><strong>Selection method:</strong> The default grievance package keeps homes with positive grievance-support scores plus adequate quality and confidence. Lower assessed value alone does not qualify a home.</p>
       <p><strong>Package quality:</strong> Average quality score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageQualityScore) ? Number(neighborResult.grievanceAverageQualityScore).toFixed(1) : "-")} | Average confidence score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageConfidenceScore) ? Number(neighborResult.grievanceAverageConfidenceScore).toFixed(1) : "-")}.</p>
       <p><strong>Normalized metrics:</strong> ${escapePrintableHtml(neighborResult?.normalizedMetricSupport?.detail || "No normalized-metric summary is available.")}</p>
+      <p><strong>Suggested value method:</strong> ${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a requested assessed value.")}</p>
+      ${neighborResult?.scarWarning ? `<p><strong>SCAR warning:</strong> ${escapePrintableHtml(neighborResult.scarWarning)}</p>` : ""}
     </section>` : `
     <section>
       <h2>Grievance summary</h2>
@@ -3158,6 +3627,8 @@ const buildComparablePrintReportHtml = ({
       <p><strong>Recommended RP-524 complaint reason:</strong> ${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.selectionLabel || "Review RP-524 Part Three manually before choosing a complaint reason.")}</p>
       <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.why || "")}</p>
       <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.unsupportedGroundsNote || "")}</p>
+      <p><strong>Recommended claim type:</strong> ${escapePrintableHtml(claimRecommendation?.label || "Manual review")}</p>
+      <p>${escapePrintableHtml(claimRecommendation?.reason || "")}</p>
       ${(appealSummary.why || []).length ? `<div class="subhead">Why this recommendation</div><ul>${appealSummary.why.map(item=>`<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
       ${(appealReadiness.why || []).length ? `<div class="subhead">Why this score</div><ul>${appealReadiness.why.map(item=>`<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
     </section>` : "";
@@ -3197,6 +3668,60 @@ const buildComparablePrintReportHtml = ({
       </div>
       <p>${escapePrintableHtml(neighborhoodBenchmark.interpretation || "")}</p>
     </section>` : "";
+  const valuationModelHtml = `
+    <section class="section">
+      <h2>Valuation model outputs</h2>
+      <div class="summary-grid">
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "-")}</div><div>Recommended claim type</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedValueMethodA != null ? $f(neighborResult.suggestedValueMethodA) : "-")}</div><div>Comp-based value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedValueMethodB != null ? $f(neighborResult?.suggestedValueMethodB) : "-")}</div><div>Equity-ratio value estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Filing recommendation</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(overvaluationFlag?.active ? "Yes" : "No")}</div><div>Separate overassessment check</div></div>
+      </div>
+      <p>${escapePrintableHtml(claimRecommendation?.reason || "Claim recommendation is not available from the current package.")}</p>
+      <p>${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a filing value.")}</p>
+      ${overvaluationFlag?.message ? `<p>${escapePrintableHtml(overvaluationFlag.message)}</p>` : ""}
+      ${neighborResult?.scarWarning ? `<p><strong>SCAR warning:</strong> ${escapePrintableHtml(neighborResult.scarWarning)}</p>` : ""}
+    </section>`;
+  const marketModelHtml = `
+    <section class="section">
+      <h2>Market and equity models</h2>
+      <div class="evidence-grid">
+        <div class="evidence-box neutral">
+          <div class="subhead">Market value estimate</div>
+          ${marketSaleModel?.available ? `
+            <p>${escapePrintableHtml(`${marketSaleModel.saleCount} recent arm's-length sales${marketSaleModel.expandedRadius ? " | radius expanded to 1.5 miles" : ""}`)}</p>
+            <ul>
+              <li>Neighborhood median sale $/sq ft: ${escapePrintableHtml(`$${Number(marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`)}</li>
+              <li>Estimated subject FMV: ${escapePrintableHtml(marketSaleModel.estimatedSubjectFmv != null ? $f(marketSaleModel.estimatedSubjectFmv) : "-")}</li>
+              <li>Implied gap versus assessed value: ${escapePrintableHtml(marketSaleModel.impliedDifference != null ? `${marketSaleModel.impliedDifference>=0?"+":""}${$f(Math.abs(marketSaleModel.impliedDifference))}` : "-")}</li>
+            </ul>
+            ${marketSaleModel.note ? `<p>${escapePrintableHtml(marketSaleModel.note)}</p>` : ""}
+          ` : `<p>${escapePrintableHtml(marketSaleModel?.note || "Insufficient recent sales for market estimate.")}</p>`}
+        </div>
+        <div class="evidence-box neutral">
+          <div class="subhead">Neighborhood equity distribution</div>
+          ${neighborhoodEquityModel?.available ? `
+            <p>${escapePrintableHtml(`${neighborhoodEquityModel.sampleSize} sale-backed ratios | ${neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : "Subject neighborhood sample"}`)}</p>
+            <ul>
+              <li>Neighborhood median ratio: ${escapePrintableHtml(neighborhoodEquityModel.medianRatio != null ? `${(neighborhoodEquityModel.medianRatio * 100).toFixed(1)}%` : "-")}</li>
+              <li>Your ratio: ${escapePrintableHtml(neighborhoodEquityModel.subjectRatio != null ? `${(neighborhoodEquityModel.subjectRatio * 100).toFixed(1)}%` : "-")}</li>
+              <li>Your percentile: ${escapePrintableHtml(neighborhoodEquityModel.subjectPercentile != null ? `${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th` : "-")}</li>
+              <li>COD (consistency measure): ${escapePrintableHtml(neighborhoodEquityModel.cod != null ? Number(neighborhoodEquityModel.cod).toFixed(1) : "-")}</li>
+              <li>IAAO standard: ${escapePrintableHtml(`<= ${Number(neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`)}</li>
+            </ul>
+            ${buildNeighborhoodPercentileExplanation(neighborhoodEquityModel) ? `<p>${escapePrintableHtml(buildNeighborhoodPercentileExplanation(neighborhoodEquityModel))}</p>` : ""}
+            ${buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel) ? `<p>${escapePrintableHtml(buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel))}</p>` : ""}
+            ${buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel) ? `<p><strong>${escapePrintableHtml(buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel))}</strong></p>` : ""}
+            ${neighborhoodBenchmark?.interpretation ? `<p>${escapePrintableHtml(`Separate neighborhood benchmark: ${neighborhoodBenchmark.interpretation}`)}</p>` : ""}
+            ${neighborhoodEquityModel.codWarning ? `<p>${escapePrintableHtml(neighborhoodEquityModel.codWarning)}</p>` : ""}
+          ` : `<p>${escapePrintableHtml(neighborhoodEquityModel?.note || "Insufficient sales data for neighborhood equity analysis.")}</p>`}
+        </div>
+      </div>
+      ${subjectSaleModel?.note ? `<p>${escapePrintableHtml(subjectSaleModel.note)}</p>` : ""}
+      ${subjectSaleModel?.status==="supports" ? `<p>${escapePrintableHtml("Your recent arm's-length subject sale sits materially below the current FMV estimate, which supports the grievance.")}</p>` : ""}
+      ${subjectSaleModel?.status==="weakens" ? `<p>${escapePrintableHtml("Your recent arm's-length subject sale sits at or above the current FMV estimate, which may support the assessor's position.")}</p>` : ""}
+    </section>`;
   return `<!doctype html>
 <html>
 <head>
@@ -3225,7 +3750,7 @@ const buildComparablePrintReportHtml = ({
   th,td{border:1px solid #cbd5e1;padding:8px;vertical-align:top;text-align:left;font-size:12px}
   th{background:#f8fafc}
   ul{margin:8px 0 0 18px}
-  .comp-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:14px;page-break-inside:avoid}
+  .comp-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:22px;page-break-inside:avoid}
   .comp-card.strong_support,.comp-card.moderate_support{border-color:#86efac;background:#f0fdf4}
   .comp-card.weak_support{border-color:#fcd34d;background:#fffbeb}
   .comp-card.weakens_case{border-color:#fecaca;background:#fef2f2}
@@ -3240,9 +3765,23 @@ const buildComparablePrintReportHtml = ({
   .status.neutral{color:#475569}
   .status-copy{font-size:12px;margin-top:10px}
   .why-title{font-weight:700;font-size:12px;margin-top:10px}
+  .print-map-shell{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(240px,.9fr);gap:14px;align-items:stretch}
+  .print-map-frame{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:12px}
+  .print-map-svg{width:100%;height:auto;display:block}
+  .print-map-legend{background:#f8fafc;border:1px solid #cbd5e1;border-radius:14px;padding:12px;display:grid;gap:10px}
+  .print-map-legend-title{font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.06em}
+  .print-map-legend-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:flex-start}
+  .print-map-chip{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+  .print-map-chip.subject{background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.30);color:#92400e}
+  .print-map-chip.compare{background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.22);color:#1d4ed8}
+  .print-map-legend-meta{font-size:11px;color:#64748b;margin-top:2px}
+  .print-map-note{font-size:11px;color:#475569;line-height:1.55}
   @media print{
     body{margin:16px}
     a{text-decoration:none;color:inherit}
+  }
+  @media (max-width:900px){
+    .summary-grid,.evidence-grid,.print-map-shell{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -3259,7 +3798,10 @@ const buildComparablePrintReportHtml = ({
   ${appealSummaryHtml}
   ${appealEvidenceHtml}
   ${benchmarkHtml}
+  ${valuationModelHtml}
+  ${marketModelHtml}
   ${summaryHtml}
+  ${comparableMapHtml}
   ${selectionMethodHtml}
   <section class="section">
     <h2>Auto-generated grievance narrative</h2>
@@ -3364,22 +3906,8 @@ const buildGrievanceSupportScore = ({subject, subjectProfile, comp, compProfile,
     },
   };
 };
-const sortVisibleComparableCandidates = (subject, candidates=[]) => candidates
-  .slice()
-  .sort((a,b)=>
-    (Number(b?._comparableQualityScore || 0) - Number(a?._comparableQualityScore || 0)) ||
-    (Number(b?._dataConfidenceScore || 0) - Number(a?._dataConfidenceScore || 0)) ||
-    ((a?._distanceMiles ?? 999) - (b?._distanceMiles ?? 999)) ||
-    ((a?._fmvPctDiff ?? 999) - (b?._fmvPctDiff ?? 999))
-  );
-const sortGrievanceCandidatePool = (candidates=[]) => candidates
-  .slice()
-  .sort((a,b)=>
-    (Number(b?._grievanceSupportScore || 0) - Number(a?._grievanceSupportScore || 0)) ||
-    (Number(b?._comparableQualityScore || 0) - Number(a?._comparableQualityScore || 0)) ||
-    (Number(b?._dataConfidenceScore || 0) - Number(a?._dataConfidenceScore || 0)) ||
-    ((a?._distanceMiles ?? 999) - (b?._distanceMiles ?? 999))
-  );
+const sortVisibleComparableCandidates = (subject, candidates=[]) => sortVisibleComparableCandidatesWithSpec(candidates);
+const sortGrievanceCandidatePool = (candidates=[]) => sortGrievanceCandidatePoolWithSpec(candidates);
 const comparableDominates = (a, b) => {
   if(!a || !b) return false;
   const qualityA = Number(a?._comparableQualityScore || 0);
@@ -3409,102 +3937,38 @@ const buildPackageDecisionRecord = (status, reasonCode, candidateKind="neutral")
   reasonCode,
   message: buildPackageDecisionMessage(reasonCode, candidateKind),
 });
-const selectGrievancePackage = (candidatePool=[]) => {
-  const strongOrModerate = candidatePool.filter(comp=>["strong_support", "moderate_support"].includes(comp?._grievanceRelevance?.kind));
-  const weakSupport = candidatePool.filter(comp=>comp?._grievanceRelevance?.kind === "weak_support");
-  const targetCount = strongOrModerate.length >= 3 ? Math.min(5, strongOrModerate.length) : Math.min(5, strongOrModerate.length + Math.min(2, weakSupport.length));
-  const pool = strongOrModerate.length >= 3 ? strongOrModerate : strongOrModerate.concat(weakSupport.slice(0, 2));
-  const selected = [];
-  const decisionById = new Map();
-  for(const candidate of pool){
-    const candidateId = normalizeParcelId(candidate?.parcelIdNorm || candidate?.parcelId || candidate?.printKey || candidate?.pinSbl);
-    const streetKey = streetNameKeyForComp(candidate?.address);
-    const candidateKind = candidate?._grievanceRelevance?.kind || "neutral";
-    const candidateNeighborhood = parcelNeighborhoodName(candidate);
-    if(selected.length >= targetCount){
-      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "package_limit", candidateKind));
-      continue;
-    }
-    if(streetKey && selected.filter(comp=>streetNameKeyForComp(comp?.address)===streetKey).length >= 2) continue;
-    if(streetKey && selected.filter(comp=>streetNameKeyForComp(comp?.address)===streetKey).length >= 2){
-      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "same_street_cap", candidateKind));
-      continue;
-    }
-    const dominatedBySelected = candidateKind==="strong_support" ? false : selected.some(other=>comparableDominates(other, candidate) && (streetNameKeyForComp(other?.address)===streetKey || parcelNeighborhoodName(other)===candidateNeighborhood));
-    if(dominatedBySelected){
-      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "dominated_similar", candidateKind));
-      continue;
-    }
-    const selectedAssessed = selected.map(comp=>Number(comp?.assessedValue)).filter(Number.isFinite);
-    if(selectedAssessed.length >= 2 && Number.isFinite(Number(candidate?.assessedValue))){
-      const medianAssessed = medianValue(selectedAssessed);
-      if(Number.isFinite(medianAssessed) && Number(candidate.assessedValue) < medianAssessed * 0.8){
-        if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("excluded", "assessed_outlier", candidateKind));
-        continue;
-      }
-    }
-    const replaceIndex = candidateKind==="strong_support" ? -1 : selected.findIndex(other=>comparableDominates(candidate, other) && streetNameKeyForComp(other?.address)===streetKey);
-    const corroboratingStrong = candidateKind==="strong_support" && selected.some(other=>(other?._grievanceRelevance?.kind==="strong_support") && (streetNameKeyForComp(other?.address)===streetKey || parcelNeighborhoodName(other)===candidateNeighborhood));
-    if(replaceIndex >= 0){
-      const replaced = selected[replaceIndex];
-      const replacedId = normalizeParcelId(replaced?.parcelIdNorm || replaced?.parcelId || replaced?.printKey || replaced?.pinSbl);
-      if(replacedId) decisionById.set(replacedId, buildPackageDecisionRecord("excluded", "replaced_by_stronger_same_street", replaced?._grievanceRelevance?.kind || "neutral"));
-      selected.splice(replaceIndex, 1, candidate);
-      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", "included_replacement", candidateKind));
-    }else{
-      selected.push(candidate);
-      if(candidateId) decisionById.set(candidateId, buildPackageDecisionRecord("included", corroboratingStrong ? "included_strong_corroboration" : "included_default", candidateKind));
-    }
-  }
-  return { selected, decisionById, targetCount };
-};
-const annotateComparablePackageDecisions = (visibleComps=[], grievanceCandidatePool=[], decisionById=new Map()) => {
-  const selectedIdSet = new Set();
-  for(const [id, decision] of decisionById.entries()){
-    if(decision?.status==="included") selectedIdSet.add(id);
-  }
-  const gatePoolIdSet = new Set((grievanceCandidatePool || []).map(comp=>normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)).filter(Boolean));
-  return (visibleComps || []).map(comp => {
-    if(!comp) return comp;
-    const id = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
-    const decision = (id && decisionById.get(id)) || (!gatePoolIdSet.has(id)
-      ? buildPackageDecisionRecord(
-          selectedIdSet.has(id) ? "included" : "excluded",
-          Number(comp?._grievanceSupportScore) <= 0 ? "support_gate" : Number(comp?._dataConfidenceScore) < 60 ? "confidence_gate" : Number(comp?._comparableQualityScore) < 50 ? "quality_gate" : "package_limit",
-          comp?._grievanceRelevance?.kind || "neutral"
-        )
-      : buildPackageDecisionRecord(selectedIdSet.has(id) ? "included" : "excluded", selectedIdSet.has(id) ? "included_default" : "package_limit", comp?._grievanceRelevance?.kind || "neutral"));
-    comp._packageDecision = decision;
-    comp._selectionDiagnostics = {
-      ...(comp._selectionDiagnostics || {}),
-      packageDecision: decision,
-    };
-    return comp;
-  });
-};
+const selectGrievancePackage = (candidatePool=[], subjectProfile=null) => selectGrievancePackageWithSpec(candidatePool, subjectProfile);
+const annotateComparablePackageDecisions = (visibleComps=[], grievanceCandidatePool=[], decisionById=new Map()) => annotateComparablePackageDecisionsWithSpec(visibleComps, grievanceCandidatePool, decisionById).map(comp => {
+  if(!comp) return comp;
+  comp._selectionDiagnostics = {
+    ...(comp._selectionDiagnostics || {}),
+    packageDecision: comp._packageDecision || comp.packageDecision || null,
+    selectionIndicator: comp._selectionIndicator || comp.selectionIndicator || null,
+  };
+  return comp;
+});
 const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
-  const candidate = buildComparableCandidate(subject, comp, { subjectProfile });
+  const candidate = buildComparableCandidate(subject, comp, { subjectProfile, sharedSnapshotMode: true });
   if(candidate) return candidate;
   const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
   const compProfile = buildComparableProfile(comp);
   const location = comparableLocationContext(subject, comp, baseSubjectProfile, compProfile);
-  const supportModel = buildGrievanceSupportScore({
-    subject,
+  const fallbackCandidate = buildComparableCandidate(subject, comp, {
     subjectProfile: baseSubjectProfile,
-    comp,
     compProfile,
-    comparableQualityScore: 60,
-    dataConfidenceScore: 60,
-    ignoreScorePenalties: true,
+    allowBroadClass: true,
+    sharedSnapshotMode: true,
   });
+  const supportScore = Number(fallbackCandidate?._grievanceSupportScore || 0);
+  const supportLabel = fallbackCandidate?._grievanceSupportLabel || grievanceSupportLabelForScore(supportScore);
   const snapshotCandidate = {
     ...comp,
     _compScore: 0,
     _comparableQualityScore: 0,
     _dataConfidenceScore: 0,
     _dataConfidenceLabel: "low",
-    _grievanceSupportScore: supportModel.score,
-    _grievanceSupportLabel: supportModel.label,
+    _grievanceSupportScore: supportScore,
+    _grievanceSupportLabel: supportLabel,
     _compReasons: [
       "Included from shared comparable snapshot",
       location.sameNeighborhood ? "Same neighborhood: " + baseSubjectProfile.neighborhood : null,
@@ -3522,10 +3986,10 @@ const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
     _fmvPctDiff: comparePctDelta(subject?.fullMarketValue, comp?.fullMarketValue),
     _selectionDiagnostics: {
       selectedBecause: ["Included from a shared snapshot and preserved exactly as shared."],
-      supportingBecause: supportModel.supportingBecause,
+      supportingBecause: fallbackCandidate?._selectionDiagnostics?.supportingBecause || [],
       confidenceNotes: ["Snapshot mode bypasses normal quality and confidence scoring."],
       disqualifyingConcerns: ["Snapshot comps may fall outside the normal comparable-selection rules."],
-      normalizedMetricsSummary: supportModel.normalizedMetricsSummary,
+      normalizedMetricsSummary: fallbackCandidate?._selectionDiagnostics?.normalizedMetricsSummary || {},
     },
     _compSnapshotIncluded: true,
   };
@@ -3538,191 +4002,55 @@ const buildComparableCandidate = (subject, comp, options={}) => {
   if(!isResidentialPropClass(subject?.propClass)) return null;
   const subjectProfile = options?.subjectProfile || buildComparableProfile(subject);
   const compProfile = options?.compProfile || buildComparableProfile(comp);
-  const classCompatibility = classCompatibilityTier(subject, comp, { allowBroadClass: !!options?.allowBroadClass });
-  if(classCompatibility.tier==="tier_3_incompatible") return null;
-  if(!Number.isFinite(Number(comp?.assessedValue)) && !Number.isFinite(Number(comp?.fullMarketValue))) return null;
-  const location = comparableLocationContext(subject, comp, subjectProfile, compProfile);
-  if(Number.isFinite(location.distanceMiles) && location.distanceMiles > (options?.maxDistanceMiles ?? 4)) return null;
-  const reasons = [classCompatibility.label];
-  const allSignals = [];
-  const physicalFieldsUsed = [];
-  const confidenceNotes = [];
-  const disqualifyingConcerns = [];
-  const subjectSqft = subjectProfile.livingArea;
-  const compSqft = compProfile.livingArea;
-  const livingAreaPct = comparePctDelta(subjectSqft, compSqft);
-  if(livingAreaPct!=null && livingAreaPct>0.6) return null;
-  const subjectYear = subjectProfile.yearBuilt;
-  const compYear = compProfile.yearBuilt;
-  const yearDiff = subjectYear!=null && compYear!=null ? Math.abs(compYear - subjectYear) : null;
-  if(yearDiff!=null && yearDiff>100) return null;
-  const subjectBeds = subjectProfile.bedrooms;
-  const compBeds = compProfile.bedrooms;
-  const bedDiff = subjectBeds!=null && compBeds!=null ? Math.abs(compBeds - subjectBeds) : null;
-  if(bedDiff!=null && bedDiff>3) return null;
-  const subjectBaths = subjectProfile.bathCount;
-  const compBaths = compProfile.bathCount;
-  const bathDiff = subjectBaths!=null && compBaths!=null ? Math.abs(compBaths - subjectBaths) : null;
-  if(bathDiff!=null && bathDiff>2.5) return null;
-
-  const locationScore = locationSimilarityScore(location);
-  if(location.sameNeighborhood) allSignals.push("Neighborhood");
-  else if(location.sameZip) allSignals.push("ZIP");
-  if(location.sameStreet) allSignals.push("Street");
-  if(location.sameNeighborhood && Number.isFinite(location.distanceMiles)) reasons.push(`Same neighborhood within ${location.distanceMiles.toFixed(2)} mi`);
-  else if(location.sameStreet) reasons.push("Same street");
-  else if(location.sameZip) reasons.push(`Same ZIP${Number.isFinite(location.distanceMiles) ? ` within ${location.distanceMiles.toFixed(2)} mi` : ""}`);
-  else if(Number.isFinite(location.distanceMiles)) reasons.push(`Within ${location.distanceMiles.toFixed(2)} mi`);
-
-  let livingAreaScore = 0;
-  if(livingAreaPct != null){
-    physicalFieldsUsed.push("Living area");
-    if(livingAreaPct <= 0.05) livingAreaScore = 18;
-    else if(livingAreaPct <= 0.10) livingAreaScore = 16;
-    else if(livingAreaPct <= 0.15) livingAreaScore = 13;
-    else if(livingAreaPct <= 0.25) livingAreaScore = 9;
-    else if(livingAreaPct <= 0.40) livingAreaScore = 4;
-    reasons.push(`Living area within ${Math.round(livingAreaPct * 100)}%`);
-  }else{
-    confidenceNotes.push("Living area is missing on one side.");
-  }
-
-  let yearScore = 0;
-  if(yearDiff != null){
-    physicalFieldsUsed.push("Year built");
-    if(yearDiff === 0) yearScore = 10;
-    else if(yearDiff <= 5) yearScore = 9;
-    else if(yearDiff <= 10) yearScore = 7;
-    else if(yearDiff <= 20) yearScore = 5;
-    else if(yearDiff <= 40) yearScore = 2;
-    reasons.push(yearDiff===0 ? `Same year built (${compYear})` : `Year built within ${yearDiff} years`);
-  }else{
-    confidenceNotes.push("Year built is missing on one side.");
-  }
-
-  let bedroomScore = 0;
-  if(bedDiff != null){
-    physicalFieldsUsed.push("Bedrooms");
-    bedroomScore = bedDiff===0 ? 8 : bedDiff===1 ? 6 : bedDiff===2 ? 3 : 1;
-    reasons.push(bedDiff===0 ? "Same bedroom count" : `Bedroom count within ${bedDiff}`);
-  }else{
-    confidenceNotes.push("Bedroom count is missing on one side.");
-  }
-
-  let bathroomScore = 0;
-  if(bathDiff != null){
-    physicalFieldsUsed.push("Baths");
-    if(bathDiff === 0) bathroomScore = 8;
-    else if(bathDiff <= 0.5) bathroomScore = 7;
-    else if(bathDiff <= 1.0) bathroomScore = 5;
-    else if(bathDiff <= 1.5) bathroomScore = 2;
-    else bathroomScore = 1;
-    reasons.push(bathDiff===0 ? "Same bath count" : `Bath count within ${bathDiff}`);
-  }else{
-    confidenceNotes.push("Bath count is missing on one side.");
-  }
-
-  let styleScore = 0;
-  if(subjectProfile?.style || compProfile?.style) physicalFieldsUsed.push("Style");
-  if(subjectProfile?.styleFamily==="unknown" || compProfile?.styleFamily==="unknown"){
-    styleScore = 2;
-    reasons.push("Style match is uncertain");
-  }else if(subjectProfile?.styleFamily && compProfile?.styleFamily && subjectProfile.styleFamily===compProfile.styleFamily){
-    styleScore = 6;
-    reasons.push(`Same style family (${subjectProfile.styleFamily.replace(/_/g, " ")})`);
-  }
-
-  const valuePct = comparePctDelta(subject?.fullMarketValue, comp?.fullMarketValue);
-  let fmvScore = 0;
-  if(valuePct != null){
-    if(valuePct <= 0.05) fmvScore = 10;
-    else if(valuePct <= 0.10) fmvScore = 8;
-    else if(valuePct <= 0.20) fmvScore = 5;
-    else if(valuePct <= 0.35) fmvScore = 2;
-    if(fmvScore > 0){
-      reasons.push(`Market value within ${Math.round(valuePct * 100)}%`);
-      allSignals.push("Market value");
-    }
-  }else{
-    confidenceNotes.push("Full market value is missing on one side.");
-  }
-
-  const usablePhysicalFieldCount = physicalFieldsUsed.length;
-  let qualityPenalty = 0;
-  if(usablePhysicalFieldCount < 2) qualityPenalty -= 20;
-  else if(usablePhysicalFieldCount < 3) qualityPenalty -= 12;
-  if(subjectSqft==null || compSqft==null) qualityPenalty -= 6;
-  if(subjectYear==null || compYear==null) qualityPenalty -= 3;
-  if((subjectBeds==null || compBeds==null) && (subjectBaths==null || compBaths==null)) qualityPenalty -= 5;
-  const missingHardCheckPairs = [livingAreaPct==null, yearDiff==null, bedDiff==null, bathDiff==null].filter(Boolean).length;
-  if(missingHardCheckPairs >= 2 && usablePhysicalFieldCount < 2) qualityPenalty -= 8;
-
-  const comparableQualityScore = clampNumber(Math.round(
-    classCompatibility.score +
-    locationScore +
-    livingAreaScore +
-    yearScore +
-    bedroomScore +
-    bathroomScore +
-    styleScore +
-    fmvScore +
-    qualityPenalty
-  ), 0, 100);
-
-  let dataConfidenceScore = 100;
-  if(subjectSqft==null || compSqft==null){ dataConfidenceScore -= 18; }
-  if(!Number.isFinite(Number(subject?.assessedValue)) || !Number.isFinite(Number(comp?.assessedValue))){ dataConfidenceScore -= 12; confidenceNotes.push("Assessed value is missing on one side."); }
-  if(!Number.isFinite(Number(subject?.fullMarketValue)) || !Number.isFinite(Number(comp?.fullMarketValue))){ dataConfidenceScore -= 8; }
-  if(subjectYear==null || compYear==null){ dataConfidenceScore -= 8; }
-  if(subjectBeds==null || compBeds==null){ dataConfidenceScore -= 6; }
-  if(subjectBaths==null || compBaths==null){ dataConfidenceScore -= 6; }
-  if(subjectProfile?.styleFamily==="unknown" || compProfile?.styleFamily==="unknown"){ dataConfidenceScore -= 5; confidenceNotes.push("Style-family normalization is incomplete."); }
-  if(location.distanceMiles==null){ dataConfidenceScore -= 5; confidenceNotes.push("Distance could not be calculated from parcel coordinates."); }
-  if(physicalFieldsUsed.length < 3){ dataConfidenceScore -= 10; }
-  dataConfidenceScore = clampNumber(Math.round(dataConfidenceScore), 0, 100);
-  const dataConfidenceLabel = dataConfidenceScore >= 80 ? "high" : dataConfidenceScore >= 60 ? "medium" : "low";
-
-  if(classCompatibility.tier!=="tier_0_exact") disqualifyingConcerns.push(classCompatibility.label + ".");
-  if(Number.isFinite(location.distanceMiles) && location.distanceMiles > 1) disqualifyingConcerns.push(`Comp is ${location.distanceMiles.toFixed(2)} miles away.`);
-  if(livingAreaPct != null && livingAreaPct > 0.25) disqualifyingConcerns.push("Living area gap is wider than ideal.");
-  if(yearDiff != null && yearDiff > 20) disqualifyingConcerns.push("Year-built gap is wider than ideal.");
-  if(dataConfidenceLabel==="low") disqualifyingConcerns.push("Data confidence is low.");
-
-  const supportModel = buildGrievanceSupportScore({
+  const analysis = analyzeComparableCandidateWithSpec({
     subject,
-    subjectProfile,
     comp,
+    subjectProfile,
     compProfile,
-    comparableQualityScore,
-    dataConfidenceScore,
+    salesByParcelId: options?.salesByParcelId || null,
+    allowBroadClass: !!options?.allowBroadClass,
+    cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+    currentDate: options?.currentDate || new Date(),
+    sharedSnapshotMode: !!options?.sharedSnapshotMode,
   });
+  if(!analysis) return null;
   const delta = buildComparableDelta(subject, comp, subjectProfile, compProfile);
-  const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter(label => !physicalFieldsUsed.includes(label));
+  const unusedPhysicalFields = subjectProfile.availablePhysicalFields.filter(label => !analysis.physicalFieldsUsed.includes(label));
   const candidate = {
     ...comp,
-    _compScore: comparableQualityScore,
-    _comparableQualityScore: comparableQualityScore,
-    _dataConfidenceScore: dataConfidenceScore,
-    _dataConfidenceLabel: dataConfidenceLabel,
-    _grievanceSupportScore: supportModel.score,
-    _grievanceSupportLabel: supportModel.label,
-    _classCompatibility: classCompatibility,
-    _distanceMiles: location.distanceMiles,
-    _fmvPctDiff: valuePct,
-    _compReasons: reasons,
-    _compSignals: allSignals.concat(physicalFieldsUsed),
-    _compEvidenceCount: physicalFieldsUsed.length,
-    _compPhysicalFieldsUsed: physicalFieldsUsed,
+    qualityScore: analysis.qualityScore,
+    confidenceScore: analysis.confidenceScore,
+    grievanceSupport: analysis.grievanceSupport,
+    supportLabel: analysis.supportLabel,
+    marginalSupport: analysis.marginalSupport,
+    saleEvidence: analysis.saleEvidence,
+    riskFlags: analysis.riskFlags,
+    _compScore: analysis.qualityScore,
+    _comparableQualityScore: analysis.qualityScore,
+    _dataConfidenceScore: analysis.confidenceScore,
+    _dataConfidenceLabel: analysis.confidenceLabel,
+    _grievanceSupportScore: analysis.grievanceSupport,
+    _grievanceSupportLabel: analysis.supportLabel,
+    _marginalSupport: analysis.marginalSupport,
+    _saleEvidence: analysis.saleEvidence,
+    _riskFlags: analysis.riskFlags,
+    _classCompatibility: analysis.classCompatibility,
+    _distanceMiles: analysis.location.distanceMiles,
+    _fmvPctDiff: analysis.fmvPctDiff,
+    _compReasons: analysis.reasons,
+    _compSignals: analysis.signals,
+    _compEvidenceCount: analysis.physicalFieldsUsed.length,
+    _compPhysicalFieldsUsed: analysis.physicalFieldsUsed,
     _compUnusedPhysicalFields: unusedPhysicalFields,
     _compPhysicalFieldCountPossible: subjectProfile.availablePhysicalFields.length,
     _compProfile: compProfile,
     _compDelta: delta,
     _selectionDiagnostics: {
-      selectedBecause: reasons,
-      supportingBecause: supportModel.supportingBecause,
-      confidenceNotes,
-      disqualifyingConcerns,
-      normalizedMetricsSummary: supportModel.normalizedMetricsSummary,
+      selectedBecause: analysis.reasons,
+      supportingBecause: analysis.saleEvidence?.reasons || [],
+      confidenceNotes: analysis.confidenceNotes,
+      disqualifyingConcerns: analysis.disqualifyingConcerns,
+      normalizedMetricsSummary: analysis.normalizedMetricsSummary,
     },
   };
   candidate._grievanceRelevance = classifyGrievanceComparable(subject, candidate);
@@ -3735,6 +4063,12 @@ const buildComparableResult = (subject, parcels, options={}) => {
   const exactCompIds = [...new Set((options?.exactCompIds||[]).map(normalizeParcelId).filter(Boolean))];
   const requestedDatasetKey = (options?.snapshotDatasetKey || "").trim();
   const currentDatasetKey = (options?.currentDatasetKey || "").trim();
+  const engineOptions = {
+    salesByParcelId: options?.salesByParcelId || null,
+    meta: options?.meta || {},
+    cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+    currentDate: options?.currentDate || new Date(),
+  };
   let neighbors = [];
   let comparableMode = "physical";
   let snapshot = {
@@ -3771,7 +4105,7 @@ const buildComparableResult = (subject, parcels, options={}) => {
     snapshot.missingCompIds = exactCompIds.filter(compId=>!snapshot.resolvedCompIds.includes(compId));
   }else if(residential){
     const collectVisible = (allowBroadClass=false) => sortVisibleComparableCandidates(subject, (parcels || [])
-      .map(comp => buildComparableCandidate(subject, comp, { subjectProfile, allowBroadClass, maxDistanceMiles: 4 }))
+      .map(comp => buildComparableCandidate(subject, comp, { subjectProfile, allowBroadClass, ...engineOptions }))
       .filter(Boolean)
       .filter(comp => Number(comp?._comparableQualityScore) >= 40)
     ).slice(0, 12);
@@ -3794,10 +4128,16 @@ const buildComparableResult = (subject, parcels, options={}) => {
         defaultPool = fallbackPool;
       }
     }
-    const grievancePackageSelection = selectGrievancePackage(defaultPool);
+    const grievancePackageSelection = selectGrievancePackage(defaultPool, subjectProfile);
     const grievanceCandidates = grievancePackageSelection.selected;
     neighbors = annotateComparablePackageDecisions(neighbors, defaultPool, grievancePackageSelection.decisionById);
-    const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates);
+    const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates, {
+      visibleComps: neighbors,
+      parcels,
+      salesByParcelId: engineOptions.salesByParcelId,
+      meta: engineOptions.meta,
+      currentDate: engineOptions.currentDate,
+    });
     const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/neighbors.length) : null;
     const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/neighbors.length) : null;
     const avgEquity = neighbors.length ? meanComparableValue(neighbors.map(comp=>comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
@@ -3813,8 +4153,18 @@ const buildComparableResult = (subject, parcels, options={}) => {
         .map(comp=>({
           parcelId: comp?.parcelId,
           address: comp?.address,
-          excludedReason: comp?._packageDecision?.message || (Number(comp?._grievanceSupportScore) <= 0 ? "Did not clear the grievance-support gate." : Number(comp?._dataConfidenceScore) < 60 ? "Did not clear the confidence gate." : "Was out-ranked by stronger or more diverse package comps."),
-          wouldHaveBeenSelectedIf: Number(comp?._grievanceSupportScore) <= 0 ? "its normalized support metrics were stronger" : Number(comp?._dataConfidenceScore) < 60 ? "its data were more complete" : comp?._packageDecision?.reasonCode==="same_street_cap" ? "fewer same-street comps had already been selected" : comp?._packageDecision?.reasonCode==="package_limit" ? "the default package had more room" : "the selected package had fewer stronger comps on the same street or with similar scores",
+          excludedReason: comp?._selectionIndicator?.message || comp?._packageDecision?.message || (Number(comp?._grievanceSupportScore) <= 0 ? "Stayed neutral after normalization." : Number(comp?._dataConfidenceScore) < 60 ? "Supportive direction, but confidence was too weak." : "Was out-ranked by stronger or more diverse package comps."),
+          wouldHaveBeenSelectedIf: comp?._selectionIndicator?.code==="neutral_after_normalization"
+            ? "its normalized support metrics were more favorable"
+            : comp?._selectionIndicator?.code==="supportive_but_failed_confidence"
+              ? "its underlying data were more complete"
+            : comp?._selectionIndicator?.code==="supportive_but_failed_quality"
+                ? "it was a closer physical match"
+                : comp?._packageDecision?.reasonCode==="same_street_cap"
+                  ? "fewer same-street comps had already been selected"
+                  : comp?._packageDecision?.reasonCode==="package_limit"
+                    ? "the default package had more room"
+                    : "the selected package had fewer stronger comps on the same street or with similar scores",
         })),
     };
     return {
@@ -3845,10 +4195,16 @@ const buildComparableResult = (subject, parcels, options={}) => {
   const grievanceCandidatePool = exactCompIds.length
     ? sortGrievanceCandidatePool(neighbors.filter(comp => Number(comp?._grievanceSupportScore) > 0))
     : [];
-  const grievancePackageSelection = exactCompIds.length ? selectGrievancePackage(grievanceCandidatePool) : { selected: [], decisionById: new Map(), targetCount: 0 };
+  const grievancePackageSelection = exactCompIds.length ? selectGrievancePackage(grievanceCandidatePool, subjectProfile) : { selected: [], decisionById: new Map(), targetCount: 0 };
   const grievanceCandidates = grievancePackageSelection.selected;
   neighbors = annotateComparablePackageDecisions(neighbors, grievanceCandidatePool, grievancePackageSelection.decisionById);
-  const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates);
+  const summary = buildSelectedGrievancePackage(subject, subjectProfile, grievanceCandidates, {
+    visibleComps: neighbors,
+    parcels,
+    salesByParcelId: engineOptions.salesByParcelId,
+    meta: engineOptions.meta,
+    currentDate: engineOptions.currentDate,
+  });
   const avgFMV = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.fullMarketValue||0),0)/neighbors.length) : null;
   const avgAssessed = neighbors.length ? Math.round(neighbors.reduce((sum, comp)=>sum+(comp.assessedValue||0),0)/neighbors.length) : null;
   const avgEquity = neighbors.length ? meanComparableValue(neighbors.map(comp=>comp?._compProfile?.equity ?? parseFloat(eqRFast(comp))), 1) : null;
@@ -3903,50 +4259,26 @@ const broadenTierLabel = (tier) => {
 const buildBroadenedComparableResult = (subject, parcels, options={}) => {
   if(!subject || !Array.isArray(parcels)) return [];
   const subjectProfile = options?.subjectProfile || buildComparableProfile(subject);
-  const existingIds = new Set((options?.existingCompIds || []).map(normalizeParcelId).filter(Boolean));
-  const subjectNeighborhood = subjectProfile.neighborhood || "";
-  const subjectStreet = streetNameKeyForComp(subject.address);
-  const maxTier = Number.isFinite(options?.maxTier) ? options.maxTier : 1;
   const exactClassCount = (parcels || []).filter(parcel=>
     normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)!==normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl) &&
     String(parcel?.propClass || "")===String(subject?.propClass || "")
   ).length;
   const allowBroadClass = options?.allowBroadClass ?? (exactClassCount < 3);
-  const candidates = parcels.map(comp => {
-    const compId = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
-    if(!compId || compId===normalizeParcelId(subject?.parcelIdNorm || subject?.parcelId || subject?.printKey || subject?.pinSbl) || existingIds.has(compId)) return null;
-    const candidate = buildComparableCandidate(subject, comp, {
+  return buildBroadenedComparableResultWithSpec({
+    subject,
+    parcels,
+    existingCompIds: options?.existingCompIds || [],
+    cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+    limit: options?.limit || 8,
+    maxTier: Number.isFinite(options?.maxTier) ? options.maxTier : 1,
+    analyzeCandidate: comp => buildComparableCandidate(subject, comp, {
       subjectProfile,
       allowBroadClass,
-      maxDistanceMiles: 4,
-    });
-    if(!candidate) return null;
-    const distanceMiles = parcelDistanceMiles(subject, comp);
-    const compNeighborhood = parcelNeighborhoodName(comp) || candidate?._compProfile?.neighborhood || "";
-    const sameNeighborhood = !!(subjectNeighborhood && compNeighborhood===subjectNeighborhood);
-    const sameZip = !!(subject?.zip && comp?.zip===subject.zip);
-    const sameStreet = !!(subjectStreet && streetNameKeyForComp(comp.address)===subjectStreet);
-    const withinTwoMiles = distanceMiles!=null && distanceMiles<=2;
-    const withinFourMiles = distanceMiles!=null && distanceMiles<=4;
-    if(!(sameNeighborhood || sameZip || sameStreet || withinFourMiles)) return null;
-    const tier = sameNeighborhood || sameStreet ? 0 : sameZip ? 1 : withinTwoMiles ? 2 : 3;
-    if(tier > maxTier) return null;
-    return {
-      ...candidate,
-      _broadenDistanceMiles: distanceMiles,
-      _broadenTier: tier,
-      _broadenTierLabel: broadenTierLabel(tier),
-    };
-  }).filter(Boolean);
-  return candidates
-    .sort((a,b)=>
-      (Number(b?._grievanceSupportScore || 0) - Number(a?._grievanceSupportScore || 0)) ||
-      (Number(b?._comparableQualityScore || 0) - Number(a?._comparableQualityScore || 0)) ||
-      ((a?._broadenTier||0)-(b?._broadenTier||0)) ||
-      ((a?._broadenDistanceMiles ?? 999) - (b?._broadenDistanceMiles ?? 999)) ||
-      ((a?._fmvPctDiff ?? 999) - (b?._fmvPctDiff ?? 999))
-    )
-    .slice(0, options?.limit || 8);
+      salesByParcelId: options?.salesByParcelId || null,
+      cityStrictGeoMode: options?.cityStrictGeoMode ?? true,
+      currentDate: options?.currentDate || new Date(),
+    }),
+  });
 };
 function pointInRingXY(x,y,ring){
   let inside=false;
@@ -5409,6 +5741,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   const [broadenedSearchTier,setBroadenedSearchTier]=useState(0);
   const [showBroadenedResults,setShowBroadenedResults]=useState(false);
   const [showNeighborhoodSales,setShowNeighborhoodSales]=useState(false);
+  const [comparableMapOpen,setComparableMapOpen]=useState(false);
   const [subjectCardExpanded,setSubjectCardExpanded]=useState(true);
   const [expandedComparableIds,setExpandedComparableIds]=useState({});
   const [expandedBroadenedIds,setExpandedBroadenedIds]=useState({});
@@ -5460,7 +5793,9 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   const buildNeighborResult = useCallback((parcel, options={}) => buildComparableResult(parcel, parcels, {
     ...options,
     currentDatasetKey: datasetKey,
-  }), [datasetKey, parcels]);
+    meta,
+    salesByParcelId,
+  }), [datasetKey, meta, parcels, salesByParcelId]);
   const focusNeighborParcel = useCallback((parcel, options={}) => {
     if(!parcel) return null;
     const nextResult = buildNeighborResult(parcel, options);
@@ -5474,6 +5809,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     setBroadenedSearchTier(0);
     setShowBroadenedResults(false);
     setShowNeighborhoodSales(false);
+    setComparableMapOpen(false);
     setSubjectCardExpanded(true);
     setExpandedComparableIds({});
     setExpandedBroadenedIds({});
@@ -5506,6 +5842,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
       setBroadenedSearchTier(0);
       setShowBroadenedResults(false);
       setShowNeighborhoodSales(false);
+      setComparableMapOpen(false);
       setSubjectCardExpanded(true);
       setExpandedComparableIds({});
       setExpandedBroadenedIds({});
@@ -5553,8 +5890,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   const selectedGrievanceComps = useMemo(() => grievanceSelectableComparables.filter(parcel => isParcelIncludedInGrievance(parcel)), [grievanceSelectableComparables, isParcelIncludedInGrievance]);
   const effectiveSelectedGrievancePackage = useMemo(() => {
     if(!displayNeighborResult?.p) return null;
-    return buildSelectedGrievancePackage(displayNeighborResult.p, displayNeighborResult.subjectProfile || buildComparableProfile(displayNeighborResult.p), selectedGrievanceComps);
-  }, [displayNeighborResult, selectedGrievanceComps]);
+    return buildSelectedGrievancePackage(displayNeighborResult.p, displayNeighborResult.subjectProfile || buildComparableProfile(displayNeighborResult.p), selectedGrievanceComps, {
+      visibleComps: grievanceSelectableComparables,
+      parcels,
+      salesByParcelId,
+      meta,
+    });
+  }, [displayNeighborResult, grievanceSelectableComparables, meta, parcels, salesByParcelId, selectedGrievanceComps]);
   const effectiveNeighborResult = useMemo(() => displayNeighborResult && effectiveSelectedGrievancePackage ? ({
     ...displayNeighborResult,
     ...effectiveSelectedGrievancePackage,
@@ -5605,13 +5947,15 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
       existingCompIds: (displayNeighborResult?.neighbors || []).map(parcel=>parcel.parcelId),
       limit: 8,
       maxTier: nextTier,
+      salesByParcelId,
+      currentDate: new Date(),
     });
     setBroadenedComparables(result);
     setBroadenedSearchRan(true);
     setBroadenedSearchTier(nextTier);
     setShowBroadenedResults(true);
     setExpandedBroadenedIds({});
-  }, [broadenedSearchTier, displayNeighborResult, neighborResult, parcels]);
+  }, [broadenedSearchTier, displayNeighborResult, neighborResult, parcels, salesByParcelId]);
   const toggleBroadenedComp = useCallback((parcelId) => {
     setExpandedBroadenedIds(prev=>({ ...prev, [parcelId]: !prev[parcelId] }));
   }, []);
@@ -5657,19 +6001,26 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     });
   }, [appealReadiness, effectiveNeighborResult, neighborhoodBenchmark, salesByParcelId]);
   const grievanceWorkflowChecklistItems = useMemo(() => TAX_APPEAL_NEXT_STEPS.map((label, idx) => ({ key: `next-step-${idx}`, label })), []);
+  const workflowAnalysisReady = !!(effectiveNeighborResult?.p && appealReadiness && appealSummary && appealEvidence);
+  const workflowDataLoading = useMemo(() => {
+    if(view!=="neighbor") return false;
+    if(uploading || autoloadPhase==="running") return true;
+    if(!neighborResult) return false;
+    return !workflowAnalysisReady;
+  }, [autoloadPhase, neighborResult, uploading, view, workflowAnalysisReady]);
   const availableWorkflowStepIds = useMemo(() => {
     const ids = new Set([GRIEVANCE_WORKFLOW_STEPS[0].id]);
     ids.add("step-2-terminology");
     ids.add("step-3-find-property");
-    if(appealSummary && appealReadiness) ids.add("step-4-appeal-summary");
-    if(appealEvidence) ids.add("step-5-review-evidence");
-    if(effectiveNeighborResult?.p){
+    if(workflowAnalysisReady){
+      ids.add("step-4-appeal-summary");
+      ids.add("step-5-review-evidence");
       ids.add("step-6-build-grievance");
       ids.add("step-7-print-packet");
       ids.add("step-8-file");
     }
     return ids;
-  }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult]);
+  }, [workflowAnalysisReady]);
   const scrollToWorkflowStep = useCallback((stepId) => {
     if(typeof window==="undefined") return;
     const node = document.getElementById(stepId);
@@ -5794,8 +6145,19 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   }, [copiedNarrative]);
 
   useEffect(()=>{
-    if(!compareScrollTick || !neighborResult) return;
-    const runner = ()=>compareResultRef.current?.scrollIntoView({behavior:"smooth", block:"start"});
+    if(!compareScrollTick || !neighborResult || typeof window==="undefined") return;
+    const runner = ()=>{
+      const firstStepId = GRIEVANCE_WORKFLOW_STEPS[0]?.id;
+      const firstStepNode = firstStepId ? document.getElementById(firstStepId) : null;
+      if(firstStepNode){
+        const rect = firstStepNode.getBoundingClientRect();
+        const top = window.scrollY + rect.top - GRIEVANCE_WORKFLOW_SCROLL_OFFSET;
+        window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
+      }else{
+        compareResultRef.current?.scrollIntoView({behavior:"auto", block:"start"});
+      }
+      setActiveWorkflowStepId(firstStepId || GRIEVANCE_WORKFLOW_STEPS[0].id);
+    };
     const id = typeof window!=="undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner,0);
     return ()=>{
       if(typeof id==="number" && typeof window!=="undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
@@ -5909,9 +6271,33 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
       else window.localStorage.removeItem(grievanceOverrideStorageKey);
     }catch{}
   }, [grievanceCompOverrides, grievanceOverrideStorageKey]);
+  const InfoGlyph = ({tone="var(--gray2)", small=false}) => (
+    <span
+      aria-hidden="true"
+      style={{
+        display:"inline-flex",
+        alignItems:"center",
+        justifyContent:"center",
+        width:small?16:18,
+        height:small?16:18,
+        minWidth:small?16:18,
+        borderRadius:"50%",
+        border:`1px solid ${tone==="var(--gray2)"?"var(--border)":"currentColor"}`,
+        background:"rgba(248,250,252,.94)",
+        color:tone,
+        fontFamily:"var(--fm)",
+        fontSize:small?10:11,
+        fontWeight:800,
+        lineHeight:1,
+        boxShadow:"0 1px 3px rgba(15,23,42,.08)",
+      }}
+    >
+      i
+    </span>
+  );
   const InlineInfoIcon = ({text, tone="var(--gray2)", small=false}) => {
     if(!text) return null;
-    return <span title={text} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--fm)",fontSize:small?9:10,fontWeight:700,color:tone,border:`1px solid ${tone==="var(--gray2)"?"var(--border)":"currentColor"}`,borderRadius:999,padding:small?"0 4px":"1px 6px",cursor:"help",lineHeight:1}}>(i)</span>;
+    return <span title={text} aria-label={text} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",lineHeight:1}}><InfoGlyph tone={tone} small={small} /></span>;
   };
   const TermWithHelp = ({termKey, children, tone="var(--gray2)"}) => (
     <span style={{display:"inline-flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -5932,7 +6318,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     </div>
   );  const DeltaInfoNote = ({text, tone="var(--gray3)"}) => {
     if(!text) return null;
-    return <div style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:10,color:tone,lineHeight:1.45,minWidth:0}}><span style={{fontFamily:"var(--fm)",fontWeight:700}}>(i)</span><span style={{overflowWrap:"anywhere",wordBreak:"break-word"}}>{text}</span></div>;
+    return <div style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:10,color:tone,lineHeight:1.45,minWidth:0}}><span style={{paddingTop:1}}><InfoGlyph tone={tone} small /></span><span style={{overflowWrap:"anywhere",wordBreak:"break-word"}}>{text}</span></div>;
   };
   const CompareMetricCard = ({label, youValue, compValue, deltaValue, deltaTone="var(--gray2)", deltaInfo=""}) => (
     <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:6,minWidth:0}}>
@@ -5971,7 +6357,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     const armLengthSale = getMostRecentArmsLengthSale(parcel, salesByParcelId);
     const salePricePerSqFt = getSalePricePerSqFt(armLengthSale, livingArea);
     const showExplainer = options.showExplainer ?? true;
-    const saleHistoryExplainer = latestSale && isArmLengthSale(latestSale) ? ARM_LENGTH_SALE_HISTORY_EXPLAINER : NON_ARM_LENGTH_SALE_HISTORY_EXPLAINER;
+    const saleHistoryExplainer = buildSaleHistoryExplainer(latestSale, armLengthSale);
     if(!sales.length && salePricePerSqFt == null) return null;
     return <div style={{background:options.background || "rgba(255,255,255,.03)",border:options.border || "1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:8,minWidth:0}}>
       <div style={{display:"grid",gap:4}}>
@@ -6096,6 +6482,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 activeStepId={activeWorkflowStepId}
                 availableStepIds={availableWorkflowStepIds}
                 onSelectStep={scrollToWorkflowStep}
+                isLoading={workflowDataLoading}
               />
             </div>
             <div className="workflow-main" style={{paddingBottom:isWorkflowNavMobile ? 92 : 0}}>
@@ -6132,6 +6519,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="rp524" tone="var(--gray2)">RP-524</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>New York assessment grievance form.</div></div>
                     <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Neighborhood Fairness</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Comparison against neighborhood medians/percentiles to see if your parcel is unusually high.</div></div>
                     <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Normalized Metrics</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Fairness checks that adjust for size/value differences, especially equity ratio and assessed value per sq ft.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Data confidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>How complete and reliable the comp inputs are for analysis, including assessed value, FMV, equity ratio, living area, class, location, and core home details. A score like 100.0 means the app found full usable coverage for those checks; lower scores mean missing or weaker data reduced certainty.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="cod" tone="var(--gray2)">COD (Coefficient of Dispersion)</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A consistency measure for neighborhood assessment ratios. Lower COD usually means nearby properties are being assessed more uniformly.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="iaaoStandard" tone="var(--gray2)">IAAO standard</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>The usual residential COD benchmark from the International Association of Assessing Officers. In this app, COD at or below 15.0 is treated as meeting that uniformity benchmark.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="methodA" tone="var(--gray2)">Comp-based value estimate</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="methodB" tone="var(--gray2)">Equity-ratio value estimate</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate overassessment check</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Even aside from the comps, does your assessment look too high compared with your FMV and the municipal equalization rate?</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>ORPTS data</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>ORPTS stands for the New York State Office of Real Property Tax Services. In this app, ORPTS Municipal Data Portal sales records are used for sale history and arm's-length market evidence. They help check whether FMV looks supported by real sale prices, but they do not by themselves choose which comparable homes are selected.</div></div>
                     <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="armLengthSale" tone="var(--gray2)">Arm's-length sale</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A normal market sale between unrelated parties. The tool uses these sales as stronger FMV evidence.</div></div>
                     <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Non-arm's-length transfer</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A transfer such as family/gift/related-party deal. The tool shows it in history but does not treat its price as reliable market value evidence.</div></div>
                   </div>
@@ -6197,9 +6591,24 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               const relevanceKind = parcel?._grievanceRelevance?.kind || "neutral";
               const grievanceExplanation = parcel?._grievanceRelevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevanceKind);
               const packageDecision = parcel?._packageDecision || parcel?._selectionDiagnostics?.packageDecision || null;
+              const selectionIndicator = parcel?._selectionIndicator || parcel?._selectionDiagnostics?.selectionIndicator || null;
               const distanceLabel = Number.isFinite(parcel?._distanceMiles) ? formatComparableMiles(parcel._distanceMiles) : null;
               const cardAccentColor = grievanceRelevanceAccentColor(relevanceKind);
               const cardBorderColor = isIncludedInGrievance ? "rgba(22,163,74,.24)" : "var(--border)";
+              const riskFlags = Array.isArray(parcel?._riskFlags) ? parcel._riskFlags : [];
+              const adjustedAssessedValue = Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
+              const adjustmentBreakdown = parcel?._adjustmentBreakdown || {};
+              const adjustedAssessedDelta = Number.isFinite(adjustedAssessedValue) && Number.isFinite(Number(subject?.assessedValue))
+                ? adjustedAssessedValue - Number(subject.assessedValue)
+                : null;
+              const adjustedSupportLabel = adjustmentBreakdown?.adjustedSupportLabel || null;
+              const adjustedSupportColor = adjustedSupportLabel==="Yes"
+                ? "var(--green2)"
+                : adjustedSupportLabel==="Marginal"
+                  ? "var(--amber2)"
+                  : adjustedSupportLabel==="No"
+                    ? "var(--red2)"
+                    : "var(--gray2)";
               const { border: ignoredContainerBorder, borderLeft: ignoredContainerBorderLeft, ...safeContainerStyle } = options.containerStyle || {};
               const baseComparableCardStyle = {
                 background: isIncludedInGrievance ? "linear-gradient(180deg, rgba(22,163,74,.06) 0%, rgba(255,255,255,.98) 100%)" : "var(--card)",
@@ -6212,7 +6621,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 display: "grid",
                 gap: 14,
                 minWidth: 0,
-                boxShadow: isIncludedInGrievance ? "0 8px 18px rgba(22,163,74,.06)" : "0 6px 16px rgba(15,23,42,.04)",
+                boxShadow: isIncludedInGrievance ? "0 6px 14px rgba(22,163,74,.05)" : "0 4px 12px rgba(15,23,42,.035)",
               };
               const containerStyle = {
                 ...baseComparableCardStyle,
@@ -6254,13 +6663,15 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               const packageDecisionOverrideNote = packageDecision && options.showGrievanceToggle!==false && packageDecisionCurrentIncluded!==isIncludedInGrievance ? "Current checkbox state reflects your manual override." : null;
               const packageDecisionBox = packageDecision ? <div style={{display:"grid",gap:4,padding:"9px 10px",borderRadius:10,background:packageDecision.status==="included" ? "rgba(37,99,235,.08)" : "rgba(148,163,184,.10)",border:`1px solid ${packageDecision.status==="included" ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.18)"}`}}>
                 <div style={{fontSize:10,fontWeight:800,letterSpacing:.4,textTransform:"uppercase",color:packageDecision.status==="included" ? "var(--blue3)" : "var(--gray2)"}}>Default package</div>
+                {selectionIndicator?.label && <div style={{fontSize:10,fontWeight:700,color:packageDecision.status==="included" ? "var(--blue3)" : "var(--gray2)"}}>{selectionIndicator.label}</div>}
                 <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{packageDecision.message}</div>
+                {selectionIndicator?.message && selectionIndicator.message!==packageDecision.message && <div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5}}>{selectionIndicator.message}</div>}
                 {packageDecisionOverrideNote&&<div style={{fontSize:10,color:"var(--gray3)",lineHeight:1.5}}>{packageDecisionOverrideNote}</div>}
               </div> : null;
               const collapseFadeColor = isIncludedInGrievance ? "rgba(255,255,255,.98)" : "var(--card)";
-              const detailsToggleControl = isCollapsible ? <div className="print-hide" style={isExpanded ? {display:"flex",justifyContent:"center",paddingTop:8} : {position:"absolute",left:"50%",bottom:10,transform:"translateX(-50%)",zIndex:2}}>
-                <button type="button" onClick={e=>{ e.stopPropagation(); options.onToggle&&options.onToggle(parcel.parcelId); }} style={{background:"rgba(248,250,252,.92)",border:"1px solid rgba(148,163,184,.24)",color:"var(--gray2)",borderRadius:999,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",boxShadow:"0 10px 20px rgba(15,23,42,.08)"}}>
-                  {isExpanded ? "− Hide details" : "+ Show details"}
+              const detailsToggleControl = isCollapsible ? <div className="print-hide" style={isExpanded ? {display:"flex",justifyContent:"center",paddingTop:10} : {position:"absolute",left:"50%",bottom:10,transform:"translateX(-50%)",zIndex:2}}>
+                <button type="button" onClick={e=>{ e.stopPropagation(); options.onToggle&&options.onToggle(parcel.parcelId); }} style={{background:isExpanded ? "rgba(239,246,255,.96)" : "linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(239,246,255,.98) 100%)",border:"1px solid rgba(37,99,235,.30)",color:"var(--blue3)",borderRadius:999,padding:"9px 16px",fontSize:12,fontWeight:800,cursor:"pointer",textAlign:"center",boxShadow:"0 10px 20px rgba(37,99,235,.12)",minWidth:150}}>
+                  {isExpanded ? "\u2212 Hide details" : "+ Show details"}
                 </button>
               </div> : null;
               const header = <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
@@ -6279,7 +6690,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                       <Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge>
-                      <span title={MATCHED_HOME_DETAILS_INFO} style={{fontFamily:"var(--fm)",fontSize:10,fontWeight:700,color:"var(--gray2)",border:"1px solid var(--border)",borderRadius:999,padding:"1px 6px",cursor:"help"}}>(i)</span>
+                      <InlineInfoIcon text={MATCHED_HOME_DETAILS_INFO} tone="var(--gray2)" small />
                       <ComparableOwnershipBadges parcel={parcel} small />
                       {saleBadge&&<Badge color={saleBadge.color} small title={saleBadge.title}>{saleBadge.label}</Badge>}
                     </div>
@@ -6294,11 +6705,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <Badge color={grievanceRelevanceBadgeColor(relevanceKind)} small>{parcel._grievanceRelevance.badge}</Badge>
                       <span style={{fontSize:11,fontWeight:700,color:parcel._grievanceRelevance.tone}}>{parcel._grievanceRelevance.headline}</span>
+                      {parcel?._marginalSupport && <Badge color="#f59e0b" small>Marginal support</Badge>}
+                      {riskFlags.length>0 && <Badge color="#ef4444" small>{`${riskFlags.length} risk flag${riskFlags.length===1?"":"s"} below`}</Badge>}
                     </div>
                     <div style={{fontSize:11,fontWeight:700,color:parcel._grievanceRelevance.tone,lineHeight:1.5}}>{grievanceExplanation.summaryHeadline}</div>
                     <div style={{fontSize:10,color:parcel._grievanceRelevance.tone,lineHeight:1.55}}>{grievanceExplanation.summaryText}</div>
                     <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}><b style={{color:"var(--gray2)"}}>Main reason:</b> {grievanceExplanation.primaryReason}</div>
                     <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>{grievanceExplanation.trustNote}</div>
+                    {parcel?._marginalSupport && <div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.24)",borderRadius:8,padding:"8px 9px",fontSize:10,color:"var(--amber2)",lineHeight:1.55}}>Marginal support: the assessed-value gap is small enough that it may shrink or disappear after adjustments.</div>}
                     <details style={{background:"rgba(255,255,255,.58)",border:"1px solid rgba(255,255,255,.48)",borderRadius:8,padding:"8px 9px",marginTop:4}}>
                       <summary style={{cursor:"pointer",fontSize:10,fontWeight:700,color:"var(--gray2)",letterSpacing:.35,textTransform:"uppercase"}}>Why this support level?</summary>
                       <div style={{display:"grid",gap:7,marginTop:8}}>
@@ -6310,6 +6724,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                               <span style={{fontSize:10,fontWeight:700,color:tone.color}}>{row.valueText}</span>
                             </div>
                             <div style={{fontSize:10,color:"var(--gray)",lineHeight:1.5}}>{row.explanation}</div>
+                            {row.whyItMatters ? <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}><b style={{color:"var(--gray2)"}}>Why it matters:</b> {row.whyItMatters}</div> : null}
                           </div>;
                         })}
                       </div>
@@ -6338,6 +6753,39 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       <CompareMetricCard label="Equity %" youValue={subjectProfile.equity != null ? subjectProfile.equity + "%" : "-"} compValue={compProfile.equity != null ? compProfile.equity + "%" : "-"} deltaValue={formatSignedComparableCount(delta.equity, "%")} deltaTone={comparableDeltaTone(delta.equity, true)} deltaInfo={buildComparableDeltaInfo("equity", delta.equity)} />
                     </div>
                   </div>
+                  {(adjustedAssessedValue!=null || riskFlags.length>0) && <div style={{display:"grid",gap:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Adjustment and risk review</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
+                      <CompareMetricCard
+                        label="Adjusted AV"
+                        youValue={$f(subject.assessedValue)}
+                        compValue={adjustedAssessedValue!=null ? $f(adjustedAssessedValue) : "-"}
+                        deltaValue={adjustedAssessedDelta!=null ? formatSignedComparableMoney(adjustedAssessedDelta) : "-"}
+                        deltaTone={comparableDeltaTone(adjustedAssessedDelta, true)}
+                        deltaInfo={adjustedAssessedValue!=null ? (parcel?._adjustmentNarrative || "Adjusted for size and bath differences using the neighborhood price-per-square-foot model and equalization rate.") : "Adjusted assessed value could not be calculated from the available data."}
+                      />
+                      <CompareMetricCard
+                        label="Adjusted support"
+                        youValue="-"
+                        compValue={adjustedSupportLabel || "-"}
+                        deltaValue={adjustedSupportLabel || "-"}
+                        deltaTone={adjustedSupportColor}
+                        deltaInfo={adjustedSupportLabel==="Yes"
+                          ? "After adjustments, this comp still sits below your assessment."
+                          : adjustedSupportLabel==="Marginal"
+                            ? "After adjustments, this comp is close enough to your assessment that it only provides marginal support."
+                            : adjustedSupportLabel==="No"
+                              ? "After adjustments, this comp no longer sits below your assessment."
+                              : "Adjusted support could not be determined from the available data."}
+                      />
+                    </div>
+                    {riskFlags.length>0 && <details style={{background:"rgba(239,68,68,.05)",border:"1px solid rgba(239,68,68,.16)",borderRadius:8,padding:"10px 12px"}}>
+                      <summary style={{cursor:"pointer",fontSize:10,fontWeight:700,color:"var(--red2)",letterSpacing:.35,textTransform:"uppercase"}}>{`Assessor challenge flags (${riskFlags.length})`}</summary>
+                      <div style={{display:"grid",gap:6,marginTop:8}}>
+                        {riskFlags.map((flag, flagIdx)=><div key={`${parcel.parcelId}-risk-${flagIdx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.55}}>- {flag}</div>)}
+                      </div>
+                    </details>}
+                  </div>}
                   <div style={{display:"grid",gap:10}}>
                     <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Physical comparison</div>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
@@ -6368,7 +6816,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </div>
                   </details>
                 </div>}
-                {!isExpanded&&isCollapsible&&<div className="print-hide" aria-hidden="true" style={{position:"absolute",left:6,right:0,bottom:0,height:56,background:`linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`,pointerEvents:"none",zIndex:1}} />}
+                {!isExpanded&&isCollapsible&&<div className="print-hide" aria-hidden="true" style={{position:"absolute",left:6,right:0,bottom:0,height:64,background:`linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`,pointerEvents:"none",zIndex:1}} />}
                 {detailsToggleControl}
               </div>;
             };
@@ -6390,6 +6838,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Potential assessed value reduction</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.potentialReduction!=null ? $f(appealSummary.potentialReduction) : '-'}</div></div>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Supporting comparable homes found</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.supportingComparableHomes}</div></div>
                     </div>
+                    <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Claim type</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray2)"}}>{effectiveNeighborResult?.claimRecommendation?.label || '-'}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}><TermWithHelp termKey="methodA" tone="var(--gray2)">Comp-based value estimate</TermWithHelp></div><div style={{fontSize:18,fontWeight:800,color:"var(--gray)"}}>{Number.isFinite(effectiveNeighborResult?.suggestedValueMethodA) ? $f(effectiveNeighborResult.suggestedValueMethodA) : '-'}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}><TermWithHelp termKey="methodB" tone="var(--gray2)">Equity-ratio value estimate</TermWithHelp></div><div style={{fontSize:18,fontWeight:800,color:"var(--gray)"}}>{Number.isFinite(effectiveNeighborResult?.suggestedValueMethodB) ? $f(effectiveNeighborResult.suggestedValueMethodB) : '-'}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate overassessment check</TermWithHelp></div><div style={{fontSize:18,fontWeight:800,color:effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)"}}>{effectiveNeighborResult?.overvaluationFlag?.active ? "Yes" : "No"}</div></div>
+                    </div>
+                    {effectiveNeighborResult?.scarWarning && <div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"var(--amber2)",lineHeight:1.6}}>{effectiveNeighborResult.scarWarning}</div>}
                     <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}><b style={{color:"var(--gray2)"}}>Key reason:</b> {appealSummary.keyReason}</div>
                     <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(255,255,255,.24)",borderRadius:10,padding:"12px 14px",display:"grid",gap:6}}>
                       <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Recommended RP-524 complaint reason</div>
@@ -6424,7 +6879,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
 
               {appealEvidence&&<div id="step-5-review-evidence" className="workflow-step-anchor" data-workflow-step-id="step-5-review-evidence">
                 <WorkflowStepCard step="Step 5 - Review evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:12}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:20,marginBottom:18}}>
                   <div style={{background:"rgba(22,163,74,.08)",border:"1px solid rgba(22,163,74,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                     <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Evidence that supports your grievance</div>
                     {appealEvidence.evidenceFor.map((item, idx)=><div key={`for-${idx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>- {item}</div>)}
@@ -6436,23 +6891,43 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12}}>
                   <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
-                    <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Neighborhood fairness benchmark</div>
-                    {neighborhoodBenchmark ? <>
-                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>{neighborhoodBenchmark.scopeLabel} | {neighborhoodBenchmark.sampleSize} parcels{neighborhoodBenchmark.usedFallback?" | fallback sample used":""}</div>
+                    <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Market value estimate</div>
+                    {effectiveNeighborResult?.marketSaleModel?.available ? <>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>{effectiveNeighborResult.marketSaleModel.saleCount} recent arm's-length sales{effectiveNeighborResult.marketSaleModel.expandedRadius ? " | radius expanded to 1.5 miles" : ""}</div>
                       <div style={{display:"grid",gap:6}}>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median assessed value</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.assessedMedian!=null ? $f(neighborhoodBenchmark.assessedMedian) : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median FMV</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.fmvMedian!=null ? $f(neighborhoodBenchmark.fmvMedian) : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median assessed per sq ft</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.assessedPerSqftMedian!=null ? `$${Number(neighborhoodBenchmark.assessedPerSqftMedian).toFixed(2)}/sq ft` : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your assessed per sq ft</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.subjectAssessedPerSqft!=null ? `$${Number(neighborhoodBenchmark.subjectAssessedPerSqft).toFixed(2)}/sq ft` : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Gap from median assessed per sq ft</span><span style={{fontWeight:700,color:(neighborhoodBenchmark.deltaAssessedPerSqft||0)>0?"var(--red2)":(neighborhoodBenchmark.deltaAssessedPerSqft||0)<0?"var(--green2)":"var(--gray)"}}>{neighborhoodBenchmark.deltaAssessedPerSqft!=null ? `${neighborhoodBenchmark.deltaAssessedPerSqft>=0?'+':''}$${Number(neighborhoodBenchmark.deltaAssessedPerSqft).toFixed(2)}/sq ft` : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your assessed per sq ft percentile</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.assessedPerSqftPercentile!=null ? `${Number(neighborhoodBenchmark.assessedPerSqftPercentile).toFixed(1)}th` : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="equityRatio">Neighborhood median equity ratio</TermWithHelp></span><span style={{fontWeight:700}}>{neighborhoodBenchmark.equityMedian!=null ? neighborhoodBenchmark.equityMedian + '%' : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="equityRatio">Your equity ratio</TermWithHelp></span><span style={{fontWeight:700}}>{neighborhoodBenchmark.subjectEquity!=null ? neighborhoodBenchmark.subjectEquity + '%' : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Difference from neighborhood median</span><span style={{fontWeight:700,color:(neighborhoodBenchmark.deltaEquity||0)>0?"var(--red2)":(neighborhoodBenchmark.deltaEquity||0)<0?"var(--green2)":"var(--gray)"}}>{neighborhoodBenchmark.deltaEquity!=null ? `${neighborhoodBenchmark.deltaEquity>=0?'+':''}${neighborhoodBenchmark.deltaEquity}%` : '-'}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your equity ratio percentile</span><span style={{fontWeight:700}}>{neighborhoodBenchmark.equityPercentile!=null ? `${Number(neighborhoodBenchmark.equityPercentile).toFixed(1)}th` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Neighborhood median sale $/sq ft</span><span style={{fontWeight:700}}>{`$${Number(effectiveNeighborResult.marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Estimated subject FMV</span><span style={{fontWeight:700}}>{effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv!=null ? $f(effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv) : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Current assessed value</span><span style={{fontWeight:700}}>{Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Implied gap</span><span style={{fontWeight:700,color:(effectiveNeighborResult.marketSaleModel.impliedDifference||0)>0?"var(--red2)":"var(--green2)"}}>{effectiveNeighborResult.marketSaleModel.impliedDifference!=null ? `${effectiveNeighborResult.marketSaleModel.impliedDifference>=0?'+':''}${$f(Math.abs(effectiveNeighborResult.marketSaleModel.impliedDifference))}` : '-'}</span></div>
                       </div>
-                      <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{neighborhoodBenchmark.interpretation}</div>
-                    </> : <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>A neighborhood benchmark could not be calculated from the current parcel set.</div>}
+                      {effectiveNeighborResult.marketSaleModel.note && <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{effectiveNeighborResult.marketSaleModel.note}</div>}
+                    </> : <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{effectiveNeighborResult?.marketSaleModel?.note || "Insufficient recent sales for market estimate."}</div>}
+                  </div>
+                  <div style={{background:"rgba(99,102,241,.06)",border:"1px solid rgba(99,102,241,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Neighborhood equity distribution</div>
+                    {effectiveNeighborResult?.neighborhoodEquityModel?.available ? <>
+                      {(() => {
+                        const neighborhoodEquityModel = effectiveNeighborResult.neighborhoodEquityModel;
+                        const percentileExplanation = buildNeighborhoodPercentileExplanation(neighborhoodEquityModel);
+                        const consistencyExplanation = buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel);
+                        const plainSummary = buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel);
+                        return <>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>{effectiveNeighborResult.neighborhoodEquityModel.sampleSize} sale-backed ratios | {effectiveNeighborResult.neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : "Subject neighborhood sample"}</div>
+                      <div style={{display:"grid",gap:6}}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="equityRatio">Neighborhood median ratio</TermWithHelp></span><span style={{fontWeight:700}}>{effectiveNeighborResult.neighborhoodEquityModel.medianRatio!=null ? `${(effectiveNeighborResult.neighborhoodEquityModel.medianRatio*100).toFixed(1)}%` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="equityRatio">Your ratio</TermWithHelp></span><span style={{fontWeight:700}}>{effectiveNeighborResult.neighborhoodEquityModel.subjectRatio!=null ? `${(effectiveNeighborResult.neighborhoodEquityModel.subjectRatio*100).toFixed(1)}%` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Your percentile</span><span style={{fontWeight:700}}>{effectiveNeighborResult.neighborhoodEquityModel.subjectPercentile!=null ? `${Number(effectiveNeighborResult.neighborhoodEquityModel.subjectPercentile).toFixed(1)}th` : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="cod" tone="var(--gray2)">COD</TermWithHelp></span><span style={{fontWeight:700,color:(effectiveNeighborResult.neighborhoodEquityModel.cod||0)>15?"var(--red2)":"var(--gray)"}}>{effectiveNeighborResult.neighborhoodEquityModel.cod!=null ? Number(effectiveNeighborResult.neighborhoodEquityModel.cod).toFixed(1) : '-'}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}><TermWithHelp termKey="iaaoStandard" tone="var(--gray2)">IAAO standard</TermWithHelp></span><span style={{fontWeight:700}}>{`<= ${Number(effectiveNeighborResult.neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`}</span></div>
+                      </div>
+                      {percentileExplanation && <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65}}>{percentileExplanation}</div>}
+                      {consistencyExplanation && <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65}}>{consistencyExplanation}</div>}
+                      {plainSummary && <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,fontWeight:600}}>{plainSummary}</div>}
+                      {neighborhoodBenchmark?.interpretation && <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}><b style={{color:"var(--gray2)"}}>Separate neighborhood benchmark:</b> {neighborhoodBenchmark.interpretation}</div>}
+                      {effectiveNeighborResult.neighborhoodEquityModel.codWarning && <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{effectiveNeighborResult.neighborhoodEquityModel.codWarning}</div>}
+                      </>;
+                      })()}
+                    </> : <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{effectiveNeighborResult?.neighborhoodEquityModel?.note || "Insufficient sales data for neighborhood equity analysis."}</div>}
                   </div>
                   <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                     <div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>What the assessor may say</div>
@@ -6474,6 +6949,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </button>
                     <div style={{fontSize:11,color:"var(--blue3)",marginBottom:4,fontWeight:600}}>Your Property</div>
                     <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:16,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={subject.address} zip={subject.zip} neighborhood={subject.neighborhood} parcelId={subject.parcelId} parcel={subject} showStreetView streetViewLatLng={streetViewLatLngForParcel(subject)}>{subject.address}</AddrLink></div>
+                    <div style={{fontSize:11,color:"var(--gray2)",overflowWrap:"anywhere",wordBreak:"break-word"}}>{subject.owner1 || "Owner unavailable"} | {subject.parcelId} | {parcelNeighborhoodName(subject)||"Neighborhood unknown"}</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
                       <Badge color="#2563eb" small>{propClassLabel(subject)}</Badge>
                       {comparableProfileBadgeItems(subject).map(item=><Badge key={subject.parcelId + item} color="#64748b" small>{item}</Badge>)}
@@ -6501,7 +6977,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </div>
                 <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px",minWidth:0}}>
                   <div style={{fontSize:11,color:"var(--gray2)",marginBottom:4,fontWeight:600}} title="Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available.">
-                    Best Comparable Homes ({displayNeighborResult?.neighbors?.length || 0} comps)
+                    {effectiveNeighborResult?.analysisState==="research_only" ? "Research Comparables" : "Best Comparable Homes"} ({displayNeighborResult?.neighbors?.length || 0} comps)
                   </div>
                   <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:8}}>
                     {displayNeighborResult.comparableMode==="snapshot"
@@ -6513,7 +6989,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   </div>
                   <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>{effectiveNeighborResult.grievanceSupportCount
                     ? <>The default grievance package currently keeps <b style={{color:"var(--green2)"}}>{effectiveNeighborResult.grievanceCandidates.length}</b> of the <b style={{color:"var(--gray2)"}}>{grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0}</b> visible comps because they clear the support, quality, and confidence checks. Lower assessed value alone is not enough; the rest stay available for context or custom inclusion.</>
-                    : <>These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically.</>}
+                    : <>{effectiveNeighborResult?.noPackageReasonText || "These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically."}</>}
                   </div>
                   {customGrievanceSelectionActive&&<div className="print-hide" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.18)",borderRadius:8,padding:"9px 10px",marginBottom:10}}>
                     <div style={{fontSize:11,color:"var(--blue3)",lineHeight:1.55,fontWeight:600}}>Custom comp selection ({effectiveNeighborResult.grievanceCandidates.length} of {grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0} included)</div>
@@ -6530,14 +7006,32 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       {effectiveNeighborResult.grievanceDeltaAssessed!=null&&<div>Your assessed value is <b style={{color:effectiveNeighborResult.grievanceDeltaAssessed>=0?"var(--red2)":"var(--green2)"}}>{(effectiveNeighborResult.grievanceDeltaAssessed>=0?"+":"-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaAssessed))}</b> relative to the selected grievance assessed average.<DeltaInfoNote text={buildComparableGroupDeltaInfo("assessed", -effectiveNeighborResult.grievanceDeltaAssessed, effectiveNeighborResult.grievanceCandidates.length)} tone={effectiveNeighborResult.grievanceDeltaAssessed>=0?"var(--red2)":"var(--green2)"} /></div>}
                       {effectiveNeighborResult.grievanceDeltaEquity!=null&&<div>Your equity ratio is <b style={{color:effectiveNeighborResult.grievanceDeltaEquity>8?"var(--red2)":effectiveNeighborResult.grievanceDeltaEquity<-8?"var(--green2)":"var(--gray2)"}}>{effectiveNeighborResult.grievanceDeltaEquity>=0?"+":""}{effectiveNeighborResult.grievanceDeltaEquity}%</b> relative to the selected grievance comp average. {effectiveNeighborResult.grievanceSignal}<DeltaInfoNote text={buildComparableGroupDeltaInfo("equity", -effectiveNeighborResult.grievanceDeltaEquity, effectiveNeighborResult.grievanceCandidates.length)} tone={effectiveNeighborResult.grievanceDeltaEquity>8?"var(--red2)":effectiveNeighborResult.grievanceDeltaEquity<-8?"var(--green2)":"var(--gray2)"} /></div>}
                     </div>
-                  </> : <div style={{background:"rgba(148,163,184,.10)",border:"1px solid rgba(148,163,184,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>No comps are currently included in the grievance package summary. Review the physical matches below and include only the homes you want carried into RP-524 support materials.</div>}
+                  </> : <div style={{background:"rgba(148,163,184,.10)",border:"1px solid rgba(148,163,184,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{effectiveNeighborResult?.noPackageReasonText || "No comps are currently included in the grievance package summary. Review the physical matches below and include only the homes you want carried into RP-524 support materials."}</div>}
                 </div>
               </div>
 
-              {effectiveNeighborResult.grievanceCandidates.length>0&&<div style={{background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,padding:"12px 14px",marginBottom:14,display:"grid",gap:10}}>
-                <div>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--purple)",marginBottom:5}}>Side-by-Side Grievance Table</div>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Subject parcel plus the comps currently included in the grievance package. This table updates live when you include or remove comps.</div>
+              {effectiveNeighborResult.grievanceCandidates.length>0&&<div style={{background:"rgba(168,85,247,.06)",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,padding:"12px 14px",marginBottom:14,display:"grid",gap:12}}>
+                <div style={{display:"grid",gap:10}}>
+                  <ComparableMapFeatureCard
+                    subject={subject}
+                    comparables={effectiveNeighborResult.grievanceCandidates}
+                    onOpen={()=>setComparableMapOpen(true)}
+                  />
+                  <div style={{display:"none"}}>
+                    <button
+                      type="button"
+                      className="print-hide"
+                      onClick={()=>setComparableMapOpen(true)}
+                      style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(37,99,235,.10)",border:"1px solid rgba(37,99,235,.22)",color:"var(--blue3)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}
+                    >
+                      <span aria-hidden="true" style={{fontSize:13,lineHeight:1}}>📍</span>
+                      <span>Comparable map</span>
+                    </button>
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--purple)",marginBottom:5}}>Side-by-Side Grievance Table</div>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Subject parcel plus the comps currently included in the grievance package. This table updates live when you include or remove comps.</div>
+                  </div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
                   {grievanceComparisons.map(entry=>{
@@ -6545,12 +7039,16 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     const isSubject = entry.kind==="subject";
                     const profileRows = comparableProfileTableRows(parcel);
                     const delta = parcel._compDelta || null;
+                    const adjustedAv = !isSubject && Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
+                    const adjustedDelta = !isSubject && adjustedAv!=null && Number.isFinite(Number(subject?.assessedValue)) ? adjustedAv - Number(subject.assessedValue) : null;
+                    const adjustedSupport = !isSubject ? (parcel?._adjustmentBreakdown?.adjustedSupportLabel || null) : null;
+                    const riskFlags = !isSubject && Array.isArray(parcel?._riskFlags) ? parcel._riskFlags : [];
                     return <div key={parcel.parcelId} style={{background:isSubject?"rgba(37,99,235,.08)":"var(--card)",border:isSubject?"1px solid rgba(37,99,235,.26)":"1px solid var(--border)",borderRadius:10,padding:"12px 14px",minWidth:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
                         <div style={{minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                             <Badge color={isSubject?"#2563eb":"#8b5cf6"} small>{entry.label}</Badge>
-                            {!isSubject&&<><Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge><span title={MATCHED_HOME_DETAILS_INFO} style={{fontFamily:"var(--fm)",fontSize:10,fontWeight:700,color:"var(--gray2)",border:"1px solid var(--border)",borderRadius:999,padding:"1px 6px",cursor:"help"}}>(i)</span></>}
+                            {!isSubject&&<><Badge color="#0d9488" small>{matchedHomeDetailsLabel(parcel)}</Badge><InlineInfoIcon text={MATCHED_HOME_DETAILS_INFO} tone="var(--gray2)" small /></>}
                           </div>
                           <div style={{fontSize:13,fontWeight:700,marginTop:8,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} parcelId={parcel.parcelId} parcel={parcel} showStreetView streetViewLatLng={streetViewLatLngForParcel(parcel)}>{parcel.address}</AddrLink></div>
                           <div style={{fontSize:10,color:"var(--gray2)",marginTop:3,overflowWrap:"anywhere",wordBreak:"break-word"}}>{parcel.owner1}</div>
@@ -6562,22 +7060,25 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       <div style={{display:"grid",gap:6}}>
                         {profileRows.map(([label, value])=>{ const valueColor = !isSubject && label==="Assessed" ? comparableDeltaTone(delta?.assessed, true) : "inherit"; return <div key={label} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,minWidth:0}}><span style={{color:"var(--gray)"}}>{label}</span><span style={{fontWeight:label==="Assessed"?700:600,color:valueColor,textAlign:"right",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word"}}>{value}</span></div>; })}
                         {!isSubject&&<><div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Assessed vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.assessed, true)}}>{formatSignedComparableMoney(delta?.assessed)}</span></div><DeltaInfoNote text={buildComparableDeltaInfo("assessed", delta?.assessed)} tone={comparableDeltaTone(delta?.assessed, true)} /></>}
+                        {!isSubject&&<><div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Adjusted AV</span><span style={{fontWeight:700,color:adjustedDelta!=null ? comparableDeltaTone(adjustedDelta, true) : "var(--gray2)"}}>{adjustedAv!=null ? $f(adjustedAv) : "-"}</span></div><DeltaInfoNote text={adjustedAv!=null ? (parcel?._adjustmentNarrative || "Adjusted for size and bath differences.") : "Adjusted assessed value is not available for this comp."} tone={adjustedDelta!=null ? comparableDeltaTone(adjustedDelta, true) : "var(--gray2)"} /></>}
+                        {!isSubject&&<><div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Adjusted support</span><span style={{fontWeight:700,color:adjustedSupport==="Yes"?"var(--green2)":adjustedSupport==="Marginal"?"var(--amber2)":adjustedSupport==="No"?"var(--red2)":"var(--gray2)"}}>{adjustedSupport || "-"}</span></div></>}
                         {!isSubject&&<><div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11}}><span style={{color:"var(--gray)"}}>Equity vs you</span><span style={{fontWeight:700,color:comparableDeltaTone(delta?.equity, true)}}>{formatSignedComparableCount(delta?.equity, "%")}</span></div><DeltaInfoNote text={buildComparableDeltaInfo("equity", delta?.equity)} tone={comparableDeltaTone(delta?.equity, true)} /></>}
+                        {!isSubject&&riskFlags.length>0&&<div style={{fontSize:10,color:"var(--red2)",lineHeight:1.55}}>{`${riskFlags.length} assessor challenge flag${riskFlags.length===1?"":"s"} recorded for this comp.`}</div>}
                       </div>
                     </div>;
                   })}
                 </div>
               </div>}
               {(displayNeighborResult?.neighbors?.length || 0)>0 ? (
-                <div style={{display:"grid",gap:32,padding:"8px 2px"}}>
+                <div style={{display:"grid",gap:48,padding:"12px 4px"}}>
                   <div style={{display:"grid",gap:4}}>
                     <div style={{fontSize:12,fontWeight:800,color:"var(--gray2)"}}>Detailed comparables</div>
-                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}} title="These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package.">Best Comparable Parcels ({displayNeighborResult?.neighbors?.length || 0} comps)</div>
-                  </div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}} title="These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package.">{effectiveNeighborResult?.analysisState==="research_only" ? `Research-only comparable parcels (${displayNeighborResult?.neighbors?.length || 0} comps)` : `Best Comparable Parcels (${displayNeighborResult?.neighbors?.length || 0} comps)`}</div>
+                </div>
                   {displayNeighborResult.neighbors.map((parcel, idx)=>renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx===0, onToggle: toggleComparableCard }))}
                 </div>
               ) : (
-                <div style={{fontSize:12,color:"var(--gray2)",textAlign:"center",padding:20}}>No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set.</div>
+                <div style={{fontSize:12,color:"var(--gray2)",textAlign:"center",padding:20}}>{displayNeighborResult?.noPackageReasonText || "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."}</div>
               )}
               {(displayNeighborResult?.neighbors?.length || 0)>0&&<div className="print-hide" style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px",marginTop:12,marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
@@ -6598,7 +7099,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)",marginBottom:6}}>Broadened search results</div>
                 <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:8}}>These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence.</div>
                 <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.18)",borderRadius:8,padding:"9px 10px",fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Ordered by <b style={{color:"var(--blue3)"}}>best grievance support first</b>, then overall comparable quality, then broadened area, distance, and FMV closeness.</div>
-                <div style={{display:"grid",gap:28,padding:"8px 2px"}}>
+                <div style={{display:"grid",gap:40,padding:"12px 4px"}}>
                   {broadenedComparables.map((parcel, idx)=>{
                     const expanded = !!expandedBroadenedIds[parcel.parcelId];
                     const distanceLabel = formatComparableMiles(parcel._broadenDistanceMiles);
@@ -6759,10 +7260,19 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
             activeStepId={activeWorkflowStepId}
             availableStepIds={availableWorkflowStepIds}
             onSelectStep={scrollToWorkflowStep}
+            isLoading={workflowDataLoading}
             isMobile
             mobileOpen={workflowNavMobileOpen}
             onToggleMobile={setWorkflowNavMobileOpen}
           />}
+          <ComparableMapModal
+            open={comparableMapOpen && !!displayNeighborResult?.p && selectedGrievanceComps.length > 0}
+            onClose={()=>setComparableMapOpen(false)}
+            subject={displayNeighborResult?.p || null}
+            comparables={selectedGrievanceComps}
+            parcelGeometry={parcelGeometry}
+            ownerPortfolioIndex={ownerPortfolioIndex}
+          />
         </Card>
       </div>}
 

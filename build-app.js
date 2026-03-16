@@ -9,10 +9,12 @@ const buildDir = path.join(root, "__build_perf");
 const sourceFile = path.join(root, "albany-full-dashboard.jsx");
 const leafletSourceFile = path.join(root, "leaflet-map.jsx");
 const autocompleteSourceFile = path.join(root, "address-autocomplete.jsx");
+const grievanceEngineSourceFile = path.join(root, "grievance-engine.js");
 const propertyClassCodesSourceFile = path.join(root, "property-type-classification-codes.json");
 const grievanceSettingsSourceFile = path.join(root, "grievance-settings.json");
 const buildLeafletFile = path.join(buildDir, "leaflet-map.jsx");
 const buildAutocompleteFile = path.join(buildDir, "address-autocomplete.jsx");
+const buildGrievanceEngineFile = path.join(buildDir, "grievance-engine.js");
 const buildPropertyClassCodesFile = path.join(buildDir, "property-type-classification-codes.json");
 const buildGrievanceSettingsFile = path.join(buildDir, "grievance-settings.json");
 const buildSourceFile = path.join(buildDir, "albany-full-dashboard.jsx");
@@ -37,6 +39,7 @@ function rewriteHtmlBundleReference(filePath, bundleVersion) {
 
 fs.copyFileSync(leafletSourceFile, buildLeafletFile);
 fs.copyFileSync(autocompleteSourceFile, buildAutocompleteFile);
+fs.copyFileSync(grievanceEngineSourceFile, buildGrievanceEngineFile);
 fs.copyFileSync(propertyClassCodesSourceFile, buildPropertyClassCodesFile);
 fs.copyFileSync(grievanceSettingsSourceFile, buildGrievanceSettingsFile);
 fs.copyFileSync(sourceFile, buildSourceFile);
