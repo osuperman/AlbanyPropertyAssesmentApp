@@ -12,6 +12,9 @@ const POINT_RENDER_MIN_ZOOM = 14;
 const POLYGON_RENDER_MIN_ZOOM = 12;
 const MAX_POLYGON_FEATURES = 1800;
 const MAX_POINT_FEATURES = 1400;
+const OPENSTREETMAP_COPYRIGHT_URL = "https://www.openstreetmap.org/copyright";
+const OPENSTREETMAP_FIX_MAP_URL = "https://www.openstreetmap.org/fixthemap";
+const OPENSTREETMAP_TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>';
 const BOUNDARY_PALETTE = [
   "#1d4ed8", "#0f766e", "#b45309", "#7c3aed", "#be123c", "#166534",
   "#0891b2", "#c2410c", "#4f46e5", "#15803d", "#b91c1c", "#0369a1",
@@ -485,7 +488,7 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     mapRef.current = map;
     rendererRef.current = L.canvas({ padding: 0.4 });
     L.control.zoom({ position: "topright" }).addTo(map);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, attribution: OPENSTREETMAP_TILE_ATTRIBUTION }).addTo(map);
     map.setView(ALBANY_DEFAULT_CENTER, ALBANY_DEFAULT_ZOOM);
     const syncViewport = () => {
       if (!mountedRef.current || !map._loaded) return;
@@ -875,6 +878,14 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
               <div style={{ background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" }}>{compactMode ? `1 subject parcel | ${compactCompareCount} grievance comp${compactCompareCount === 1 ? "" : "s"} | ${renderStats.polygons.toLocaleString()} parcel boundaries | ${renderStats.points.toLocaleString()} markers` : `${renderStats.visible.toLocaleString()} visible parcels | ${renderStats.polygons.toLocaleString()} parcel boundaries | ${renderStats.points.toLocaleString()} markers${renderStats.neighborhoods ? ` | ${renderStats.neighborhoods.toLocaleString()} neighborhood outlines` : ""}${renderStats.associations ? ` | ${renderStats.associations.toLocaleString()} association outlines` : ""}`}</div>
               <div style={{ background: "rgba(248,250,252,0.94)", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 11, color: "#0f172a" }}>Scroll to zoom | Drag to pan | Click to inspect | Double-click parcel to fit</div>
             </div>
+          </div>
+          <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)", background: compactMode ? "rgba(239,246,255,.78)" : "rgba(248,250,252,.9)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 }}>
+              Map tiles and attribution: <a href={OPENSTREETMAP_COPYRIGHT_URL} target="_blank" rel="noreferrer" style={{ color: "var(--blue3)", fontWeight: 700, textDecoration: "underline" }}>OpenStreetMap contributors</a>
+            </div>
+            <a href={OPENSTREETMAP_FIX_MAP_URL} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--blue3)", fontWeight: 700, textDecoration: "underline", whiteSpace: "nowrap" }}>
+              Report a map issue
+            </a>
           </div>
         </Card>
 
