@@ -27913,6 +27913,16 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         const parsed = new Date(value);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
       }
+      function inventoryValue(parcel, key) {
+        return parcel?.inventory && Object.prototype.hasOwnProperty.call(parcel.inventory, key) ? parcel.inventory[key] : null;
+      }
+      function flagIsYes(value) {
+        return (value || "").toString().trim().toUpperCase() === "Y";
+      }
+      function conditionFlagIsActive(value) {
+        const normalized = (value || "").toString().trim().toUpperCase();
+        return normalized === "1" || normalized === "Y";
+      }
       function isArmLengthSale2(sale) {
         return (sale?.arms_length_flag || "").toString().trim().toUpperCase() === "Y";
       }
@@ -28008,10 +28018,33 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         return asNumber(comp?.assessedValue);
       }
       function candidateLivingArea(comp) {
-        return asNumber(comp?.livingAreaSqft ?? comp?._compProfile?.livingArea);
+        return asNumber(comp?.livingAreaSqft ?? comp?._compProfile?.livingArea ?? inventoryValue(comp, "sqftLivingArea"));
       }
       function candidateYearBuilt(comp) {
-        return asNumber(comp?.yearBuilt ?? comp?._compProfile?.yearBuilt);
+        return asNumber(comp?.yearBuilt ?? comp?._compProfile?.yearBuilt ?? inventoryValue(comp, "yearBuilt"));
+      }
+      function candidateBedrooms(comp) {
+        return asNumber(comp?.bedrooms ?? comp?._compProfile?.bedrooms ?? inventoryValue(comp, "bedrooms"));
+      }
+      function candidateFullBaths(comp) {
+        return asNumber(comp?.fullBaths ?? comp?._compProfile?.fullBaths ?? inventoryValue(comp, "fullBaths"));
+      }
+      function candidateHalfBaths(comp) {
+        return asNumber(comp?.halfBaths ?? comp?._compProfile?.halfBaths ?? inventoryValue(comp, "halfBaths"));
+      }
+      function candidateBathCount(comp) {
+        const direct = asNumber(comp?.bathCount ?? comp?.baths ?? comp?._compProfile?.bathCount);
+        if (Number.isFinite(direct)) return direct;
+        const fullBaths = candidateFullBaths(comp);
+        const halfBaths = candidateHalfBaths(comp);
+        if (fullBaths == null && halfBaths == null) return null;
+        return Number(fullBaths || 0) + Number(halfBaths || 0) * 0.5;
+      }
+      function candidateZipCode(comp) {
+        return (comp?.zip || comp?._compProfile?.zipCode || "").toString().trim();
+      }
+      function candidateNeighborhoodAssociation(comp) {
+        return (comp?.neighborhoodAssociation || comp?._compProfile?.neighborhoodAssociation || "").toString().trim();
       }
       function candidateEquityRatio(comp) {
         const ratio = asNumber(comp?.equityRatio ?? comp?._compProfile?.equityRatio);
@@ -28166,22 +28199,24 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         if (ratios.length < 2) return null;
         return (Math.max(...ratios) - Math.min(...ratios)) * 100;
       }
-      function summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel) {
+      function summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, ratioStudyModel) {
         const reasons = [];
-        if (overvaluationFlag?.active) reasons.push("the equalization-rate benchmark still points to overvaluation");
+        if (overvaluationFlag?.active && Number.isFinite(asNumber(overvaluationFlag?.overvaluationExcess)) && asNumber(overvaluationFlag.overvaluationExcess) > 0) {
+          reasons.push("the roll-context benchmark still points to overvaluation");
+        }
         if (Number.isFinite(asNumber(marketSaleModel?.impliedDifference)) && asNumber(marketSaleModel?.impliedDifference) > 0) {
           reasons.push("recent arm's-length sales imply a lower market value than the current assessment");
         }
-        if (Number.isFinite(asNumber(neighborhoodEquityModel?.subjectPercentile)) && asNumber(neighborhoodEquityModel?.subjectPercentile) >= 75) {
-          reasons.push("your neighborhood equity percentile still runs high");
+        if (Number.isFinite(asNumber(ratioStudyModel?.cod)) && asNumber(ratioStudyModel?.cod) > 15) {
+          reasons.push("the local sale-ratio study also shows uneven assessment uniformity");
         }
         if (!reasons.length) return "";
         if (reasons.length === 1) return reasons[0];
         return `${reasons.slice(0, -1).join(", ")}, and ${reasons[reasons.length - 1]}`;
       }
-      function buildExcessivePivotSentence(visibleComps = [], overvaluationFlag = null, marketSaleModel = null, neighborhoodEquityModel = null) {
+      function buildExcessivePivotSentence(visibleComps = [], overvaluationFlag = null, marketSaleModel = null, ratioStudyModel = null) {
         const variance = visibleEquityVariance(visibleComps);
-        const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, ratioStudyModel);
         if (!Number.isFinite(variance) || variance >= 1 || !signalSummary) return "";
         return ` Nearby visible comps also show tightly clustered equity ratios (variance ${variance.toFixed(1)} points), which weakens an unequal-assessment claim. The remaining support leans more toward excessive assessment because ${signalSummary}.`;
       }
@@ -28195,8 +28230,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         }
         return "mixed_research_only";
       }
-      function buildNoPackageReasonText(reasonCode, visibleComps = [], overvaluationFlag = null, marketSaleModel = null, neighborhoodEquityModel = null) {
-        const excessivePivot = buildExcessivePivotSentence(visibleComps, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+      function buildNoPackageReasonText(reasonCode, visibleComps = [], overvaluationFlag = null, marketSaleModel = null, ratioStudyModel = null) {
+        const excessivePivot = buildExcessivePivotSentence(visibleComps, overvaluationFlag, marketSaleModel, ratioStudyModel);
         if (reasonCode === "no_physical_matches") {
           return "No comparable homes were found within the current search parameters, so the app could not build a grievance package.";
         }
@@ -28725,13 +28760,15 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         const fmv = asNumber(subject?.fullMarketValue);
         const rate = asNumber(equalizationRate);
         if (!Number.isFinite(av) || !Number.isFinite(fmv) || !Number.isFinite(rate) || rate <= 0) return null;
-        const expectedAssessedValue = fmv * rate;
+        const expectedAssessedValue = Math.round(fmv * rate);
+        const overvaluationExcess = Math.max(Math.round(av - expectedAssessedValue), 0);
+        const active = overvaluationExcess > 0;
         return {
-          active: av > expectedAssessedValue,
+          active,
           equalizationRate: rate,
-          expectedAssessedValue: Math.round(expectedAssessedValue),
-          overvaluationExcess: Math.max(Math.round(av - expectedAssessedValue), 0),
-          message: av > expectedAssessedValue ? `The separate overassessment check is positive. Your assessed value is above the expected assessed value implied by the municipal equalization rate of ${(rate * 100).toFixed(1)}%.` : "The separate overassessment check does not show an overvaluation signal from the municipal equalization rate."
+          expectedAssessedValue,
+          overvaluationExcess,
+          message: active ? `The separate overassessment check is positive. Your assessed value is above the expected assessed value implied by the municipal equalization rate of ${(rate * 100).toFixed(1)}%.` : "The separate overassessment check does not show an overvaluation signal from the municipal equalization rate."
         };
       }
       function computeClaimRecommendation(selectedComps, overvaluationFlag) {
@@ -28781,24 +28818,15 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           variance
         };
       }
-      function computeResearchClaimRecommendation(visibleComps, overvaluationFlag, marketSaleModel, neighborhoodEquityModel) {
+      function computeResearchClaimRecommendation(visibleComps, overvaluationFlag, marketSaleModel, ratioStudyModel) {
         const variance = visibleEquityVariance(visibleComps);
-        const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, ratioStudyModel);
         if (Number.isFinite(variance) && variance < 1 && signalSummary) {
           return {
             code: "EXCESSIVE",
             label: "Excessive Assessment",
             selectionLabel: 'Check "Excessive assessment"',
             reason: `Visible comps look physically similar, but their equity ratios are tightly clustered (variance ${variance.toFixed(1)} points), so unequal assessment is weak here. The remaining support leans more toward excessive assessment because ${signalSummary}.`,
-            variance
-          };
-        }
-        if (overvaluationFlag?.active) {
-          return {
-            code: "EXCESSIVE",
-            label: "Excessive Assessment",
-            selectionLabel: 'Check "Excessive assessment"',
-            reason: "Comparable homes were found, but none supported a grievance after normalization. The clearest remaining signal is the independent overvaluation benchmark.",
             variance
           };
         }
@@ -28832,182 +28860,618 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         }
         return { status: "neutral", sale: armLengthSale, latestSale, ratio, note: "" };
       }
-      function computeMarketSaleModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = /* @__PURE__ */ new Date() }) {
-        if (!(salesByParcelId instanceof Map) || !subject) return null;
-        const subjectSqft = asNumber(subjectProfile?.livingArea);
-        const subjectYear = asNumber(subjectProfile?.yearBuilt);
-        const collectEligible = (radius) => {
-          const values = [];
-          for (const parcel of parcels || []) {
-            if (!parcel || candidateParcelId(parcel) === candidateParcelId(subject)) continue;
-            const distance = parcelDistanceMiles2(subject, parcel);
-            if (!Number.isFinite(distance) || distance > radius) continue;
-            const livingArea = candidateLivingArea(parcel);
-            const yearBuilt = candidateYearBuilt(parcel);
-            if (Number.isFinite(subjectSqft) && Number.isFinite(livingArea)) {
-              const pctDiff = Math.abs(livingArea - subjectSqft) / subjectSqft;
-              if (pctDiff > 0.2) continue;
-            }
-            if (Number.isFinite(subjectYear) && Number.isFinite(yearBuilt) && Math.abs(yearBuilt - subjectYear) > 25) continue;
-            const sales = getParcelSales2(parcel, salesByParcelId).filter((sale) => isRecentArmsLengthSale2(sale, currentDate, 3));
-            for (const sale of sales) {
-              const salePrice = asNumber(sale?.sale_price);
-              if (!Number.isFinite(salePrice) || salePrice <= 0 || !Number.isFinite(livingArea) || livingArea <= 0) continue;
-              values.push({ parcel, sale, distance, salePricePerSqft: salePrice / livingArea });
-            }
-          }
-          return values;
-        };
-        let eligibleSales = collectEligible(1);
-        let expanded = false;
-        if (eligibleSales.length < 3) {
-          eligibleSales = collectEligible(1.5);
-          expanded = true;
+      function computeRatioStudyDirectComparison({ subject, subjectSaleModel = null, ratioStudyModel = null, rollContext = null, currentDate = /* @__PURE__ */ new Date() }) {
+        const valuationDate = valuationDateFromContext(buildRollContext(subject, rollContext, null), currentDate);
+        const sale = subjectSaleModel?.sale || null;
+        const saleDate = parseSalesDate2(sale?.sale_dte) || parseSalesDate2(sale?.deed_dte);
+        const salePrice = asNumber(sale?.sale_price);
+        const assessedAtSale = asNumber(sale?.total_av) ?? asNumber(subject?.assessedValue);
+        const monthsFromValuation = saleDate ? monthsBetweenDates(valuationDate, saleDate) : null;
+        const subjectVerifiedSaleRatio = Number.isFinite(assessedAtSale) && Number.isFinite(salePrice) && salePrice > 0 ? assessedAtSale / salePrice : null;
+        const withinAcceptedWindow = Number.isFinite(monthsFromValuation) && Number.isFinite(asNumber(ratioStudyModel?.windowMonths)) ? monthsFromValuation <= asNumber(ratioStudyModel.windowMonths) : false;
+        const canCompareDirectly = !!(ratioStudyModel?.available && sale && flagIsYes(sale?.arms_length_flag) && withinAcceptedWindow && Number.isFinite(subjectVerifiedSaleRatio));
+        const ratioGap = canCompareDirectly && Number.isFinite(asNumber(ratioStudyModel?.medianRatio)) ? subjectVerifiedSaleRatio - asNumber(ratioStudyModel.medianRatio) : null;
+        if (canCompareDirectly) {
+          return {
+            canCompareSubjectToRatioStudyDirectly: true,
+            subjectVerifiedSaleRatio,
+            monthsFromValuation,
+            ratioGap,
+            note: Number.isFinite(ratioGap) && ratioGap >= 0.05 ? "The subject's verified sale ratio is materially above the neighborhood verified-sale median, indicating the subject may be assessed at a higher share of market value than comparable sold properties." : "The subject has a directly comparable verified sale ratio in the accepted valuation window, so the ratio study may be discussed as a like-to-like comparison rather than neighborhood context alone."
+          };
         }
-        if (eligibleSales.length < 3 || !Number.isFinite(subjectSqft)) {
+        return {
+          canCompareSubjectToRatioStudyDirectly: false,
+          subjectVerifiedSaleRatio,
+          monthsFromValuation,
+          ratioGap: null,
+          note: "The neighborhood verified sale-ratio study provides context on local assessment uniformity, but the subject does not have a directly comparable verified sale ratio in this packet. The ratio study is therefore presented as supporting context rather than direct proof."
+        };
+      }
+      function percentileValue(values, percentile) {
+        const nums = (Array.isArray(values) ? values : []).map(asNumber).filter(Number.isFinite).sort((a2, b) => a2 - b);
+        if (!nums.length) return null;
+        if (nums.length === 1) return nums[0];
+        const clamped = clampNumber2(percentile, 0, 1);
+        const index = (nums.length - 1) * clamped;
+        const lower = Math.floor(index);
+        const upper = Math.ceil(index);
+        if (lower === upper) return nums[lower];
+        return nums[lower] + (nums[upper] - nums[lower]) * (index - lower);
+      }
+      function buildRollContext(subject, rollContext = null, equalizationRate = null) {
+        const context = rollContext || {};
+        const uniformPercentOfValue = Number.isFinite(asNumber(context?.uniformPercentOfValue)) ? asNumber(context.uniformPercentOfValue) : Number.isFinite(asNumber(equalizationRate)) ? asNumber(equalizationRate) * 100 : Number.isFinite(asNumber(subject?.uniformPercentOfValue)) ? asNumber(subject.uniformPercentOfValue) : null;
+        return {
+          assessmentYear: parseInt(context?.assessmentYear, 10) || parseInt(subject?.assessmentYear, 10) || null,
+          rollType: context?.rollType || subject?.rollType || null,
+          valuationDate: context?.valuationDate || subject?.valuationDate || null,
+          taxableStatusDate: context?.taxableStatusDate || subject?.taxableStatusDate || null,
+          uniformPercentOfValue,
+          loaRatio: Number.isFinite(uniformPercentOfValue) ? uniformPercentOfValue / 100 : asNumber(equalizationRate)
+        };
+      }
+      function valuationDateFromContext(rollContext, currentDate) {
+        const parsed = parseSalesDate2(rollContext?.valuationDate);
+        return parsed || currentDate;
+      }
+      function monthsBetweenDates(laterDate, earlierDate) {
+        if (!(laterDate instanceof Date) || !(earlierDate instanceof Date)) return null;
+        const diffMs = laterDate.getTime() - earlierDate.getTime();
+        if (!Number.isFinite(diffMs) || diffMs < 0) return null;
+        return diffMs / (1e3 * 60 * 60 * 24 * 30.4375);
+      }
+      function formatWindowMonthsLabel(months) {
+        if (months === 24) return "24 months";
+        if (months === 36) return "36 months";
+        if (months === 60) return "60 months";
+        return `${months} months`;
+      }
+      function conditionFlagsForSale(sale = {}) {
+        return Object.keys(sale).filter((key) => /^cond_/.test(key) && key !== "cond_none" && key !== "cond_memo" && conditionFlagIsActive(sale[key]));
+      }
+      function usableOrptsSale(sale = {}) {
+        const hasCod = Object.prototype.hasOwnProperty.call(sale, "cod_usable");
+        const hasRar = Object.prototype.hasOwnProperty.call(sale, "rar_usable");
+        if (!hasCod && !hasRar) return flagIsYes(sale?.arms_length_flag);
+        return flagIsYes(sale?.cod_usable) || flagIsYes(sale?.rar_usable);
+      }
+      function candidateFamily(comp) {
+        return residentialFamilyForClass2(comp?.propClass, comp?.propClassDesc || "");
+      }
+      function evidenceMatchDiagnostics(subject, subjectProfile, parcel) {
+        const subjectSqft = asNumber(subjectProfile?.livingArea ?? subject?.livingAreaSqft ?? inventoryValue(subject, "sqftLivingArea"));
+        const subjectYear = asNumber(subjectProfile?.yearBuilt ?? subject?.yearBuilt ?? inventoryValue(subject, "yearBuilt"));
+        const subjectBeds = asNumber(subjectProfile?.bedrooms ?? subject?.bedrooms ?? inventoryValue(subject, "bedrooms"));
+        const subjectBaths = asNumber(subjectProfile?.bathCount);
+        const compSqft = candidateLivingArea(parcel);
+        const compYear = candidateYearBuilt(parcel);
+        const compBeds = candidateBedrooms(parcel);
+        const compBaths = candidateBathCount(parcel);
+        const diagnostics = { matches: true, reasons: [] };
+        if (Number.isFinite(subjectSqft) && Number.isFinite(compSqft) && subjectSqft > 0 && Math.abs(compSqft - subjectSqft) / subjectSqft > 0.15) {
+          diagnostics.matches = false;
+          diagnostics.reasons.push("living area exceeds the evidence-pool threshold");
+        }
+        if (Number.isFinite(subjectYear) && Number.isFinite(compYear) && Math.abs(compYear - subjectYear) > 20) {
+          diagnostics.matches = false;
+          diagnostics.reasons.push("year built exceeds the evidence-pool threshold");
+        }
+        if (Number.isFinite(subjectBeds) && Number.isFinite(compBeds) && Math.abs(compBeds - subjectBeds) > 1) {
+          diagnostics.matches = false;
+          diagnostics.reasons.push("bedroom count exceeds the evidence-pool threshold");
+        }
+        if (Number.isFinite(subjectBaths) && Number.isFinite(compBaths) && Math.abs(compBaths - subjectBaths) > 1) {
+          diagnostics.matches = false;
+          diagnostics.reasons.push("bath count exceeds the evidence-pool threshold");
+        }
+        return diagnostics;
+      }
+      function comparableTierContext(subject, subjectProfile, parcel) {
+        const distanceMiles = parcelDistanceMiles2(subject, parcel);
+        const subjectNeighborhood = parcelNeighborhoodName2(subject, subjectProfile);
+        const subjectAssoc = candidateNeighborhoodAssociation(subject);
+        const subjectZip = candidateZipCode(subject) || (subjectProfile?.zipCode || "").toString().trim();
+        const parcelNeighborhood = candidateNeighborhood(parcel);
+        const parcelAssoc = candidateNeighborhoodAssociation(parcel);
+        const parcelZip = candidateZipCode(parcel);
+        if (subjectNeighborhood && parcelNeighborhood && subjectNeighborhood === parcelNeighborhood) {
+          return { tier: 1, label: "Tier 1 same neighborhood", reason: "same neighborhood", distanceMiles };
+        }
+        if (subjectAssoc && parcelAssoc && subjectAssoc === parcelAssoc) {
+          return { tier: 2, label: "Tier 2 same neighborhood association", reason: "same neighborhood association", distanceMiles };
+        }
+        if (!subjectAssoc && subjectZip && parcelZip && subjectZip === parcelZip && Number.isFinite(distanceMiles) && distanceMiles <= 1) {
+          return { tier: 2, label: "Tier 2 same ZIP within 1 mile", reason: "same ZIP within 1 mile", distanceMiles };
+        }
+        if (Number.isFinite(distanceMiles) && distanceMiles <= 2) {
+          return { tier: 3, label: "Tier 3 citywide within 2 miles", reason: "within 2 miles", distanceMiles };
+        }
+        if (Number.isFinite(distanceMiles) && distanceMiles <= 4) {
+          return { tier: 4, label: "Tier 4 research-only within 4 miles", reason: "within 4 miles research-only", distanceMiles };
+        }
+        return { tier: 99, label: "Outside search area", reason: "outside 4 miles", distanceMiles };
+      }
+      function buildSaleAppendixEntry(record, extra = {}) {
+        const ratio = Number.isFinite(asNumber(record.assessedValueAtSale)) && Number.isFinite(asNumber(record.salePrice)) && asNumber(record.salePrice) > 0 ? asNumber(record.assessedValueAtSale) / asNumber(record.salePrice) : null;
+        return {
+          parcelId: record.parcelId,
+          address: record.address,
+          saleDate: record.saleDate,
+          salePrice: record.salePrice,
+          assessedValueAtSale: record.assessedValueAtSale,
+          ratio,
+          salePricePerSqft: record.salePricePerSqft,
+          adjustedSalePricePerSqft: record.adjustedSalePricePerSqft ?? null,
+          adjustedSalePrice: record.adjustedSalePrice ?? null,
+          distanceMiles: record.distanceMiles,
+          tier: record.tier,
+          tierLabel: record.tierLabel,
+          monthsFromValuation: record.monthsFromValuation,
+          orptsFlags: {
+            armsLength: record.armsLength,
+            codUsable: record.codUsable,
+            rarUsable: record.rarUsable
+          },
+          reasons: record.reasons || [],
+          conditionMemo: record.conditionMemo || "",
+          ...extra
+        };
+      }
+      function collectCandidateSales({ subject, subjectProfile, parcels = [], salesByParcelId = null, valuationDate, maxWindowMonths = 60 }) {
+        const subjectId = candidateParcelId(subject);
+        const subjectFamily = candidateFamily(subject);
+        const records = [];
+        for (const parcel of parcels || []) {
+          if (!parcel || candidateParcelId(parcel) === subjectId || candidateFamily(parcel) !== subjectFamily) continue;
+          const tierContext = comparableTierContext(subject, subjectProfile, parcel);
+          if (tierContext.tier > 4) continue;
+          const matchDiagnostics = evidenceMatchDiagnostics(subject, subjectProfile, parcel);
+          const livingArea = candidateLivingArea(parcel);
+          for (const sale of getParcelSales2(parcel, salesByParcelId)) {
+            const saleDate = parseSalesDate2(sale?.sale_dte) || parseSalesDate2(sale?.deed_dte);
+            const salePrice = asNumber(sale?.sale_price);
+            const monthsFromValuation = saleDate ? monthsBetweenDates(valuationDate, saleDate) : null;
+            const reasons = [];
+            const usableForStudy = usableOrptsSale(sale);
+            if (!flagIsYes(sale?.arms_length_flag)) reasons.push("not marked arm's-length by ORPTS");
+            if (!Number.isFinite(salePrice) || salePrice <= 0) reasons.push("sale price is missing or zero");
+            if (!(saleDate instanceof Date)) reasons.push("sale date is missing");
+            if (Number.isFinite(monthsFromValuation) && monthsFromValuation > maxWindowMonths) reasons.push(`sale is older than ${formatWindowMonthsLabel(maxWindowMonths)}`);
+            if (tierContext.tier === 4) reasons.push("sale falls in Tier 4 research-only geography");
+            if (!matchDiagnostics.matches) reasons.push(...matchDiagnostics.reasons);
+            if (!usableForStudy) reasons.push("ORPTS did not mark the sale usable for COD/RAR work");
+            const activeFlags = conditionFlagsForSale(sale);
+            if (activeFlags.length) reasons.push("ORPTS condition flags suggest a non-standard transfer");
+            records.push({
+              parcelId: candidateParcelId(parcel),
+              address: parcel?.address || parcel?.parcelId || "",
+              saleDate: saleDate ? saleDate.toISOString().slice(0, 10) : null,
+              saleDateObj: saleDate,
+              salePrice,
+              assessedValueAtSale: asNumber(sale?.total_av) ?? asNumber(parcel?.assessedValue),
+              salePricePerSqft: Number.isFinite(livingArea) && livingArea > 0 && Number.isFinite(salePrice) ? salePrice / livingArea : null,
+              distanceMiles: tierContext.distanceMiles,
+              tier: tierContext.tier,
+              tierLabel: tierContext.label,
+              tierReason: tierContext.reason,
+              monthsFromValuation,
+              armsLength: flagIsYes(sale?.arms_length_flag),
+              usableForStudy,
+              codUsable: flagIsYes(sale?.cod_usable),
+              rarUsable: flagIsYes(sale?.rar_usable),
+              conditionMemo: sale?.cond_memo || "",
+              conditionFlags: activeFlags,
+              matchDiagnostics,
+              reasons
+            });
+          }
+        }
+        return records;
+      }
+      function computeTrendModel(records = []) {
+        const usable = (Array.isArray(records) ? records : []).filter(
+          (record) => record.armsLength && record.usableForStudy && !record.conditionFlags?.length && Number.isFinite(record.salePricePerSqft) && Number.isFinite(record.monthsFromValuation)
+        );
+        for (const maxTier of [1, 2, 3, 4]) {
+          const scoped = usable.filter((record) => record.tier <= maxTier && record.monthsFromValuation <= 60);
+          const recent = scoped.filter((record) => record.monthsFromValuation <= 24);
+          const older = scoped.filter((record) => record.monthsFromValuation > 24 && record.monthsFromValuation <= 60);
+          if (recent.length < 3 || older.length < 3) continue;
+          const recentMedian = medianValue2(recent.map((record) => record.salePricePerSqft));
+          const olderMedian = medianValue2(older.map((record) => record.salePricePerSqft));
+          const recentMonths = meanValue(recent.map((record) => record.monthsFromValuation));
+          const olderMonths = meanValue(older.map((record) => record.monthsFromValuation));
+          if (!Number.isFinite(recentMedian) || !Number.isFinite(olderMedian) || recentMedian <= 0 || olderMedian <= 0 || !Number.isFinite(recentMonths) || !Number.isFinite(olderMonths) || olderMonths <= recentMonths) continue;
+          const monthlyRate = Math.pow(recentMedian / olderMedian, 1 / (olderMonths - recentMonths)) - 1;
+          if (!Number.isFinite(monthlyRate)) continue;
+          return {
+            available: true,
+            tierUsed: maxTier,
+            monthlyRate,
+            annualRatePct: (Math.pow(1 + monthlyRate, 12) - 1) * 100,
+            note: `Older sales were time-adjusted using a local $/sq ft trend model through ${maxTier === 1 ? "same-neighborhood" : maxTier === 2 ? "Tier 2" : maxTier === 3 ? "Tier 3" : "Tier 4"} sales.`
+          };
+        }
+        return {
+          available: false,
+          tierUsed: null,
+          monthlyRate: null,
+          annualRatePct: null,
+          note: "A local time-adjustment trend model could not be built from the available usable sales."
+        };
+      }
+      function computeAdjustedSaleMeasures(record, trendModel) {
+        if (!Number.isFinite(record?.salePricePerSqft) || !Number.isFinite(record?.salePrice) || !Number.isFinite(record?.monthsFromValuation)) {
+          return { adjustedSalePricePerSqft: null, adjustedSalePrice: null };
+        }
+        if (record.monthsFromValuation <= 24) {
+          return {
+            adjustedSalePricePerSqft: record.salePricePerSqft,
+            adjustedSalePrice: record.salePrice
+          };
+        }
+        if (!trendModel?.available || !Number.isFinite(trendModel?.monthlyRate)) {
+          return { adjustedSalePricePerSqft: null, adjustedSalePrice: null };
+        }
+        const factor = Math.pow(1 + trendModel.monthlyRate, record.monthsFromValuation);
+        return {
+          adjustedSalePricePerSqft: record.salePricePerSqft * factor,
+          adjustedSalePrice: record.salePrice * factor
+        };
+      }
+      function computePriceRelatedBias(trimmedEntries = []) {
+        if (!Array.isArray(trimmedEntries) || trimmedEntries.length < 20) return null;
+        const usable = trimmedEntries.filter((entry) => Number.isFinite(asNumber(entry.salePrice)) && asNumber(entry.salePrice) > 0 && Number.isFinite(asNumber(entry.ratio))).map((entry) => ({
+          x: Math.log(asNumber(entry.salePrice)),
+          y: asNumber(entry.ratio)
+        }));
+        if (usable.length < 20) return null;
+        const meanX = meanValue(usable.map((entry) => entry.x));
+        const meanY = meanValue(usable.map((entry) => entry.y));
+        const numerator = usable.reduce((sum, entry) => sum + (entry.x - meanX) * (entry.y - meanY), 0);
+        const denominator = usable.reduce((sum, entry) => sum + (entry.x - meanX) ** 2, 0);
+        if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return null;
+        return numerator / denominator * 100;
+      }
+      function computeEvidenceSufficiency({ analysisState, selectedComps = [], marketSaleModel = null }) {
+        if (marketSaleModel?.available && marketSaleModel?.sufficientForClaim) {
+          return {
+            status: "sale_backed_sufficient",
+            label: "Sale-backed evidence is sufficient",
+            canRecommendClaim: true,
+            canRecommendValue: true,
+            reason: `The package has ${marketSaleModel.saleCount} usable sale-backed evidence records in the ${marketSaleModel.windowLabel} ${marketSaleModel.tierLabel.toLowerCase()} pool.`
+          };
+        }
+        if (Array.isArray(selectedComps) && selectedComps.length || analysisState === "research_only") {
+          return {
+            status: "sale_backed_insufficient",
+            label: "Sale-backed evidence is insufficient",
+            canRecommendClaim: false,
+            canRecommendValue: false,
+            reason: marketSaleModel?.insufficiencyReason || "Comparable homes were found, but the sale-backed evidence pool is not strong enough for an automatic claim recommendation or requested value."
+          };
+        }
+        return {
+          status: "needs_homeowner_evidence",
+          label: "Additional homeowner evidence is needed",
+          canRecommendClaim: false,
+          canRecommendValue: false,
+          reason: "No grievance package could be built from the current comparable evidence. Additional homeowner-supplied evidence would be needed before recommending a claim or value."
+        };
+      }
+      function computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison = null }) {
+        if (!evidenceSufficiency?.canRecommendClaim) {
+          return {
+            allowRecommendation: false,
+            recommendationCode: null,
+            recommendedReason: null,
+            selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+            reason: evidenceSufficiency?.reason || "Sale-backed evidence is not sufficient for an automatic claim recommendation."
+          };
+        }
+        const directComparisonGap = asNumber(ratioStudyDirectComparison?.ratioGap);
+        if (ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly && Number.isFinite(directComparisonGap) && directComparisonGap >= 0.05 && ratioStudyModel?.reliabilityLabel !== "low") {
+          return {
+            allowRecommendation: true,
+            recommendationCode: "UNEQUAL",
+            recommendedReason: "Unequal Assessment",
+            selectionLabel: 'Check "Unequal assessment"',
+            reason: `The subject's verified sale ratio is materially above the local verified-sale median ratio (${(directComparisonGap * 100).toFixed(1)} points above the trimmed median).`
+          };
+        }
+        if (Number.isFinite(asNumber(marketSaleModel?.impliedDifferencePct)) && asNumber(marketSaleModel.impliedDifferencePct) > 0.03) {
+          return {
+            allowRecommendation: true,
+            recommendationCode: "EXCESSIVE",
+            recommendedReason: "Excessive Assessment",
+            selectionLabel: 'Check "Excessive assessment"',
+            reason: `The sale-backed market model implies a lower market value than the current assessment by ${((marketSaleModel.impliedDifferencePct || 0) * 100).toFixed(1)}%.`
+          };
+        }
+        return {
+          allowRecommendation: false,
+          recommendationCode: null,
+          recommendedReason: null,
+          selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+          reason: "The sale-backed models are directionally useful, but they do not separate unequal from excessive assessment strongly enough for an automatic claim recommendation."
+        };
+      }
+      function computeMarketSaleModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = /* @__PURE__ */ new Date(), rollContext = null }) {
+        if (!(salesByParcelId instanceof Map) || !subject) return null;
+        const roll = buildRollContext(subject, rollContext, null);
+        const valuationDate = valuationDateFromContext(roll, currentDate);
+        const subjectSqft = asNumber(subjectProfile?.livingArea ?? subject?.livingAreaSqft ?? inventoryValue(subject, "sqftLivingArea"));
+        const fallbackPricePerSqft = Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(subjectSqft) && subjectSqft > 0 ? asNumber(subject.fullMarketValue) / subjectSqft : null;
+        const candidateSales = collectCandidateSales({ subject, subjectProfile, parcels, salesByParcelId, valuationDate, maxWindowMonths: 60 });
+        const trendModel = computeTrendModel(candidateSales);
+        const attempts = [];
+        let chosen = null;
+        for (const windowMonths of [24, 36, 60]) {
+          for (const tier of [1, 2, 3, 4]) {
+            const included = candidateSales.filter(
+              (record) => record.tier <= tier && record.tier < 99 && record.armsLength && record.usableForStudy && !record.conditionFlags?.length && record.matchDiagnostics?.matches && Number.isFinite(record.salePricePerSqft) && Number.isFinite(record.monthsFromValuation) && record.monthsFromValuation <= windowMonths
+            ).map((record) => ({ ...record, ...computeAdjustedSaleMeasures(record, trendModel) })).filter((record) => record.monthsFromValuation <= 24 || Number.isFinite(record.adjustedSalePricePerSqft));
+            attempts.push({ windowMonths, tier, count: included.length });
+            if (!chosen && Number.isFinite(subjectSqft) && subjectSqft > 0 && included.length >= 3) {
+              chosen = { windowMonths, tier, included };
+            }
+            if (chosen) break;
+          }
+          if (chosen) break;
+        }
+        if (!chosen) {
+          const bestAttempt = attempts.sort((a2, b) => b.count - a2.count)[0] || { count: 0, windowMonths: 24, tier: 1 };
           return {
             available: false,
-            saleCount: eligibleSales.length,
-            expandedRadius: expanded,
-            note: "Insufficient recent sales for market estimate.",
-            fallbackPricePerSqft: Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(subjectSqft) && subjectSqft > 0 ? asNumber(subject?.fullMarketValue) / subjectSqft : null
+            saleCount: bestAttempt.count,
+            expandedRadius: bestAttempt.tier > 1,
+            sufficientForClaim: false,
+            reliabilityLabel: "insufficient",
+            valuationDate: valuationDate.toISOString().slice(0, 10),
+            windowMonths: bestAttempt.windowMonths,
+            windowLabel: formatWindowMonthsLabel(bestAttempt.windowMonths),
+            tierUsed: bestAttempt.tier,
+            tierLabel: bestAttempt.tier === 1 ? "Tier 1 same neighborhood" : bestAttempt.tier === 2 ? "Tier 2" : bestAttempt.tier === 3 ? "Tier 3" : "Tier 4",
+            timeAdjustmentMethod: trendModel.available ? trendModel.note : "No local time adjustment could be applied.",
+            includedSales: [],
+            excludedSales: candidateSales.map((record) => buildSaleAppendixEntry(record, { included: false })),
+            estimatedSubjectFmv: null,
+            estimatedValueLow: null,
+            estimatedValueHigh: null,
+            impliedDifference: null,
+            impliedDifferencePct: null,
+            insufficiencyReason: !Number.isFinite(subjectSqft) || subjectSqft <= 0 ? "Living area is unavailable for the subject parcel, so the sale-backed market model cannot be calculated." : `Only ${bestAttempt.count} usable sale${bestAttempt.count === 1 ? "" : "s"} were found within the current evidence pool.`,
+            note: !Number.isFinite(subjectSqft) || subjectSqft <= 0 ? "Living area is unavailable for the subject parcel, so the sale-backed market model cannot be calculated." : "Insufficient usable sale-backed evidence for a defensible market estimate.",
+            fallbackPricePerSqft
           };
         }
-        const neighborhoodMedianPpsf = medianValue2(eligibleSales.map((entry) => entry.salePricePerSqft));
-        const estimatedSubjectFmv = Number.isFinite(neighborhoodMedianPpsf) ? Math.round(neighborhoodMedianPpsf * subjectSqft) : null;
+        const adjustedPpsfValues = chosen.included.map((record) => record.adjustedSalePricePerSqft).filter(Number.isFinite);
+        const neighborhoodMedianPpsf = roundNumber(medianValue2(adjustedPpsfValues) || 0, 2);
+        const estimatedSubjectFmv = Math.round((medianValue2(adjustedPpsfValues) || 0) * subjectSqft);
+        const estimatedValueLow = Math.round((percentileValue(adjustedPpsfValues, 0.25) || medianValue2(adjustedPpsfValues) || 0) * subjectSqft);
+        const estimatedValueHigh = Math.round((percentileValue(adjustedPpsfValues, 0.75) || medianValue2(adjustedPpsfValues) || 0) * subjectSqft);
         const impliedDifference = Number.isFinite(asNumber(subject?.assessedValue)) && Number.isFinite(estimatedSubjectFmv) ? Math.round(asNumber(subject.assessedValue) - estimatedSubjectFmv) : null;
         const impliedDifferencePct = Number.isFinite(impliedDifference) && Number.isFinite(estimatedSubjectFmv) && estimatedSubjectFmv > 0 ? impliedDifference / estimatedSubjectFmv : null;
+        const tierLabel = chosen.tier === 1 ? "Tier 1 same neighborhood" : chosen.tier === 2 ? "Tier 2 same neighborhood association / ZIP fallback" : chosen.tier === 3 ? "Tier 3 citywide within 2 miles" : "Tier 4 research-only within 4 miles";
+        const sufficientForClaim = chosen.included.length >= 3 && chosen.tier <= 3 && chosen.windowMonths <= 36;
         return {
           available: true,
-          saleCount: eligibleSales.length,
-          expandedRadius: expanded,
+          saleCount: chosen.included.length,
+          expandedRadius: chosen.tier > 1 || chosen.included.some((record) => Number.isFinite(record.distanceMiles) && record.distanceMiles > 1),
+          sufficientForClaim,
+          reliabilityLabel: sufficientForClaim ? "sufficient" : chosen.windowMonths === 60 || chosen.tier === 4 ? "strong_caveat" : "caution",
+          valuationDate: valuationDate.toISOString().slice(0, 10),
+          windowMonths: chosen.windowMonths,
+          windowLabel: formatWindowMonthsLabel(chosen.windowMonths),
+          tierUsed: chosen.tier,
+          tierLabel,
           neighborhoodMedianPpsf,
           estimatedSubjectFmv,
+          estimatedValueLow,
+          estimatedValueHigh,
           impliedDifference,
           impliedDifferencePct,
-          eligibleSales,
-          note: expanded ? "Radius expanded to 1.5 miles to reach the minimum sale sample." : ""
+          eligibleSales: chosen.included,
+          includedSales: chosen.included.map((record) => buildSaleAppendixEntry(record, { included: true })),
+          excludedSales: candidateSales.filter((record) => !chosen.included.some((included) => included.parcelId === record.parcelId && included.saleDate === record.saleDate && included.salePrice === record.salePrice)).map((record) => buildSaleAppendixEntry(record, { included: false })),
+          timeAdjustmentMethod: chosen.windowMonths > 24 ? trendModel.note : "No time adjustment was needed because the evidence comes from the primary 24-month window.",
+          insufficiencyReason: sufficientForClaim ? null : "The sale-backed value estimate exists, but it relies on a broader fallback window or research-only geography and should not drive an automatic claim recommendation.",
+          note: chosen.windowMonths > 24 || chosen.tier > 1 ? `The market estimate uses a ${formatWindowMonthsLabel(chosen.windowMonths)} window and ${tierLabel.toLowerCase()} to reach a usable sample.` : "The market estimate uses the primary 24-month sale window in the subject neighborhood.",
+          fallbackPricePerSqft
         };
       }
-      function computeNeighborhoodEquityModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = /* @__PURE__ */ new Date() }) {
+      function computeNeighborhoodEquityModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = /* @__PURE__ */ new Date(), rollContext = null }) {
         if (!(salesByParcelId instanceof Map) || !subject) return null;
-        const subjectNeighborhood = parcelNeighborhoodName2(subject, subjectProfile);
-        const subjectZip = subjectProfile?.zipCode || subject?.zip || "";
-        const subjectFamily = residentialFamilyForClass2(subject?.propClass, subject?.propClassDesc || "");
-        const collectRatios = (mode) => {
-          const ratios2 = [];
-          for (const parcel of parcels || []) {
-            if (!parcel || !isResidentialPropClass2(parcel?.propClass)) continue;
-            const sameArea = mode === "neighborhood" ? parcelNeighborhoodName2(parcel, parcel?._compProfile) === subjectNeighborhood : (parcel?.zip || "") === subjectZip;
-            if (!sameArea) continue;
-            if (residentialFamilyForClass2(parcel?.propClass, parcel?.propClassDesc || "") !== subjectFamily) continue;
-            const sales = getParcelSales2(parcel, salesByParcelId).filter((sale) => isRecentArmsLengthSale2(sale, currentDate, 3));
-            const av = asNumber(parcel?.assessedValue);
-            for (const sale of sales) {
-              const salePrice = asNumber(sale?.sale_price);
-              if (!Number.isFinite(av) || !Number.isFinite(salePrice) || salePrice <= 0) continue;
-              ratios2.push(av / salePrice);
+        const roll = buildRollContext(subject, rollContext, null);
+        const valuationDate = valuationDateFromContext(roll, currentDate);
+        const candidateSales = collectCandidateSales({ subject, subjectProfile, parcels, salesByParcelId, valuationDate, maxWindowMonths: 60 });
+        let chosen = null;
+        for (const windowMonths of [24, 36, 60]) {
+          for (const tier of [1, 2, 3]) {
+            const included = candidateSales.filter(
+              (record) => record.tier <= tier && record.armsLength && record.usableForStudy && !record.conditionFlags?.length && Number.isFinite(record.assessedValueAtSale) && Number.isFinite(record.salePrice) && record.salePrice > 0 && Number.isFinite(record.monthsFromValuation) && record.monthsFromValuation <= windowMonths
+            );
+            if (included.length >= 5) {
+              chosen = { windowMonths, tier, included };
+              break;
             }
           }
-          return ratios2;
-        };
-        let scope = "neighborhood";
-        let ratios = collectRatios("neighborhood");
-        if (ratios.length < 5) {
-          scope = "zip";
-          ratios = collectRatios("zip");
+          if (chosen) break;
         }
-        if (ratios.length < 5) {
-          return { available: false, sampleSize: ratios.length, scope, note: "Insufficient sales data for neighborhood equity analysis." };
+        if (!chosen) {
+          return {
+            available: false,
+            sampleSize: 0,
+            rawSampleSize: 0,
+            trimmedSampleSize: 0,
+            scope: "insufficient",
+            note: "Insufficient verified sale-ratio evidence for the ratio study.",
+            includedSales: [],
+            excludedSales: candidateSales.map((record) => buildSaleAppendixEntry(record, { included: false })),
+            cod: null,
+            prd: null,
+            prb: null,
+            reliabilityLabel: "low",
+            iaaoStandard: 15,
+            medianRatio: null,
+            subjectRatio: null,
+            subjectPercentile: null
+          };
         }
-        const medianRatio = medianValue2(ratios);
-        const absoluteDeviations = ratios.map((value) => Math.abs(value - medianRatio));
+        const ratios = chosen.included.map((record) => ({
+          ...record,
+          ratio: record.assessedValueAtSale / record.salePrice
+        })).sort((a2, b) => a2.ratio - b.ratio);
+        const trimCount = ratios.length >= 20 ? Math.floor(ratios.length * 0.05) : 0;
+        const trimmed = ratios.slice(trimCount, ratios.length - trimCount);
+        const trimmedRatios = trimmed.map((entry) => entry.ratio);
+        const medianRatio = medianValue2(trimmedRatios);
+        const absoluteDeviations = trimmedRatios.map((value) => Math.abs(value - medianRatio));
         const cod = Number.isFinite(medianRatio) && medianRatio !== 0 ? medianValue2(absoluteDeviations) / medianRatio * 100 : null;
-        const subjectRatio = safeDivide(asNumber(subject?.assessedValue), asNumber(subject?.fullMarketValue));
-        const subjectPercentile = percentileRankValue2(subjectRatio, ratios);
+        const meanRatio = meanValue(trimmedRatios);
+        const weightedMeanRatio = safeDivide(
+          trimmed.reduce((sum, entry) => sum + entry.assessedValueAtSale, 0),
+          trimmed.reduce((sum, entry) => sum + entry.salePrice, 0)
+        );
+        const prd = trimmed.length >= 20 && Number.isFinite(meanRatio) && Number.isFinite(weightedMeanRatio) && weightedMeanRatio > 0 ? meanRatio / weightedMeanRatio : null;
+        const prb = trimmed.length >= 20 ? computePriceRelatedBias(trimmed) : null;
         return {
           available: true,
-          sampleSize: ratios.length,
-          scope,
+          sampleSize: trimmed.length,
+          rawSampleSize: ratios.length,
+          trimmedSampleSize: trimmed.length,
+          trimRule: trimCount > 0 ? "top and bottom 5% trimmed" : "no trim applied because the sample is smaller than 20",
+          scope: chosen.tier === 1 ? "neighborhood" : chosen.tier === 2 ? candidateNeighborhoodAssociation(subject) || "" ? "tier_2" : "zip" : "tier_3",
+          windowMonths: chosen.windowMonths,
+          windowLabel: formatWindowMonthsLabel(chosen.windowMonths),
+          tierUsed: chosen.tier,
           medianRatio,
-          subjectRatio,
-          subjectPercentile,
           cod,
-          codWarning: Number.isFinite(cod) && cod > 15 ? `Systemic assessment inconsistency detected. COD ${cod.toFixed(1)} exceeds the IAAO single-family standard of 15.0.` : "",
-          iaaoStandard: 15
+          prd,
+          prb,
+          reliabilityLabel: trimmed.length >= 20 ? "standard" : "low",
+          iaaoStandard: 15,
+          codWarning: Number.isFinite(cod) && cod > 15 ? `The trimmed COD is ${cod.toFixed(1)}, which is above the IAAO single-family guideline of 15.0.` : "",
+          note: trimmed.length >= 20 ? "The ratio study uses verified sale ratios after trimming the top and bottom 5% of ratios." : "The ratio study is low reliability because the trimmed sample is under 20 sales, so PRD and PRB are suppressed.",
+          includedSales: trimmed.map((entry) => buildSaleAppendixEntry(entry, { included: true, ratio: entry.ratio })),
+          excludedSales: candidateSales.filter((record) => !trimmed.some((included) => included.parcelId === record.parcelId && included.saleDate === record.saleDate && included.salePrice === record.salePrice)).map((record) => buildSaleAppendixEntry(record, { included: false })),
+          subjectRatio: null,
+          subjectPercentile: null
         };
       }
-      function computeSuggestedRequestedValue({ subject, selectedComps = [] }) {
-        const eligible = (Array.isArray(selectedComps) ? selectedComps : []).filter(
-          (comp) => (candidateQualityValue(comp) || 0) >= 60 && (candidateConfidenceValue(comp) || 0) >= 70 && (candidateSupportValue(comp) || 0) >= 12 && Number.isFinite(candidateAssessedValue(comp)) && !comp?._marginalSupport && !comp?.marginalSupport
-        );
-        if (eligible.length < 2) {
+      function computeSuggestedRequestedValue({ subject, selectedComps = [], marketSaleModel = null, equalizationRate = null, evidenceSufficiency = null }) {
+        if (!marketSaleModel && !evidenceSufficiency) {
+          const eligible = (Array.isArray(selectedComps) ? selectedComps : []).filter(
+            (comp) => (candidateQualityValue(comp) || 0) >= 60 && (candidateConfidenceValue(comp) || 0) >= 70 && (candidateSupportValue(comp) || 0) >= 12 && Number.isFinite(candidateAssessedValue(comp)) && !comp?._marginalSupport && !comp?.marginalSupport
+          );
+          if (eligible.length < 2) {
+            return {
+              value: null,
+              method: "manual_review",
+              reviewManually: true,
+              note: eligible.length === 1 ? "Only one comp qualifies for the suggested value calculation, so manual review is required." : "Fewer than two comps qualify for the suggested value calculation, so manual review is required.",
+              eligibleCount: eligible.length,
+              methodA: null,
+              methodB: null,
+              scarWarning: null
+            };
+          }
+          const assessedValues = eligible.map(candidateAssessedValue).filter(Number.isFinite);
+          const medianAssessed = medianValue2(assessedValues);
+          const spread = Number.isFinite(medianAssessed) && medianAssessed > 0 ? (Math.max(...assessedValues) - Math.min(...assessedValues)) / medianAssessed : 0;
+          const allEquityTied = eligible.every((comp) => Math.abs(asNumber(candidateNormalizedSummary(comp).equityRatioDeltaPoints) || 0) < 1);
+          if (spread > 0.2 || allEquityTied) {
+            return {
+              value: null,
+              method: "manual_review",
+              reviewManually: true,
+              note: spread > 0.2 ? "Qualifying comp assessed values are spread more than 20%, so manual review is required." : "All qualifying comps have equity ratios within 1 point of the subject, so manual review is required.",
+              eligibleCount: eligible.length,
+              methodA: null,
+              methodB: null,
+              scarWarning: null
+            };
+          }
+          const weightedEntries = eligible.map((comp) => ({
+            value: candidateAssessedValue(comp),
+            weight: (candidateQualityValue(comp) || 0) * 0.35 + (candidateSupportValue(comp) || 0) * 0.4 + (candidateConfidenceValue(comp) || 0) * 0.25
+          }));
+          const methodA = eligible.length === 2 ? Math.round(Math.min(
+            safeDivide(weightedEntries.reduce((sum, entry) => sum + entry.value * entry.weight, 0), weightedEntries.reduce((sum, entry) => sum + entry.weight, 0)) || meanValue(weightedEntries.map((entry) => entry.value)),
+            (weightedEntries[0].value + weightedEntries[1].value) / 2
+          )) : weightedMedian(weightedEntries);
+          const subjectFmv = asNumber(subject?.fullMarketValue);
+          const medianCompEquityRatio = medianValue2(eligible.map(candidateEquityRatio).filter(Number.isFinite));
+          const methodB = Number.isFinite(subjectFmv) && Number.isFinite(medianCompEquityRatio) ? Math.round(subjectFmv * medianCompEquityRatio) : null;
+          let value2 = null;
+          let method = "manual_review";
+          if (Number.isFinite(methodA) && Number.isFinite(methodB)) {
+            value2 = Math.min(methodA, methodB);
+            method = value2 === methodA ? "method_a" : "method_b";
+          } else if (Number.isFinite(methodA)) {
+            value2 = methodA;
+            method = "method_a";
+          } else if (Number.isFinite(methodB)) {
+            value2 = methodB;
+            method = "method_b";
+          }
+          const subjectAv2 = asNumber(subject?.assessedValue);
+          if (Number.isFinite(subjectAv2) && Number.isFinite(value2) && value2 > subjectAv2) {
+            return {
+              value: null,
+              method: "manual_review",
+              reviewManually: true,
+              note: "The suggested value is above the current assessed value, so manual review is required.",
+              eligibleCount: eligible.length,
+              methodA,
+              methodB,
+              scarWarning: null
+            };
+          }
+          let scarWarning2 = null;
+          if (Number.isFinite(subjectAv2) && Number.isFinite(value2) && subjectAv2 > 0) {
+            const reductionPct = (subjectAv2 - value2) / subjectAv2;
+            if (reductionPct > 0.25) {
+              scarWarning2 = `SCAR limit exceeded: this reduction (${(reductionPct * 100).toFixed(1)}%) exceeds the 25% maximum typically allowed in SCAR proceedings.`;
+            }
+          }
           return {
-            value: null,
-            method: "manual_review",
-            reviewManually: true,
-            note: eligible.length === 1 ? "Only one comp qualifies for the suggested value calculation, so manual review is required." : "Fewer than two comps qualify for the suggested value calculation, so manual review is required.",
-            eligibleCount: eligible.length,
-            methodA: null,
-            methodB: null,
-            scarWarning: null
-          };
-        }
-        const assessedValues = eligible.map(candidateAssessedValue).filter(Number.isFinite);
-        const medianAssessed = medianValue2(assessedValues);
-        const spread = Number.isFinite(medianAssessed) && medianAssessed > 0 ? (Math.max(...assessedValues) - Math.min(...assessedValues)) / medianAssessed : 0;
-        const allEquityTied = eligible.every((comp) => Math.abs(asNumber(candidateNormalizedSummary(comp).equityRatioDeltaPoints) || 0) < 1);
-        if (spread > 0.2 || allEquityTied) {
-          return {
-            value: null,
-            method: "manual_review",
-            reviewManually: true,
-            note: spread > 0.2 ? "Qualifying comp assessed values are spread more than 20%, so manual review is required." : "All qualifying comps have equity ratios within 1 point of the subject, so manual review is required.",
-            eligibleCount: eligible.length,
-            methodA: null,
-            methodB: null,
-            scarWarning: null
-          };
-        }
-        const weightedEntries = eligible.map((comp) => ({
-          value: candidateAssessedValue(comp),
-          weight: (candidateQualityValue(comp) || 0) * 0.35 + (candidateSupportValue(comp) || 0) * 0.4 + (candidateConfidenceValue(comp) || 0) * 0.25
-        }));
-        let methodA = null;
-        if (eligible.length === 2) {
-          const totalWeight = weightedEntries.reduce((sum, entry) => sum + entry.weight, 0);
-          const weightedAverage = totalWeight > 0 ? weightedEntries.reduce((sum, entry) => sum + entry.value * entry.weight, 0) / totalWeight : meanValue(weightedEntries.map((entry) => entry.value));
-          const simpleMidpoint = (weightedEntries[0].value + weightedEntries[1].value) / 2;
-          methodA = Math.round(Math.min(weightedAverage, simpleMidpoint));
-        } else {
-          methodA = weightedMedian(weightedEntries);
-        }
-        const subjectFmv = asNumber(subject?.fullMarketValue);
-        const equityRatios = eligible.map(candidateEquityRatio).filter(Number.isFinite);
-        const medianCompEquityRatio = medianValue2(equityRatios);
-        const methodB = Number.isFinite(subjectFmv) && Number.isFinite(medianCompEquityRatio) ? Math.round(subjectFmv * medianCompEquityRatio) : null;
-        let value = null;
-        let method = "manual_review";
-        if (Number.isFinite(methodA) && Number.isFinite(methodB)) {
-          value = Math.min(methodA, methodB);
-          method = value === methodA ? "method_a" : "method_b";
-        } else if (Number.isFinite(methodA)) {
-          value = methodA;
-          method = "method_a";
-        } else if (Number.isFinite(methodB)) {
-          value = methodB;
-          method = "method_b";
-        }
-        const subjectAv = asNumber(subject?.assessedValue);
-        if (Number.isFinite(subjectAv) && Number.isFinite(value) && value > subjectAv) {
-          return {
-            value: null,
-            method: "manual_review",
-            reviewManually: true,
-            note: "The suggested value is above the current assessed value, so manual review is required.",
+            value: Number.isFinite(value2) ? Math.round(value2) : null,
+            method,
+            reviewManually: false,
+            note: method === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : "The comp-based value estimate produced the lower filing recommendation.",
             eligibleCount: eligible.length,
             methodA,
             methodB,
+            scarWarning: scarWarning2
+          };
+        }
+        const loaRatio = asNumber(equalizationRate);
+        if (!evidenceSufficiency?.canRecommendValue || !marketSaleModel?.available || !Number.isFinite(asNumber(marketSaleModel?.estimatedSubjectFmv)) || !Number.isFinite(loaRatio) || loaRatio <= 0) {
+          return {
+            value: null,
+            method: "manual_review",
+            reviewManually: true,
+            note: evidenceSufficiency?.reason || "Sale-backed evidence is not strong enough for an automatic requested assessed value.",
+            eligibleCount: marketSaleModel?.saleCount || 0,
+            methodA: null,
+            methodB: null,
+            scarWarning: null
+          };
+        }
+        const value = Math.round(asNumber(marketSaleModel.estimatedSubjectFmv) * loaRatio);
+        const subjectAv = asNumber(subject?.assessedValue);
+        if (Number.isFinite(subjectAv) && Number.isFinite(value) && value >= subjectAv) {
+          return {
+            value: null,
+            method: "manual_review",
+            reviewManually: true,
+            note: "The LOA-converted requested value is not below the current assessed value, so the app will not auto-fill a filing value.",
+            eligibleCount: marketSaleModel.saleCount || 0,
+            methodA: null,
+            methodB: null,
             scarWarning: null
           };
         }
@@ -29019,13 +29483,13 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           }
         }
         return {
-          value: Number.isFinite(value) ? Math.round(value) : null,
-          method,
+          value,
+          method: "uniform_percent_of_value",
           reviewManually: false,
-          note: method === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : "The comp-based value estimate produced the lower filing recommendation.",
-          eligibleCount: eligible.length,
-          methodA,
-          methodB,
+          note: "The requested assessed value is the sale-backed market estimate converted by the loaded uniform percent of value / LOA ratio.",
+          eligibleCount: marketSaleModel.saleCount || 0,
+          methodA: Math.round(asNumber(marketSaleModel.estimatedSubjectFmv)),
+          methodB: value,
           scarWarning
         };
       }
@@ -29077,12 +29541,14 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         parcels = [],
         salesByParcelId = null,
         equalizationRate = null,
+        rollContext = null,
         currentDate = /* @__PURE__ */ new Date()
       }) {
         const selected = (Array.isArray(selectedComps) ? selectedComps : []).filter(Boolean);
         const visible = (Array.isArray(visibleComps) ? visibleComps : []).filter(Boolean);
-        const marketSaleModel = computeMarketSaleModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate });
-        const neighborhoodEquityModel = computeNeighborhoodEquityModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate });
+        const normalizedRollContext = buildRollContext(subject, rollContext, equalizationRate);
+        const marketSaleModel = computeMarketSaleModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate, rollContext: normalizedRollContext });
+        const ratioStudyModel = computeNeighborhoodEquityModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate, rollContext: normalizedRollContext });
         applyCompAdjustments({ subject, subjectProfile, comps: visible, marketSaleModel, equalizationRate });
         const grievanceAvgFMV = selected.length ? Math.round(meanValue(selected.map((comp) => asNumber(comp?.fullMarketValue)).filter(Number.isFinite))) : null;
         const grievanceAvgAssessed = selected.length ? Math.round(meanValue(selected.map(candidateAssessedValue).filter(Number.isFinite))) : null;
@@ -29102,15 +29568,34 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         if (selected.length < 3) packageLimitations.push("fewer than 3 comps are currently selected");
         if (selected.some((comp) => (candidateConfidenceValue(comp) || 0) < 70)) packageLimitations.push("at least one selected comp has weaker data confidence");
         if (selected.some((comp) => comp?._marginalSupport || comp?.marginalSupport)) packageLimitations.push("at least one selected comp is only marginal support");
-        const suggestedRequestedValue = computeSuggestedRequestedValue({ subject, selectedComps: selected });
         const overvaluationFlag = computeOvervaluationFlag(subject, equalizationRate);
         const selectionOutcomeCounts = computeSelectionOutcomeCounts(visible, selected);
         const analysisState = selected.length > 0 ? "grievance_package" : visible.length > 0 ? "research_only" : "no_matches";
-        const noPackageReasonCode = analysisState === "grievance_package" ? null : deriveNoPackageReasonCode(selectionOutcomeCounts);
-        const noPackageReasonText = analysisState === "grievance_package" ? "" : buildNoPackageReasonText(noPackageReasonCode, visible, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
-        const caseStatusLabel = analysisState === "research_only" ? "Research only" : grievanceModerateOrBetterCount >= 3 && grievanceAverageSupportScore >= 18 && grievanceAverageQualityScore >= 60 && grievanceAverageConfidenceScore >= 65 ? "Strong evidence" : grievanceModerateOrBetterCount >= 2 && grievanceAverageSupportScore >= 10 && grievanceAverageQualityScore >= 50 && grievanceAverageConfidenceScore >= 60 ? "Moderate evidence" : "Weak evidence";
-        const claimRecommendation = selected.length ? computeClaimRecommendation(selected, overvaluationFlag) : computeResearchClaimRecommendation(visible, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+        const evidenceSufficiency = computeEvidenceSufficiency({ analysisState, selectedComps: selected, marketSaleModel });
         const subjectSaleModel = computeSubjectSaleSignal(subject, salesByParcelId, currentDate);
+        const ratioStudyDirectComparison = computeRatioStudyDirectComparison({ subject, subjectSaleModel, ratioStudyModel, rollContext: normalizedRollContext, currentDate });
+        const claimGuidance = computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison });
+        const suggestedRequestedValue = computeSuggestedRequestedValue({ subject, marketSaleModel, equalizationRate, evidenceSufficiency });
+        if (evidenceSufficiency?.status !== "sale_backed_sufficient") packageLimitations.push("sale-backed evidence is insufficient for an automatic claim recommendation or requested value");
+        if (marketSaleModel?.windowMonths > 24) packageLimitations.push(`market estimate uses a ${marketSaleModel.windowLabel} fallback window`);
+        if (marketSaleModel?.tierUsed > 1) packageLimitations.push(`market estimate broadened to ${marketSaleModel.tierLabel.toLowerCase()}`);
+        if (ratioStudyModel?.reliabilityLabel === "low") packageLimitations.push("sale-ratio diagnostics are low reliability because the trimmed ratio-study sample is under 20 sales");
+        const noPackageReasonCode = analysisState === "grievance_package" ? null : deriveNoPackageReasonCode(selectionOutcomeCounts);
+        const noPackageReasonText = analysisState === "grievance_package" ? "" : buildNoPackageReasonText(noPackageReasonCode, visible, overvaluationFlag, marketSaleModel, ratioStudyModel);
+        const caseStatusLabel = analysisState === "research_only" ? "Research only" : evidenceSufficiency?.status === "sale_backed_sufficient" && grievanceModerateOrBetterCount >= 3 && grievanceAverageSupportScore >= 18 && grievanceAverageQualityScore >= 60 && grievanceAverageConfidenceScore >= 65 ? "Strong evidence" : evidenceSufficiency?.status === "sale_backed_sufficient" && grievanceModerateOrBetterCount >= 2 && grievanceAverageSupportScore >= 10 && grievanceAverageQualityScore >= 50 && grievanceAverageConfidenceScore >= 60 ? "Moderate evidence" : evidenceSufficiency?.status === "sale_backed_insufficient" ? "Insufficient sale-backed evidence" : "Weak evidence";
+        const claimRecommendation = claimGuidance?.allowRecommendation ? {
+          code: claimGuidance.recommendationCode,
+          label: claimGuidance.recommendedReason,
+          selectionLabel: claimGuidance.selectionLabel,
+          reason: claimGuidance.reason,
+          variance: selected.length ? visibleEquityVariance(selected) : visibleEquityVariance(visible)
+        } : null;
+        const salesAppendix = {
+          marketIncludedSales: marketSaleModel?.includedSales || [],
+          marketExcludedSales: marketSaleModel?.excludedSales || [],
+          ratioIncludedSales: ratioStudyModel?.includedSales || [],
+          ratioExcludedSales: ratioStudyModel?.excludedSales || []
+        };
         return {
           grievanceSupportPool: selected.filter((comp) => (candidateSupportValue(comp) || 0) > 0),
           grievanceCandidatePool: selected.filter((comp) => (candidateSupportValue(comp) || 0) > 0),
@@ -29146,9 +29631,16 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           suggestedValueMethodB: suggestedRequestedValue.methodB,
           scarWarning: suggestedRequestedValue.scarWarning,
           overvaluationFlag,
+          rollContext: normalizedRollContext,
+          evidenceSufficiency,
+          claimGuidance,
           claimRecommendation,
+          marketEvidenceModel: marketSaleModel,
           marketSaleModel,
-          neighborhoodEquityModel,
+          ratioStudyModel,
+          ratioStudyDirectComparison,
+          neighborhoodEquityModel: ratioStudyModel,
+          salesAppendix,
           subjectSaleModel,
           grievancePackageAllSupportive: selected.length > 0 && grievanceSupportCount === selected.length
         };
@@ -55005,65 +55497,13 @@ self.onmessage = function(ev){
       parcels: options?.parcels || [],
       salesByParcelId: options?.salesByParcelId || null,
       equalizationRate,
+      rollContext: options?.meta || null,
       currentDate: options?.currentDate || /* @__PURE__ */ new Date()
     });
     return {
       ...summary,
       grievanceDeltaFMVPct: summary.grievanceAvgFMV && summary.grievanceDeltaFMV != null ? summary.grievanceDeltaFMV / summary.grievanceAvgFMV * 100 : null
     };
-  };
-  var describeApproximateShare = (pct) => {
-    const value = Number(pct);
-    if (!Number.isFinite(value)) return "an unknown share";
-    if (value < 15) return "about one-tenth";
-    if (value < 25) return "about one-fifth";
-    if (value < 40) return "about one-third";
-    if (value < 48) return "about two-fifths";
-    if (value <= 52) return "about half";
-    if (value < 65) return "about three-fifths";
-    if (value < 80) return "about two-thirds";
-    if (value < 90) return "about four-fifths";
-    return "almost all";
-  };
-  var buildNeighborhoodPercentileExplanation = (model) => {
-    const percentile = Number(model?.subjectPercentile);
-    if (!Number.isFinite(percentile)) return "";
-    const lowerShare = describeApproximateShare(percentile);
-    const higherShare = describeApproximateShare(100 - percentile);
-    const sampleArea = model?.scope === "zip" ? "your ZIP-code area" : "your neighborhood";
-    if (percentile >= 75) {
-      return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than only ${higherShare}. That places you toward the high end of the range and makes you look more like an upper-end outlier.`;
-    }
-    if (percentile >= 55) {
-      return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That puts you above the middle of the range, but not at the very top.`;
-    }
-    if (percentile >= 35) {
-      return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That leaves you near the middle of the range rather than at the very top.`;
-    }
-    return `Among similar homes with sale data in ${sampleArea}, your assessment level is higher than ${lowerShare} of them and lower than ${higherShare}. That puts you in the lower half of the range, not as an outlier at the top.`;
-  };
-  var buildNeighborhoodConsistencyExplanation = (model) => {
-    const cod = Number(model?.cod);
-    const iaao = Number(model?.iaaoStandard || 15);
-    if (!Number.isFinite(cod)) return "";
-    const uniform = cod <= iaao;
-    return uniform ? `Neighborhood consistency: COD ${cod.toFixed(1)}. Assessments here are considered uniform by professional standards because the IAAO benchmark is ${iaao.toFixed(1)} or lower. In plain language, most similar homes are being assessed at about the same share of their market value.` : `Neighborhood consistency: COD ${cod.toFixed(1)}. Assessments here are not considered uniform by professional standards because the IAAO benchmark is ${iaao.toFixed(1)} or lower. In plain language, similar homes are not all being assessed at the same share of market value.`;
-  };
-  var buildNeighborhoodEquityPlainSummary = (model) => {
-    const percentile = Number(model?.subjectPercentile);
-    const cod = Number(model?.cod);
-    const iaao = Number(model?.iaaoStandard || 15);
-    if (!Number.isFinite(percentile) || !Number.isFinite(cod)) return "";
-    if (percentile < 55 && cod <= iaao) {
-      return "Taken together, these numbers say your home is not unusually highly assessed compared with similar homes, and the neighborhood's assessments are generally consistent.";
-    }
-    if (percentile >= 75 && cod <= iaao) {
-      return "Taken together, these numbers say your home looks high compared with similar homes, even though the neighborhood's assessments are otherwise fairly consistent.";
-    }
-    if (percentile < 55 && cod > iaao) {
-      return "Taken together, these numbers say your home does not stand out as unusually high, but the neighborhood's assessments are not very consistent overall.";
-    }
-    return "Taken together, these numbers say your home looks high compared with similar homes, and the neighborhood's assessments also appear uneven overall.";
   };
   var buildGrievanceNarrative = (subject, subjectProfile, neighborResult, salesByParcelId = null, neighborhoodBenchmark = null) => {
     const selectedComps = neighborResult?.grievanceCandidates || [];
@@ -55075,8 +55515,13 @@ self.onmessage = function(ev){
     const compExamples = formatNarrativeCompList((strongOrModerate.length ? strongOrModerate : supportiveComps.length ? supportiveComps : selectedComps).slice(0, 3));
     const saleSentences = selectedComps.map((parcel) => buildCompSaleEvidenceSentence(parcel, parcel?._saleEvidence || parcel?.saleEvidence || null)).filter(Boolean).slice(0, 3);
     const normalizedState = neighborResult?.normalizedMetricSupport || buildNormalizedMetricSupportState(selectedComps);
-    const benchmarkLabel = neighborhoodBenchmark?.interpretationLabel || "neutral";
-    const benchmarkSentence = neighborhoodBenchmark ? benchmarkLabel === "supportive" ? "The neighborhood benchmark is supportive on both equity ratio and assessed value per square foot." : benchmarkLabel === "mild_support" ? "The neighborhood benchmark is mildly supportive." : "The neighborhood benchmark is neutral." : "A neighborhood benchmark could not be calculated.";
+    const benchmarkContext = buildNeighborhoodBenchmarkContext({
+      neighborhoodBenchmark,
+      marketSaleModel: neighborResult?.marketEvidenceModel || neighborResult?.marketSaleModel || null,
+      evidenceSufficiency: neighborResult?.evidenceSufficiency || null,
+      claimRecommendation: neighborResult?.claimRecommendation || null
+    });
+    const benchmarkSentence = benchmarkContext.showInPacket ? benchmarkContext.sentence : "A neighborhood benchmark could not be calculated.";
     const averageSentence = `The selected comp package averages ${$f(neighborResult.grievanceAvgAssessed)}, which is ${neighborResult.grievanceDeltaAssessed >= 0 ? `${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} below` : `${$f(Math.abs(neighborResult.grievanceDeltaAssessed))} above`} the subject's current assessment.`;
     const limitations = neighborResult?.packageLimitations || buildGrievancePackageLimitations(selectedComps);
     const limitationSentence = limitations.length ? `Material limitations: ${limitations.join("; ")}.` : "";
@@ -55102,12 +55547,14 @@ self.onmessage = function(ev){
     };
   };
   var buildComplaintReasonGuidance = (subject, subjectProfile, neighborResult, neighborhoodBenchmark = null) => {
-    const claimRecommendation = neighborResult?.claimRecommendation || computeClaimRecommendationWithSpec(neighborResult?.grievanceCandidates || [], neighborResult?.overvaluationFlag || computeOvervaluationFlagWithSpec(subject, Number.isFinite(Number(neighborResult?.overvaluationFlag?.equalizationRate)) ? Number(neighborResult.overvaluationFlag.equalizationRate) : null));
+    const claimRecommendation = neighborResult?.claimRecommendation || null;
+    const evidenceSufficiency = neighborResult?.evidenceSufficiency || null;
+    const ratioStudyDirectComparison = neighborResult?.ratioStudyDirectComparison || null;
     const comparisonSetLabel = neighborResult?.analysisState === "research_only" ? "visible comps" : "selected comps";
     const unlawfulNotSupportedNote = "This app does not detect unlawful-assessment grounds from comparable-home data. Use that box only if you have separate proof such as a wholly exempt property, a boundary/location error, or another roll-authority problem.";
     const misclassificationNotSupportedNote = "This app does not detect misclassification from comparable-home data. Use that box only if the parcel is placed in the wrong tax class or homestead/non-homestead allocation, which usually requires separate classification evidence.";
     if (claimRecommendation?.code === "UNEQUAL") {
-      const why = `${claimRecommendation.reason}${neighborhoodBenchmark?.interpretationLabel === "supportive" || neighborhoodBenchmark?.interpretationLabel === "mild_support" ? ` ${neighborhoodBenchmark.interpretation}` : ""}`;
+      const why = claimRecommendation.reason;
       return {
         primaryCode: "unequal",
         primaryLabel: "Unequal Assessment",
@@ -55117,7 +55564,7 @@ self.onmessage = function(ev){
         selectionLabel: claimRecommendation.selectionLabel,
         why,
         shortWhy: claimRecommendation.reason,
-        narrativeSentence: `The stronger RP-524 basis appears to be unequal assessment because the ${comparisonSetLabel} show meaningful equity-ratio variation.`,
+        narrativeSentence: ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly ? "The stronger RP-524 basis appears to be unequal assessment because the subject's verified sale ratio is higher than the neighborhood verified-sale median inside the accepted valuation window." : `The stronger RP-524 basis appears to be unequal assessment because the ${comparisonSetLabel} still support a higher assessment share of market value, but the ratio study should be treated as context rather than direct proof.`,
         unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
         unlawfulNotSupportedNote,
         misclassificationNotSupportedNote,
@@ -55141,7 +55588,7 @@ self.onmessage = function(ev){
         appSupportsComparableGroundsOnly: true
       };
     }
-    const manualReviewWhy = `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.`;
+    const manualReviewWhy = evidenceSufficiency?.status === "sale_backed_insufficient" ? `${evidenceSufficiency.reason} Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.` : `The current comparable package does not clearly support either unequal assessment or excessive assessment. Do not use "Unlawful assessment" or "Misclassification" unless you have separate exemption, boundary, roll-description, or classification proof.`;
     return {
       primaryCode: "manual_review",
       primaryLabel: "Manual Review Needed",
@@ -55150,8 +55597,8 @@ self.onmessage = function(ev){
       secondaryLabel: "",
       selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
       why: manualReviewWhy,
-      shortWhy: "The current comparable package does not clearly establish unequal or excessive assessment.",
-      narrativeSentence: "The current evidence does not clearly establish either unequal assessment or excessive assessment as a strong standalone basis.",
+      shortWhy: evidenceSufficiency?.reason || "The current comparable package does not clearly establish unequal or excessive assessment.",
+      narrativeSentence: evidenceSufficiency?.status === "sale_backed_insufficient" ? "The current evidence is not sale-backed strongly enough to support an automatic complaint-box recommendation." : "The current evidence does not clearly establish either unequal assessment or excessive assessment as a strong standalone basis.",
       unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
       unlawfulNotSupportedNote,
       misclassificationNotSupportedNote,
@@ -55164,7 +55611,8 @@ self.onmessage = function(ev){
     const municipality = subject?.municipality || meta?.municipality || "City of Albany";
     const county = subject?.county || meta?.county || "Albany";
     const labelPrefix = neighborResult?.grievancePackageCustom ? "Selected grievance comp" : "Supporting comp";
-    const suggestedValue = Number.isFinite(neighborResult?.suggestedRequestedAssessedValue) ? neighborResult.suggestedRequestedAssessedValue : Number.isFinite(neighborResult?.grievanceAvgAssessed) ? neighborResult.grievanceAvgAssessed : null;
+    const evidenceSufficiency = neighborResult?.evidenceSufficiency || null;
+    const suggestedValue = Number.isFinite(neighborResult?.suggestedRequestedAssessedValue) ? neighborResult.suggestedRequestedAssessedValue : null;
     const supportingCompAssessedAverage = Number.isFinite(neighborResult?.grievanceAvgAssessed) ? $f(neighborResult.grievanceAvgAssessed) : "-";
     const assessedReduction = suggestedValue != null && Number.isFinite(subject?.assessedValue) ? Math.max(subject.assessedValue - suggestedValue, 0) : null;
     const grievanceDay = grievanceDayLabel(meta, subject);
@@ -55179,15 +55627,14 @@ self.onmessage = function(ev){
       { label: "Property class", value: subjectProfile?.classLabel || "-", note: "Assessment roll property class" },
       { label: "Current assessed value", value: Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-", note: "Roll value from the assessment record" },
       { label: "Current full market value", value: Number.isFinite(subject?.fullMarketValue) ? $f(subject.fullMarketValue) : "-", note: "Roll full market value" },
-      { label: "Equity ratio", value: subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-", note: "Useful grievance talking point from this app" },
-      { label: "Recommended claim type", value: claimRecommendation?.label || "-", note: claimRecommendation?.reason || "Claim type could not be determined from the current package." },
+      { label: "Sale-backed evidence status", value: evidenceSufficiency?.label || "Evidence status unavailable", note: evidenceSufficiency?.reason || "Sale-backed evidence status could not be determined from the current package." },
+      { label: "Recommended ground from current evidence", value: claimRecommendation?.label || "-", note: claimRecommendation?.reason || "The current evidence does not support an automatic ground selection." },
       { label: "Recommended RP-524 complaint reason", value: complaintReasonGuidance.selectionLabel, note: complaintReasonGuidance.why },
       { label: `${labelPrefix} FMV average`, value: Number.isFinite(neighborResult?.grievanceAvgFMV) ? $f(neighborResult.grievanceAvgFMV) : "-", note: `${labelPrefix} average FMV for the homes currently included in the grievance package` },
       { label: `${labelPrefix} assessed average`, value: supportingCompAssessedAverage, note: `${labelPrefix} average assessed value for the homes currently included in the grievance package` },
-      { label: "Comp-based value estimate", value: Number.isFinite(neighborResult?.suggestedValueMethodA) ? $f(neighborResult.suggestedValueMethodA) : "-", note: "If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?" },
-      { label: "Equity-ratio value estimate", value: Number.isFinite(neighborResult?.suggestedValueMethodB) ? $f(neighborResult?.suggestedValueMethodB) : "-", note: "If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?" },
-      { label: "Suggested requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueMethod === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : neighborResult?.suggestedRequestedAssessedValueMethod === "method_a" ? "The comp-based value estimate produced the lower filing recommendation." : neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the selected package does not support an automatic requested value." },
-      { label: "Separate overassessment check", value: neighborResult?.overvaluationFlag?.active ? "Yes" : "No", note: neighborResult?.overvaluationFlag?.message || "The separate overassessment check is unavailable because the equalization-rate benchmark is not available." },
+      { label: "Sale-backed market estimate", value: Number.isFinite(neighborResult?.marketEvidenceModel?.estimatedSubjectFmv) ? $f(neighborResult.marketEvidenceModel.estimatedSubjectFmv) : "-", note: neighborResult?.marketEvidenceModel?.note || "A sale-backed market estimate is not available from the current evidence pool." },
+      { label: "Requested assessed value", value: suggestedValue != null ? $f(suggestedValue) : "-", note: neighborResult?.suggestedRequestedAssessedValueNote || "Review manually because the current sale-backed evidence does not support an automatic requested value." },
+      { label: "Independent overassessment indicator", value: neighborResult?.overvaluationFlag?.active ? "Indicated" : "Not indicated", note: neighborResult?.overvaluationFlag?.message || "The independent overassessment indicator is unavailable because the equalization-rate benchmark is not available." },
       { label: "Potential assessed value reduction", value: assessedReduction != null ? $f(assessedReduction) : "-", note: assessedReduction != null ? `Dollar tax savings are not shown here because tax rates are not loaded in Neighbor Compare. Use the Savings Estimator tab and your current tax bill to convert this ${$f(assessedReduction)} assessment reduction into annual dollar savings.` : "A suggested requested value is needed before the reduction amount can be calculated.", action: assessedReduction != null ? "open_estimator" : null },
       { label: `${labelPrefix} list`, value: comps.length ? comps.map((parcel, idx) => `Comp ${idx + 1}: ${parcel.address || parcel.parcelId} | assessed ${$f(parcel.assessedValue)} | FMV ${$f(parcel.fullMarketValue)} | equity ${eqRFast(parcel)}% | ${parcel?._grievanceRelevance?.badge || "Assessment signal unavailable"}`).join("; ") : "-", note: neighborResult?.grievancePackageCustom ? "This list reflects your current custom grievance selection." : "The default grievance package keeps only comps with positive grievance-support scores and sufficient quality/confidence." }
     ];
@@ -55314,6 +55761,37 @@ self.onmessage = function(ev){
       interpretation
     };
   };
+  var buildNeighborhoodBenchmarkContext = ({ neighborhoodBenchmark = null, marketSaleModel = null, evidenceSufficiency = null, claimRecommendation = null } = {}) => {
+    if (!neighborhoodBenchmark) return { showInPacket: false, mode: "none", sentence: "" };
+    const favorable = neighborhoodBenchmark.interpretationLabel === "supportive" || neighborhoodBenchmark.interpretationLabel === "mild_support";
+    const strongerDirectEvidence = evidenceSufficiency?.status === "sale_backed_sufficient" && (/^EXCESSIVE/.test(claimRecommendation?.code || "") || marketSaleModel?.available && Number(marketSaleModel?.impliedDifferencePct) > 0.03);
+    if (favorable && !strongerDirectEvidence) {
+      return {
+        showInPacket: true,
+        mode: "favorable",
+        sentence: neighborhoodBenchmark.interpretationLabel === "supportive" ? `${neighborhoodBenchmark.interpretation} This remains secondary context rather than primary proof.` : `${neighborhoodBenchmark.interpretation} This remains modest secondary context rather than primary proof.`
+      };
+    }
+    if (favorable && strongerDirectEvidence) {
+      return {
+        showInPacket: true,
+        mode: "mixed",
+        sentence: "Neighborhood benchmark indicators are favorable but secondary. The filing position should rely more heavily on the direct sale-backed market estimate and selected comparable evidence than on neighborhood summary metrics."
+      };
+    }
+    if (neighborhoodBenchmark.interpretationLabel === "neutral") {
+      return {
+        showInPacket: true,
+        mode: "mixed",
+        sentence: "Neighborhood benchmark indicators are neutral or mixed and are presented only as background context, not as primary proof."
+      };
+    }
+    return {
+      showInPacket: true,
+      mode: "mixed",
+      sentence: "Neighborhood benchmark indicators are mixed. The filing position should rely more heavily on the direct sale-backed market estimate and selected comparable evidence than on neighborhood summary metrics."
+    };
+  };
   var buildAppealReadiness = ({ subject, subjectProfile, neighborResult, neighborhoodBenchmark = null, totalComparableCount = 0, salesByParcelId = null }) => {
     const visibleComps = Array.isArray(neighborResult?.neighbors) ? neighborResult.neighbors : [];
     const selectedComps = Array.isArray(neighborResult?.grievanceCandidates) ? neighborResult.grievanceCandidates : [];
@@ -55322,6 +55800,7 @@ self.onmessage = function(ev){
     const overvaluationFlag = neighborResult?.overvaluationFlag || null;
     const subjectSaleModel = neighborResult?.subjectSaleModel || computeSubjectSaleSignalWithSpec(subject, salesByParcelId, /* @__PURE__ */ new Date());
     const claimRecommendation = neighborResult?.claimRecommendation || null;
+    const evidenceSufficiency = neighborResult?.evidenceSufficiency || null;
     const analysisState = neighborResult?.analysisState || (selectedComps.length ? "grievance_package" : visibleComps.length ? "research_only" : "no_matches");
     const noPackageReasonCode = neighborResult?.noPackageReasonCode || (analysisState === "no_matches" ? "no_physical_matches" : analysisState === "research_only" ? "mixed_research_only" : null);
     const noPackageReasonText = neighborResult?.noPackageReasonText || (analysisState === "no_matches" ? "No comparable homes were found within the current search parameters, so the app could not build a grievance package." : "");
@@ -55341,7 +55820,13 @@ self.onmessage = function(ev){
       label: neighborResult?.normalizedMetricSupport?.label || fallbackNormalizedMetricModel.label,
       detail: neighborResult?.normalizedMetricSupport?.detail || fallbackNormalizedMetricModel.detail
     };
-    const benchmarkContribution = overvaluationFlag?.active ? 10 : neighborhoodEquityModel?.codWarning ? 8 : neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) >= 75 ? 6 : 0;
+    const benchmarkContext = buildNeighborhoodBenchmarkContext({
+      neighborhoodBenchmark,
+      marketSaleModel,
+      evidenceSufficiency,
+      claimRecommendation
+    });
+    const benchmarkContribution = evidenceSufficiency?.status === "sale_backed_sufficient" ? 14 : marketSaleModel?.available ? 6 : neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.cod) > 15 ? 4 : 0;
     const weakensShare = visibleCount > 0 ? weakensVisible.length / visibleCount : 0;
     const score = clampNumber(Math.round(
       clampNumber(topSupportAverage / 35, 0, 1) * 35 + clampNumber(avgQuality / 100, 0, 1) * 20 + clampNumber(avgConfidence / 100, 0, 1) * 15 + normalizedMetricModel.score + benchmarkContribution - Math.min(5, weakensShare * 5)
@@ -55366,7 +55851,11 @@ self.onmessage = function(ev){
       caseStrengthLabel = "weak";
       downgradeReasons.push("Only 1 comparable is selected. A single comp is not enough support for more than a weak case assessment.");
     }
-    const researchOnlySignals = !!(overvaluationFlag?.active || marketSaleModel?.available && Number(marketSaleModel?.impliedDifference) > 0 || neighborhoodEquityModel?.available && Number(neighborhoodEquityModel?.subjectPercentile) >= 75 || subjectSaleModel?.status === "supports");
+    if (evidenceSufficiency?.status === "sale_backed_insufficient" && (caseStrengthLabel === "strong" || caseStrengthLabel === "moderate")) {
+      caseStrengthLabel = "weak";
+      downgradeReasons.push("Sale-backed evidence is insufficient, so the workflow cannot support a stronger filing recommendation.");
+    }
+    const researchOnlySignals = !!(overvaluationFlag?.active || marketSaleModel?.available && Number(marketSaleModel?.impliedDifference) > 0 || neighborhoodEquityModel?.available && Number(neighborhoodEquityModel?.cod) > 15 || subjectSaleModel?.status === "supports");
     if (analysisState === "research_only") caseStrengthLabel = "research_only";
     if (analysisState === "no_matches" && !selectedComps.length) caseStrengthLabel = "do_not_recommend";
     const recommendedAction = caseStrengthLabel === "research_only" ? researchOnlySignals ? "review_manually" : "do_not_recommend" : caseStrengthLabel === "strong" ? "recommend_filing" : caseStrengthLabel === "moderate" ? "recommend_filing_with_caution" : caseStrengthLabel === "weak" ? "review_manually" : "do_not_recommend";
@@ -55388,12 +55877,13 @@ self.onmessage = function(ev){
     } else if (visibleComps.length) {
       scoreReasons.push(`Visible research comps found: ${visibleComps.length}. None cleared the full package gates for automatic filing support.`);
     }
+    if (evidenceSufficiency?.reason) scoreReasons.push(evidenceSufficiency.reason);
     if (overvaluationFlag?.active) scoreReasons.push(`An independent overvaluation check is positive: your assessed value exceeds the equalization-rate benchmark by ${$f(overvaluationFlag.overvaluationExcess)}.`);
-    if (marketSaleModel?.available) scoreReasons.push(`Recent neighborhood sale evidence implies an estimated market value of ${$f(marketSaleModel.estimatedSubjectFmv)} for your home.`);
+    if (marketSaleModel?.available) scoreReasons.push(`Sale-backed market evidence implies an estimated market value of ${$f(marketSaleModel.estimatedSubjectFmv)} for your home using the ${marketSaleModel.windowLabel} ${marketSaleModel.tierLabel.toLowerCase()} pool.`);
     else if (marketSaleModel?.note) scoreReasons.push(marketSaleModel.note);
-    if (neighborhoodEquityModel?.available) scoreReasons.push(`Your neighborhood equity percentile is ${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th, with a COD (consistency measure) of ${Number(neighborhoodEquityModel.cod).toFixed(1)}.`);
+    if (neighborhoodEquityModel?.available) scoreReasons.push(`The local verified-sale ratio study uses ${neighborhoodEquityModel.trimmedSampleSize || neighborhoodEquityModel.sampleSize} trimmed ratios and shows a COD of ${Number(neighborhoodEquityModel.cod).toFixed(1)}.`);
     if (neighborhoodEquityModel?.codWarning) scoreReasons.push(neighborhoodEquityModel.codWarning);
-    else if (neighborhoodBenchmark) scoreReasons.push(neighborhoodBenchmark.interpretation);
+    else if (benchmarkContext.showInPacket && benchmarkContext.sentence) scoreReasons.push(benchmarkContext.sentence);
     if (analysisState === "research_only" && claimRecommendation?.reason) scoreReasons.push(claimRecommendation.reason);
     if (weakensVisible.length) scoreReasons.push(`${weakensVisible.length} visible comp${weakensVisible.length === 1 ? " weakens" : "s weaken"} the case.`);
     if (subjectSaleModel?.status === "supports") scoreReasons.push("Your own recent arm's-length sale is below the current full market value estimate.");
@@ -55435,11 +55925,11 @@ self.onmessage = function(ev){
     const recommendation = readiness.recommendedAction === "recommend_filing" ? "Recommend filing" : readiness.recommendedAction === "recommend_filing_with_caution" ? "File with caution" : readiness.recommendedAction === "review_manually" ? "Review manually" : "Do not recommend";
     let keyReason = "The current evidence does not clearly point to a supported lower assessment.";
     if (readiness.recommendedAction === "recommend_filing") {
-      keyReason = `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the package points toward a lower supported assessment under ${neighborResult?.claimRecommendation?.label || "the current claim model"}.`;
+      keyReason = neighborResult?.evidenceSufficiency?.status === "sale_backed_sufficient" ? `${readiness.moderateOrBetterCount} selected comps are moderate support or better, and the sale-backed evidence pool supports a lower assessed value under ${neighborResult?.claimRecommendation?.label || "the current claim model"}.` : "The comparable package is directionally supportive, but sale-backed evidence still needs manual review.";
     } else if (readiness.recommendedAction === "recommend_filing_with_caution") {
       keyReason = "Some selected comps support filing, but the evidence still has meaningful limitations or counter-signals.";
     } else if (readiness.recommendedAction === "review_manually") {
-      keyReason = readiness.caseStrengthLabel === "research_only" ? neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence." : "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
+      keyReason = readiness.caseStrengthLabel === "research_only" ? neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence." : neighborResult?.evidenceSufficiency?.reason || "The evidence is mixed or too thin for a confident filing recommendation without manual review.";
     } else if (readiness.caseStrengthLabel === "research_only") {
       keyReason = neighborResult?.noPackageReasonText || "Comparable homes were found, but they remain research-only rather than default filing evidence.";
     }
@@ -55462,9 +55952,19 @@ self.onmessage = function(ev){
     const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
     const overvaluationFlag = neighborResult?.overvaluationFlag || null;
     const subjectSaleModel = neighborResult?.subjectSaleModel || computeSubjectSaleSignalWithSpec(subject, salesByParcelId, /* @__PURE__ */ new Date());
+    const evidenceSufficiency = neighborResult?.evidenceSufficiency || null;
+    const ratioStudyDirectComparison = neighborResult?.ratioStudyDirectComparison || null;
+    const benchmarkContext = buildNeighborhoodBenchmarkContext({
+      neighborhoodBenchmark,
+      marketSaleModel,
+      evidenceSufficiency,
+      claimRecommendation: neighborResult?.claimRecommendation || null
+    });
     const analysisState = neighborResult?.analysisState || (selectedComps.length ? "grievance_package" : visibleComps.length ? "research_only" : "no_matches");
     const supportItems = [];
     const againstItems = [];
+    if (evidenceSufficiency?.status === "sale_backed_sufficient") supportItems.push(evidenceSufficiency.reason);
+    else if (evidenceSufficiency?.reason) againstItems.push(evidenceSufficiency.reason);
     if ((analysisState === "research_only" || analysisState === "no_matches") && neighborResult?.noPackageReasonText) {
       againstItems.push(neighborResult.noPackageReasonText);
     }
@@ -55481,10 +55981,12 @@ self.onmessage = function(ev){
       supportItems.push(`An independent overvaluation check supports the case because your assessed value is ${$f(overvaluationFlag.overvaluationExcess)} above the equalization-rate benchmark.`);
     }
     if (marketSaleModel?.available) {
-      supportItems.push(`Recent arm's-length sales suggest a market value around ${$f(marketSaleModel.estimatedSubjectFmv)} for your home.`);
+      supportItems.push(`Verified sale-backed market evidence suggests a market value around ${$f(marketSaleModel.estimatedSubjectFmv)} using the ${marketSaleModel.windowLabel} ${marketSaleModel.tierLabel.toLowerCase()} pool.`);
     }
-    if (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) >= 75) {
-      supportItems.push(`Your neighborhood equity percentile is ${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th, which leans high relative to the sale-backed neighborhood sample.`);
+    if (ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly && ratioStudyDirectComparison?.note) {
+      supportItems.push(ratioStudyDirectComparison.note);
+    } else if (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.cod) > 15) {
+      supportItems.push(`The local verified-sale ratio study shows a COD of ${Number(neighborhoodEquityModel.cod).toFixed(1)}, which indicates uneven uniformity in the sale-backed sample.`);
     }
     if (neighborhoodEquityModel?.codWarning) {
       supportItems.push(neighborhoodEquityModel.codWarning);
@@ -55492,8 +55994,8 @@ self.onmessage = function(ev){
     if (analysisState === "research_only" && /^EXCESSIVE/.test(neighborResult?.claimRecommendation?.code || "")) {
       supportItems.push(neighborResult.claimRecommendation.reason);
     }
-    if (neighborhoodBenchmark?.interpretationLabel === "supportive" || neighborhoodBenchmark?.interpretationLabel === "mild_support") {
-      supportItems.push(neighborhoodBenchmark.interpretation);
+    if (benchmarkContext.mode === "favorable" && benchmarkContext.sentence) {
+      supportItems.push(benchmarkContext.sentence);
     }
     const compSaleEvidence = selectedComps.filter((parcel) => Number(parcel?._grievanceSupportScore) > 0).map((parcel) => ({ parcel, evidence: parcel?._saleEvidence || parcel?.saleEvidence || null })).filter((entry) => entry.evidence?.qualifies);
     const supportiveSales = compSaleEvidence.filter((entry) => entry.evidence.status === "supports");
@@ -55509,10 +56011,10 @@ self.onmessage = function(ev){
       againstItems.push(`${weakensVisible.length} visible comp${weakensVisible.length === 1 ? " weakens" : "s weaken"} the case and could be used as assessor counter-evidence.`);
     }
     if (readiness.selectedEquityParity) againstItems.push("Selected comps have equity ratios close to yours, which weakens the unequal-assessment argument.");
-    if (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel.subjectPercentile) < 55) againstItems.push("The neighborhood equity distribution does not place your parcel unusually high in the sale-backed sample.");
-    if (neighborhoodBenchmark?.interpretationLabel === "neutral") againstItems.push("The neighborhood benchmark is neutral.");
+    if (neighborhoodEquityModel?.available && neighborhoodEquityModel.reliabilityLabel === "low") againstItems.push("The sale-ratio study is low reliability because the trimmed sample is under 20 sales.");
+    if (benchmarkContext.mode === "mixed" && benchmarkContext.sentence) againstItems.push(benchmarkContext.sentence);
     if (selectedComps.length < 3) againstItems.push("Fewer than 3 comps are selected in the package.");
-    if (neighborResult?.suggestedRequestedAssessedValueReviewManually) againstItems.push("The suggested requested value needs manual review because the selected comp values are spread out.");
+    if (neighborResult?.suggestedRequestedAssessedValueReviewManually) againstItems.push("The requested assessed value still needs manual review because the sale-backed evidence is not strong enough for an automatic filing value.");
     if (subjectSaleModel?.status === "weakens") {
       againstItems.push("A recent arm's-length sale of the subject may support the current full market value estimate.");
     } else if (subjectSaleModel?.status === "supports") {
@@ -55535,17 +56037,211 @@ self.onmessage = function(ev){
     const lng = Number(profile?.longitude ?? parcel?.longitude);
     return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
   };
+  var summarizeExcludedSaleReasons = (entries = []) => {
+    const bucketCounts = /* @__PURE__ */ new Map();
+    const bucketForEntry = (entry) => {
+      const reasons = Array.isArray(entry?.reasons) ? entry.reasons.join(" ").toLowerCase() : "";
+      if (reasons.includes("arm's-length")) return "Not arm's-length";
+      if (reasons.includes("usable for cod/rar")) return "Not ORPTS-usable";
+      if (reasons.includes("condition flags")) return "Condition flags";
+      if (reasons.includes("older than")) return "Outside valuation window";
+      if (reasons.includes("research-only geography") || reasons.includes("outside 4 miles") || reasons.includes("within 4 miles research-only")) return "Outside final geography";
+      if (reasons.includes("living area") || reasons.includes("year built") || reasons.includes("bed") || reasons.includes("bath")) return "Poor physical fit";
+      if (reasons.includes("sale price is missing or zero")) return "Missing sale price";
+      if (reasons.includes("sale date is missing")) return "Missing sale date";
+      return "Other exclusion reason";
+    };
+    (entries || []).forEach((entry) => {
+      const bucket = bucketForEntry(entry);
+      bucketCounts.set(bucket, (bucketCounts.get(bucket) || 0) + 1);
+    });
+    return Array.from(bucketCounts.entries()).sort((a2, b) => b[1] - a2[1] || a2[0].localeCompare(b[0])).map(([label, count]) => ({ label, count }));
+  };
+  var selectKeyExcludedSales = (entries = [], limit = 8) => {
+    const unique = Array.from(new Map((entries || []).map((entry) => [`${entry?.parcelId || ""}|${entry?.saleDate || ""}|${entry?.salePrice || ""}`, entry])).values());
+    return unique.sort((a2, b) => {
+      const aTier = Number.isFinite(Number(a2?.tier)) ? Number(a2.tier) : 99;
+      const bTier = Number.isFinite(Number(b?.tier)) ? Number(b.tier) : 99;
+      const aDist = Number.isFinite(Number(a2?.distanceMiles)) ? Number(a2.distanceMiles) : 999;
+      const bDist = Number.isFinite(Number(b?.distanceMiles)) ? Number(b.distanceMiles) : 999;
+      const aMonths = Number.isFinite(Number(a2?.monthsFromValuation)) ? Number(a2.monthsFromValuation) : 999;
+      const bMonths = Number.isFinite(Number(b?.monthsFromValuation)) ? Number(b.monthsFromValuation) : 999;
+      return aTier - bTier || aDist - bDist || aMonths - bMonths || String(a2?.address || a2?.parcelId || "").localeCompare(String(b?.address || b?.parcelId || ""));
+    }).slice(0, limit);
+  };
+  var formatExplainabilityGateLabel = (passed, threshold2, actual, suffix = "") => {
+    const actualText = Number.isFinite(Number(actual)) ? `${Number(actual).toFixed(suffix === "%" ? 1 : 0)}${suffix}` : "Unavailable";
+    const thresholdText = Number.isFinite(Number(threshold2)) ? `${Number(threshold2).toFixed(suffix === "%" ? 1 : 0)}${suffix}` : "n/a";
+    return `${passed ? "Pass" : "Fail"} | actual ${actualText} vs threshold ${thresholdText}`;
+  };
+  var buildComparableExplainabilityEntry = ({ subject, subjectProfile, parcel, visibleRank = 1, currentIncluded = false } = {}) => {
+    if (!parcel) return null;
+    const packageDecision = parcel?._packageDecision || parcel?._selectionDiagnostics?.packageDecision || null;
+    const selectionIndicator = parcel?._selectionIndicator || parcel?._selectionDiagnostics?.selectionIndicator || null;
+    const diagnostics = parcel?._selectionDiagnostics || {};
+    const normalized = diagnostics.normalizedMetricsSummary || {};
+    const qualityScore = Number(parcel?._comparableQualityScore || 0);
+    const confidenceScore = Number(parcel?._dataConfidenceScore || 0);
+    const supportScore = Number(parcel?._grievanceSupportScore || 0);
+    const defaultIncluded = packageDecision?.status === "included";
+    const usingFields = Array.isArray(parcel?._compPhysicalFieldsUsed) ? parcel._compPhysicalFieldsUsed : [];
+    const visibleReasons = [
+      `Why it was visible: physical match ${qualityScore.toFixed(0)} / 100, data reliability ${confidenceScore.toFixed(0)} / 100, grievance signal ${supportScore >= 0 ? "+" : ""}${supportScore.toFixed(0)}.`,
+      Number.isFinite(parcel?._distanceMiles) ? `Distance from subject: ${formatComparableMiles(parcel._distanceMiles)}.` : null,
+      ...Array.isArray(parcel?._compReasons) ? parcel._compReasons.slice(0, 4) : [],
+      usingFields.length ? `Matched using ${usingFields.join(", ")}.` : "Matched primarily on residential class and nearby location because detailed home characteristics were limited."
+    ].filter(Boolean);
+    const gateChecks = [
+      { label: "Quality gate", passed: qualityScore >= 50, detail: formatExplainabilityGateLabel(qualityScore >= 50, 50, qualityScore) },
+      { label: "Confidence gate", passed: confidenceScore >= 60, detail: formatExplainabilityGateLabel(confidenceScore >= 60, 60, confidenceScore) },
+      { label: "Support gate", passed: supportScore > 0, detail: `Pass required: score above 0 | actual ${supportScore.toFixed(0)}` }
+    ];
+    const normalizedLines = [
+      Number.isFinite(Number(normalized?.equityRatioDeltaPoints)) ? `Equity-ratio delta vs subject: ${Number(normalized.equityRatioDeltaPoints) >= 0 ? "+" : ""}${Number(normalized.equityRatioDeltaPoints).toFixed(1)} points.` : null,
+      Number.isFinite(Number(normalized?.assessedPerSqftAdvantagePct)) ? `Assessed value per sq ft advantage: ${Number(normalized.assessedPerSqftAdvantagePct) >= 0 ? "+" : ""}${(Number(normalized.assessedPerSqftAdvantagePct) * 100).toFixed(1)}%.` : null,
+      Number.isFinite(Number(normalized?.assessedPctAdvantage)) ? `Raw assessed-value advantage: ${Number(normalized.assessedPctAdvantage) >= 0 ? "+" : ""}${(Number(normalized.assessedPctAdvantage) * 100).toFixed(1)}%.` : null
+    ].filter(Boolean);
+    const supportReasons = Array.isArray(diagnostics?.supportingBecause) ? diagnostics.supportingBecause : [];
+    const confidenceNotes = Array.isArray(diagnostics?.confidenceNotes) ? diagnostics.confidenceNotes : [];
+    const concerns = Array.isArray(diagnostics?.disqualifyingConcerns) ? diagnostics.disqualifyingConcerns : [];
+    const riskFlags = Array.isArray(parcel?._riskFlags) ? parcel._riskFlags : [];
+    const currentStatusLabel = currentIncluded ? "Included in current live package" : "Excluded from current live package";
+    const overrideNote = packageDecision && currentIncluded !== defaultIncluded ? `Current checkbox state overrides the default engine result (${defaultIncluded ? "included" : "excluded"} by default).` : "";
+    return {
+      visibleRank,
+      address: parcel?.address || parcel?.parcelId || `Comp ${visibleRank}`,
+      parcelId: parcel?.parcelId || "",
+      qualityScore,
+      confidenceScore,
+      supportScore,
+      defaultIncluded,
+      defaultStatusLabel: defaultIncluded ? "Included in default package" : "Not included in default package",
+      currentIncluded,
+      currentStatusLabel,
+      packageDecisionLabel: packageDecision?.label || (defaultIncluded ? "Included in package" : "Not included"),
+      packageDecisionMessage: packageDecision?.message || "No package-decision message was recorded.",
+      selectionIndicatorLabel: selectionIndicator?.label || "Physical match only",
+      selectionIndicatorMessage: selectionIndicator?.message || "No additional selection-indicator message was recorded.",
+      overrideNote,
+      visibleReasons,
+      gateChecks,
+      normalizedLines,
+      supportReasons,
+      confidenceNotes,
+      concerns,
+      riskFlags
+    };
+  };
+  var buildComparableExplainabilityReportHtml = ({ subject, subjectProfile, neighborResult, explainabilityEntries = [] } = {}) => {
+    const generatedAt = (/* @__PURE__ */ new Date()).toLocaleString();
+    const selectedCount = (explainabilityEntries || []).filter((entry) => entry?.currentIncluded).length;
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${escapePrintableHtml(`Comparable explainability report - ${subject?.address || subject?.parcelId || "subject"}`)}</title>
+<style>
+  body{font-family:Arial,sans-serif;color:#0f172a;margin:28px;line-height:1.5}
+  h1,h2,h3{margin:0 0 10px}
+  h1{font-size:24px}
+  h2{font-size:18px;margin-top:24px}
+  h3{font-size:14px;margin-top:18px}
+  p{margin:0 0 10px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #cbd5e1;padding:8px;vertical-align:top;text-align:left;font-size:12px}
+  th{background:#f8fafc}
+  ul{margin:8px 0 0 18px}
+  .meta{font-size:12px;color:#475569;margin-bottom:16px}
+  .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+  .box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px}
+  .value{font-weight:700;font-size:18px;margin-bottom:4px}
+  .entry{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-top:18px;page-break-inside:avoid}
+  .subhead{font-size:12px;font-weight:700;color:#334155;margin-top:12px}
+  .gate-pass{color:#166534;font-weight:700}
+  .gate-fail{color:#b91c1c;font-weight:700}
+  @media print{body{margin:16px}}
+</style>
+</head>
+<body>
+  <h1>Comparable explainability report</h1>
+  <div class="meta">Generated ${escapePrintableHtml(generatedAt)} | Subject: ${escapePrintableHtml(subject?.address || "-")} | Parcel ID: ${escapePrintableHtml(subject?.parcelId || "-")}</div>
+  <p>This internal report explains why each visible comparable home made the top visible list and why the default package did or did not include it. It is intended for admin/debug use, not assessor-facing filing.</p>
+  <div class="summary">
+    <div class="box"><div class="value">${escapePrintableHtml(String((explainabilityEntries || []).length))}</div><div>Visible comparables reviewed</div></div>
+    <div class="box"><div class="value">${escapePrintableHtml(String(selectedCount))}</div><div>Currently included in live package</div></div>
+    <div class="box"><div class="value">${escapePrintableHtml(String((neighborResult?.grievanceCandidates || []).length))}</div><div>Default package size</div></div>
+    <div class="box"><div class="value">${escapePrintableHtml(neighborResult?.analysisState || "-")}</div><div>Workflow state</div></div>
+  </div>
+  <section>
+    <h2>At-a-glance table</h2>
+    <table>
+      <thead><tr><th>Rank</th><th>Address</th><th>Why it made the visible list</th><th>Default package result</th><th>Current live status</th></tr></thead>
+      <tbody>${(explainabilityEntries || []).map((entry) => `<tr><td>${escapePrintableHtml(String(entry.visibleRank))}</td><td>${escapePrintableHtml(entry.address)}</td><td>${escapePrintableHtml(entry.visibleReasons[0] || "No visible-list reason recorded.")}</td><td><strong>${escapePrintableHtml(entry.packageDecisionLabel)}</strong><br />${escapePrintableHtml(entry.packageDecisionMessage)}</td><td>${escapePrintableHtml(entry.currentStatusLabel)}${entry.overrideNote ? `<br />${escapePrintableHtml(entry.overrideNote)}` : ""}</td></tr>`).join("")}</tbody>
+    </table>
+  </section>
+  ${(explainabilityEntries || []).map((entry) => `
+    <section class="entry">
+      <h2>Comp ${escapePrintableHtml(String(entry.visibleRank))}: ${escapePrintableHtml(entry.address)}</h2>
+      <p><strong>Parcel ID:</strong> ${escapePrintableHtml(entry.parcelId || "-")}</p>
+      <p><strong>Default package result:</strong> ${escapePrintableHtml(entry.defaultStatusLabel)}. ${escapePrintableHtml(entry.packageDecisionMessage)}</p>
+      <p><strong>Selection indicator:</strong> ${escapePrintableHtml(entry.selectionIndicatorLabel)}. ${escapePrintableHtml(entry.selectionIndicatorMessage)}</p>
+      ${entry.overrideNote ? `<p><strong>Manual override note:</strong> ${escapePrintableHtml(entry.overrideNote)}</p>` : ""}
+      <div class="subhead">Why it made the visible list</div>
+      <ul>${entry.visibleReasons.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>
+      <div class="subhead">Gate checks</div>
+      <ul>${entry.gateChecks.map((check) => `<li><span class="${check.passed ? "gate-pass" : "gate-fail"}">${escapePrintableHtml(check.label)}</span>: ${escapePrintableHtml(check.detail)}</li>`).join("")}</ul>
+      ${entry.normalizedLines.length ? `<div class="subhead">Normalized value checks</div><ul>${entry.normalizedLines.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
+      ${entry.supportReasons.length ? `<div class="subhead">Support reasons recorded by the engine</div><ul>${entry.supportReasons.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
+      ${entry.confidenceNotes.length ? `<div class="subhead">Confidence notes</div><ul>${entry.confidenceNotes.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
+      ${entry.concerns.length ? `<div class="subhead">Why it was limited or challenged</div><ul>${entry.concerns.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
+      ${entry.riskFlags.length ? `<div class="subhead">Assessor challenge flags</div><ul>${entry.riskFlags.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
+    </section>`).join("")}
+</body>
+</html>`;
+  };
+  var truncatePrintableMapLabelSafe = (text = "", maxChars = 38) => {
+    const value = String(text || "").trim();
+    if (!value) return "";
+    if (value.length <= maxChars) return value;
+    return value.slice(0, Math.max(1, maxChars - 3)).trimEnd() + "...";
+  };
+  var buildSupplementalMarketEvidenceComps = ({ visibleComps = [], selectedComps = [], marketIncludedSales = [], claimRecommendation = null, evidenceSufficiency = null } = {}) => {
+    if (!/^EXCESSIVE/.test(claimRecommendation?.code || "") || evidenceSufficiency?.status !== "sale_backed_sufficient") return [];
+    const selectedIds = new Set((selectedComps || []).map((comp) => normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)).filter(Boolean));
+    const includedSaleIds = new Set((marketIncludedSales || []).map((entry) => normalizeParcelId(entry?.parcelId || entry?.printKey || entry?.pinSbl)).filter(Boolean));
+    return (visibleComps || []).filter((comp) => {
+      const compId = normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl);
+      const metrics = comp?._selectionDiagnostics?.normalizedMetricsSummary || {};
+      return compId && !selectedIds.has(compId) && includedSaleIds.has(compId) && Number(comp?._comparableQualityScore) >= 50 && Number(comp?._dataConfidenceScore) >= 60 && (comp?._grievanceRelevance?.kind || "") !== "weakens_case" && (Number(metrics.equityRatioDeltaPoints) || 0) > -2 && (Number(metrics.assessedPerSqftAdvantagePct) || 0) > -0.12;
+    }).sort((a2, b) => {
+      const qualityDiff = Number(b?._comparableQualityScore || 0) - Number(a2?._comparableQualityScore || 0);
+      if (qualityDiff) return qualityDiff;
+      const confidenceDiff = Number(b?._dataConfidenceScore || 0) - Number(a2?._dataConfidenceScore || 0);
+      if (confidenceDiff) return confidenceDiff;
+      const supportDiff = Number(b?._grievanceSupportScore || 0) - Number(a2?._grievanceSupportScore || 0);
+      if (supportDiff) return supportDiff;
+      const distanceDiff = Number(a2?._distanceMiles || Infinity) - Number(b?._distanceMiles || Infinity);
+      if (Number.isFinite(distanceDiff)) return distanceDiff;
+      return String(a2?.address || a2?.parcelId || "").localeCompare(String(b?.address || b?.parcelId || ""));
+    }).slice(0, 3).map((comp) => ({
+      ...comp,
+      _packetSupplementalLabel: "Retained for market-value evidence",
+      _packetSupplementalReason: "This property remains outside the primary grievance-comp set, but its verified arm's-length sale data materially supports the sale-backed market estimate."
+    }));
+  };
   var buildComparableMapPreviewHtml = ({ subject, selectedComps = [] } = {}) => {
     if (!subject || !selectedComps.length) return "";
     const subjectProfile = subject?._compProfile || buildComparableProfile(subject);
     const subjectLatLng = comparablePrintableLatLng(subject, subjectProfile);
     const compEntries = (selectedComps || []).map((parcel, idx) => {
       const profile = parcel?._compProfile || buildComparableProfile(parcel);
+      const distanceMiles = parcelDistanceMiles(subject, parcel);
       return {
         parcel,
         profile,
         index: idx + 1,
-        latLng: comparablePrintableLatLng(parcel, profile)
+        latLng: comparablePrintableLatLng(parcel, profile),
+        distanceMiles
       };
     });
     const plottedEntries = [
@@ -55558,10 +56254,12 @@ self.onmessage = function(ev){
         parcel: entry.parcel,
         profile: entry.profile,
         latLng: entry.latLng,
-        index: entry.index
+        index: entry.index,
+        distanceMiles: entry.distanceMiles
       }))
     ].filter((entry) => entry.latLng);
     if (plottedEntries.length < 2) return "";
+    const plottedCompareCount = plottedEntries.filter((entry) => entry.kind === "compare").length;
     const latitudes = plottedEntries.map((entry) => entry.latLng[0]);
     const longitudes = plottedEntries.map((entry) => entry.latLng[1]);
     const minLatBase = Math.min(...latitudes);
@@ -55576,8 +56274,8 @@ self.onmessage = function(ev){
     const maxLng = maxLngBase + lngSpanBase * 0.16;
     const width = 820;
     const height = 430;
-    const padX = 44;
-    const padY = 34;
+    const padX = 54;
+    const padY = 40;
     const toPlotPoint = ([lat, lng]) => {
       const x2 = padX + (lng - minLng) / Math.max(maxLng - minLng, 1e-6) * (width - padX * 2);
       const y2 = padY + (1 - (lat - minLat) / Math.max(maxLat - minLat, 1e-6)) * (height - padY * 2);
@@ -55588,28 +56286,47 @@ self.onmessage = function(ev){
       plot: toPlotPoint(entry.latLng)
     }));
     const subjectPoint = plottedWithCoords.find((entry) => entry.kind === "subject") || null;
-    const gridLines = [0.2, 0.4, 0.6, 0.8].map((stop) => {
-      const x2 = padX + (width - padX * 2) * stop;
+    const maxDistanceMiles = Math.max(...compEntries.map((entry) => Number(entry?.distanceMiles) || 0), 0);
+    const ringSteps = maxDistanceMiles > 0 ? [0.33, 0.66, 1].map((stop) => ({
+      radius: 34 + stop * 108,
+      label: `${(maxDistanceMiles * stop).toFixed(maxDistanceMiles * stop < 1 ? 1 : 0)} mi`
+    })) : [];
+    const distanceRings = subjectPoint ? ringSteps.map((ring, idx) => `
+      <circle cx="${subjectPoint.plot[0].toFixed(1)}" cy="${subjectPoint.plot[1].toFixed(1)}" r="${ring.radius.toFixed(1)}" fill="none" stroke="${idx === ringSteps.length - 1 ? "rgba(37,99,235,.14)" : "rgba(148,163,184,.18)"}" stroke-width="1.2" stroke-dasharray="${idx === ringSteps.length - 1 ? "4 6" : "2 7"}" />
+      <text x="${(subjectPoint.plot[0] + ring.radius + 6).toFixed(1)}" y="${(subjectPoint.plot[1] - 4).toFixed(1)}" font-size="10" font-weight="700" fill="#64748b">${escapePrintableHtml(ring.label)}</text>
+    `).join("") : "";
+    const backgroundBands = [0.18, 0.42, 0.68].map((stop, idx) => {
       const y2 = padY + (height - padY * 2) * stop;
-      return `<g>
-      <line x1="${x2.toFixed(1)}" y1="${padY}" x2="${x2.toFixed(1)}" y2="${height - padY}" stroke="rgba(148,163,184,.28)" stroke-width="1" />
-      <line x1="${padX}" y1="${y2.toFixed(1)}" x2="${width - padX}" y2="${y2.toFixed(1)}" stroke="rgba(148,163,184,.22)" stroke-width="1" />
-    </g>`;
+      return `<path d="M ${padX - 6} ${y2.toFixed(1)} C ${width * 0.28} ${(y2 - 10 - idx * 2).toFixed(1)}, ${width * 0.58} ${(y2 + 12 + idx * 4).toFixed(1)}, ${width - padX + 8} ${(y2 - 4).toFixed(1)}" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="${(1.4 + idx * 0.3).toFixed(1)}" />`;
     }).join("");
-    const compLines = subjectPoint ? plottedWithCoords.filter((entry) => entry.kind === "compare").map((entry) => `<line x1="${subjectPoint.plot[0].toFixed(1)}" y1="${subjectPoint.plot[1].toFixed(1)}" x2="${entry.plot[0].toFixed(1)}" y2="${entry.plot[1].toFixed(1)}" stroke="rgba(37,99,235,.26)" stroke-width="2.4" stroke-dasharray="7 6" />`).join("") : "";
+    const blockBands = [0.2, 0.4, 0.6, 0.8].map((stop) => {
+      const x2 = padX + (width - padX * 2) * stop;
+      return `<line x1="${x2.toFixed(1)}" y1="${padY - 8}" x2="${x2.toFixed(1)}" y2="${height - padY + 8}" stroke="rgba(203,213,225,.35)" stroke-width="1" />`;
+    }).join("");
+    const compLines = subjectPoint ? plottedWithCoords.filter((entry) => entry.kind === "compare").map((entry) => `<line x1="${subjectPoint.plot[0].toFixed(1)}" y1="${subjectPoint.plot[1].toFixed(1)}" x2="${entry.plot[0].toFixed(1)}" y2="${entry.plot[1].toFixed(1)}" stroke="rgba(37,99,235,.22)" stroke-width="1.8" stroke-dasharray="5 6" />`).join("") : "";
     const mapMarkers = plottedWithCoords.map((entry) => {
       const [x2, y2] = entry.plot;
       const badgeText = entry.kind === "subject" ? "S" : String(entry.index);
-      const bubbleWidth = entry.kind === "subject" ? 34 : 26;
       const badgeFill = entry.kind === "subject" ? "#f59e0b" : "#2563eb";
       const badgeTextColor = entry.kind === "subject" ? "#7c2d12" : "#ffffff";
-      const labelText = escapePrintableHtml(entry.kind === "subject" ? `Subject | ${entry.parcel?.address || entry.parcel?.parcelId || "Parcel"}` : `Comp ${entry.index} | ${entry.parcel?.address || entry.parcel?.parcelId || "Comparable"}`);
-      const labelY = y2 - 20;
+      const rawLabelTitle = entry.kind === "subject" ? `Subject | ${entry.parcel?.address || entry.parcel?.parcelId || "Parcel"}` : `Comp ${entry.index} | ${entry.parcel?.address || entry.parcel?.parcelId || "Comparable"}`;
+      const rawLabelMeta = entry.kind === "subject" ? entry.parcel?.owner1 || entry.parcel?.parcelId || "" : Number.isFinite(entry.distanceMiles) ? `${formatComparableMiles(entry.distanceMiles)} from subject` : entry.parcel?.owner1 || entry.parcel?.parcelId || "";
+      const labelTitle = truncatePrintableMapLabelSafe(rawLabelTitle, 40);
+      const labelMeta = truncatePrintableMapLabelSafe(rawLabelMeta, 44);
+      const placeRight = x2 < width * 0.62;
+      const labelWidth = Math.min(340, Math.max(176, Math.max(labelTitle.length, labelMeta.length) * 6.4 + 30));
+      const labelHeight = labelMeta ? 38 : 30;
+      const labelX = placeRight ? Math.min(width - labelWidth - 14, x2 + 18) : Math.max(14, x2 - labelWidth - 18);
+      const labelY = Math.max(16, Math.min(height - labelHeight - 16, y2 - (entry.kind === "subject" ? 12 : 26)));
+      const anchorX = placeRight ? labelX : labelX + labelWidth;
+      const anchorY = labelY + labelHeight / 2;
       return `<g>
-      <circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="${entry.kind === "subject" ? 12 : 10}" fill="${badgeFill}" stroke="#ffffff" stroke-width="3" />
+      <line x1="${x2.toFixed(1)}" y1="${y2.toFixed(1)}" x2="${anchorX.toFixed(1)}" y2="${anchorY.toFixed(1)}" stroke="${entry.kind === "subject" ? "rgba(245,158,11,.45)" : "rgba(37,99,235,.32)"}" stroke-width="1.4" />
+      <circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="${entry.kind === "subject" ? 14 : 11}" fill="${badgeFill}" stroke="rgba(255,255,255,.94)" stroke-width="3.5" />
       <text x="${x2.toFixed(1)}" y="${(y2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${badgeTextColor}">${badgeText}</text>
-      <rect x="${Math.max(12, x2 - 8)}" y="${Math.max(10, labelY - 13)}" rx="12" ry="12" width="${Math.min(286, Math.max(120, labelText.length * 5.8))}" height="24" fill="rgba(255,255,255,.94)" stroke="${badgeFill}" stroke-width="1.2" />
-      <text x="${Math.max(24, x2 + 4)}" y="${Math.max(26, labelY + 3)}" font-size="11" font-weight="700" fill="#0f172a">${labelText}</text>
+      <rect x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" rx="13" ry="13" width="${labelWidth.toFixed(1)}" height="${labelHeight}" fill="rgba(255,255,255,.96)" stroke="${entry.kind === "subject" ? "rgba(245,158,11,.78)" : "rgba(37,99,235,.78)"}" stroke-width="1.3" />
+      <text x="${(labelX + 11).toFixed(1)}" y="${(labelY + 15.5).toFixed(1)}" font-size="10.5" font-weight="700" fill="#0f172a">${escapePrintableHtml(labelTitle)}</text>
+      ${labelMeta ? `<text x="${(labelX + 11).toFixed(1)}" y="${(labelY + 28.5).toFixed(1)}" font-size="9.5" font-weight="600" fill="#64748b">${escapePrintableHtml(labelMeta)}</text>` : ""}
     </g>`;
     }).join("");
     const missingCoordsCount = compEntries.filter((entry) => !entry.latLng).length;
@@ -55620,33 +56337,47 @@ self.onmessage = function(ev){
     </div>`,
       ...compEntries.map((entry) => `<div class="print-map-legend-item">
       <span class="print-map-chip compare">Comp ${entry.index}</span>
-      <div><strong>${escapePrintableHtml(entry.parcel?.address || entry.parcel?.parcelId || `Comp ${entry.index}`)}</strong><div class="print-map-legend-meta">${escapePrintableHtml(entry.parcel?.owner1 || entry.parcel?.parcelId || "")}</div></div>
+      <div>
+        <strong>${escapePrintableHtml(entry.parcel?.address || entry.parcel?.parcelId || `Comp ${entry.index}`)}</strong>
+        <div class="print-map-legend-meta">${escapePrintableHtml(entry.parcel?.owner1 || entry.parcel?.parcelId || "")}</div>
+        <div class="print-map-legend-meta" style="font-weight:700;color:#2563eb;">${escapePrintableHtml(Number.isFinite(entry.distanceMiles) ? `${formatComparableMiles(entry.distanceMiles)} from subject` : "Distance unavailable")}</div>
+      </div>
     </div>`)
     ].join("");
     return `
     <section class="section">
       <h2>Comparable map overview</h2>
-      <p>This simplified map is included in the packet so you can show where the subject parcel and the selected grievance comps sit relative to one another.</p>
+      <p>This exhibit map shows the subject parcel and the selected grievance comps in relative position, with subject-to-comp distances noted for quick geographic review.</p>
       <div class="print-map-shell">
         <div class="print-map-frame">
           <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Comparable map overview" class="print-map-svg">
             <defs>
               <linearGradient id="compMapBg" x1="0" x2="1" y1="0" y2="1">
-                <stop offset="0%" stop-color="#eff6ff" />
-                <stop offset="100%" stop-color="#eef2ff" />
+                <stop offset="0%" stop-color="#f8fbff" />
+                <stop offset="100%" stop-color="#eef4ff" />
               </linearGradient>
+              <filter id="compCardShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="rgba(15,23,42,.10)" />
+              </filter>
             </defs>
-            <rect x="0" y="0" width="${width}" height="${height}" rx="22" fill="url(#compMapBg)" />
-            <rect x="${padX - 10}" y="${padY - 10}" width="${width - (padX - 10) * 2}" height="${height - (padY - 10) * 2}" rx="18" fill="rgba(255,255,255,.58)" stroke="rgba(148,163,184,.26)" stroke-width="1.5" />
-            ${gridLines}
+            <rect x="0" y="0" width="${width}" height="${height}" rx="24" fill="url(#compMapBg)" />
+            <rect x="${padX - 16}" y="${padY - 14}" width="${width - (padX - 16) * 2}" height="${height - (padY - 14) * 2}" rx="22" fill="rgba(255,255,255,.82)" stroke="rgba(203,213,225,.85)" stroke-width="1.6" filter="url(#compCardShadow)" />
+            ${backgroundBands}
+            ${blockBands}
+            ${distanceRings}
             ${compLines}
             ${mapMarkers}
+            <g transform="translate(${width - 76},${padY - 2})">
+              <text x="0" y="0" font-size="10" font-weight="800" fill="#64748b">N</text>
+              <line x1="4" y1="6" x2="4" y2="34" stroke="#94a3b8" stroke-width="1.5" />
+              <polygon points="4,2 0,10 8,10" fill="#64748b" />
+            </g>
           </svg>
         </div>
         <div class="print-map-legend">
           <div class="print-map-legend-title">Map legend</div>
           ${legendItems}
-          <div class="print-map-note">Gold marks the subject parcel. Blue numbered markers show the grievance comps included in this packet.</div>
+          <div class="print-map-note">Gold marks the subject parcel. Blue numbered markers show the ${plottedCompareCount} grievance comp${plottedCompareCount === 1 ? "" : "s"} plotted in this exhibit. Distances are shown in miles from the subject parcel.</div>
           ${missingCoordsCount ? `<div class="print-map-note">Location data was unavailable for ${missingCoordsCount} selected comp${missingCoordsCount === 1 ? "" : "s"}, so they are listed in the report but not plotted on this map.</div>` : ""}
         </div>
       </div>
@@ -55672,18 +56403,103 @@ self.onmessage = function(ev){
     const generatedAt = (/* @__PURE__ */ new Date()).toLocaleString();
     const summaryLabelPrefix = neighborResult?.grievancePackageCustom ? "Selected grievance comp" : "Supporting comp";
     const claimRecommendation = neighborResult?.claimRecommendation || null;
+    const claimGuidance = neighborResult?.claimGuidance || null;
+    const evidenceSufficiency = neighborResult?.evidenceSufficiency || null;
     const overvaluationFlag = neighborResult?.overvaluationFlag || null;
-    const marketSaleModel = neighborResult?.marketSaleModel || null;
-    const neighborhoodEquityModel = neighborResult?.neighborhoodEquityModel || null;
+    const marketSaleModel = neighborResult?.marketEvidenceModel || neighborResult?.marketSaleModel || null;
+    const neighborhoodEquityModel = neighborResult?.ratioStudyModel || neighborResult?.neighborhoodEquityModel || null;
+    const salesAppendix = neighborResult?.salesAppendix || {};
     const subjectSaleModel = neighborResult?.subjectSaleModel || null;
     const comparableMapHtml = buildComparableMapPreviewHtml({ subject, selectedComps });
+    const marketIncludedSales = salesAppendix?.marketIncludedSales || [];
+    const marketExcludedSales = salesAppendix?.marketExcludedSales || [];
+    const ratioIncludedSales = salesAppendix?.ratioIncludedSales || [];
+    const ratioExcludedSales = salesAppendix?.ratioExcludedSales || [];
+    const ratioStudyDirectComparison = neighborResult?.ratioStudyDirectComparison || null;
+    const benchmarkContext = buildNeighborhoodBenchmarkContext({
+      neighborhoodBenchmark,
+      marketSaleModel,
+      evidenceSufficiency,
+      claimRecommendation
+    });
+    const supplementalMarketEvidenceComps = buildSupplementalMarketEvidenceComps({
+      visibleComps: defaultComps,
+      selectedComps,
+      marketIncludedSales,
+      claimRecommendation,
+      evidenceSufficiency
+    });
+    const keyMarketExcludedSales = selectKeyExcludedSales(marketExcludedSales, 8);
+    const keyRatioExcludedSales = selectKeyExcludedSales(ratioExcludedSales, 8);
+    const marketExclusionSummary = summarizeExcludedSaleReasons(marketExcludedSales);
+    const ratioExclusionSummary = summarizeExcludedSaleReasons(ratioExcludedSales);
+    const renderSaleAppendixRows = (entries = [], typeLabel) => entries.length ? `
+    <table>
+      <thead><tr><th>Address</th><th>Sale date</th><th>Sale price</th><th>Distance</th><th>Why it was ${typeLabel === "included" ? "used" : "excluded"}</th></tr></thead>
+      <tbody>${entries.map((entry) => `<tr><td>${escapePrintableHtml(entry.address || entry.parcelId || "-")}</td><td>${escapePrintableHtml(entry.saleDate || "-")}</td><td>${escapePrintableHtml(entry.salePrice != null ? $f(entry.salePrice) : "-")}</td><td>${escapePrintableHtml(Number.isFinite(entry.distanceMiles) ? formatComparableMiles(entry.distanceMiles) : "-")}</td><td>${escapePrintableHtml((entry.reasons || []).length ? entry.reasons.join("; ") : typeLabel === "included" ? "Included in the final model." : "No reason recorded.")}</td></tr>`).join("")}</tbody>
+    </table>` : `<p>No ${typeLabel} sales are available for this appendix.</p>`;
+    const renderExclusionSummary = (entries = [], summary = [], label) => `
+    <p>${escapePrintableHtml(`${entries.length} ${label} sale${entries.length === 1 ? " was" : "s were"} screened out of the final packet exhibit.`)}</p>
+    ${summary.length ? `<ul>${summary.slice(0, 6).map((item) => `<li>${escapePrintableHtml(`${item.label}: ${item.count}`)}</li>`).join("")}</ul>` : "<p>No exclusion summary is available.</p>"}
+  `;
+    const renderComparableCard = (parcel, idx, { supplemental = false } = {}) => {
+      const profile = parcel?._compProfile || buildComparableProfile(parcel);
+      const delta = parcel?._compDelta || {};
+      const relevance = parcel?._grievanceRelevance || classifyGrievanceComparable(subject, parcel);
+      const explanation = relevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevance?.kind || "neutral");
+      const reasons = (parcel?._compReasons || []).map((reason) => `<li>${escapePrintableHtml(reason)}</li>`).join("");
+      const riskFlags = (parcel?._riskFlags || []).map((flag) => `<li>${escapePrintableHtml(flag)}</li>`).join("");
+      const supportBreakdownRows = (explanation?.breakdownRows || []).map((row) => `<li><strong>${escapePrintableHtml(row.label)}:</strong> ${escapePrintableHtml(row.valueText)}. ${escapePrintableHtml(row.explanation)}${row.whyItMatters ? ` Why it matters: ${escapePrintableHtml(row.whyItMatters)}` : ""}</li>`).join("");
+      const cardClass = supplemental ? "supplemental" : relevance.kind;
+      const badgeLabel = supplemental ? "Supplemental market evidence" : relevance.badge;
+      const reasonTitle = supplemental ? "Why this property was retained" : "Why this home was included";
+      const reasonItems = supplemental ? `<li>${escapePrintableHtml(parcel?._packetSupplementalLabel || "Retained for market-value evidence")}</li><li>${escapePrintableHtml(parcel?._packetSupplementalReason || "This property is shown separately from the primary grievance-comp set because its verified sale supports the market-value evidence.")}</li>${reasons}` : reasons || "<li>No selection reasons were recorded for this comp.</li>";
+      const headline = supplemental ? `<strong>${escapePrintableHtml(parcel?._packetSupplementalLabel || "Retained for market-value evidence")}.</strong> ${escapePrintableHtml(parcel?._packetSupplementalReason || explanation.summaryText)}` : `<strong>${escapePrintableHtml(explanation.summaryHeadline)}.</strong> ${escapePrintableHtml(explanation.summaryText)}`;
+      return `
+      <section class="comp-card ${escapePrintableHtml(cardClass)}">
+        <div class="comp-head">
+          <div>
+            <div class="comp-title">${supplemental ? "Supplemental comp" : "Comp"} ${idx + 1}: ${escapePrintableHtml(parcel?.address || parcel?.parcelId || "Comparable")}</div>
+            <div class="comp-meta">${escapePrintableHtml(parcel?.parcelId || "")}${parcel?.owner1 ? ` | ${escapePrintableHtml(parcel.owner1)}` : ""}</div>
+          </div>
+          <div class="status ${escapePrintableHtml(cardClass)}">${escapePrintableHtml(badgeLabel)}</div>
+        </div>
+        <div class="status-copy">${headline}</div>
+        <div class="status-copy"><strong>Main reason:</strong> ${escapePrintableHtml(supplemental ? parcel?._packetSupplementalReason || explanation.primaryReason : explanation.primaryReason)}</div>
+        ${parcel?._marginalSupport && !supplemental ? `<div class="status-copy"><strong>Marginal support:</strong> Small assessed value gap may disappear after closer manual review.</div>` : ""}
+        <table>
+          <thead><tr><th>Metric</th><th>You</th><th>Comp</th><th>Delta</th></tr></thead>
+          <tbody>
+            <tr><td>Assessed</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml($f(parcel?.assessedValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.assessed))}</td></tr>
+            <tr><td>FMV</td><td>${escapePrintableHtml($f(subject?.fullMarketValue))}</td><td>${escapePrintableHtml($f(parcel?.fullMarketValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.fmv))}</td></tr>
+            <tr><td>Equity %</td><td>${escapePrintableHtml(subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-")}</td><td>${escapePrintableHtml(profile?.equity != null ? profile.equity + "%" : "-")}</td><td>${escapePrintableHtml(formatSignedComparableCount(delta.equity, "%"))}</td></tr>
+            <tr><td>Living area</td><td>${escapePrintableHtml(subjectProfile?.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(profile?.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-")}</td></tr>
+            <tr><td>Year built</td><td>${escapePrintableHtml(subjectProfile?.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(profile?.yearBuilt != null ? String(profile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-")}</td></tr>
+            <tr><td>Bedrooms</td><td>${escapePrintableHtml(subjectProfile?.bedrooms != null ? String(subjectProfile.bedrooms) : "-")}</td><td>${escapePrintableHtml(profile?.bedrooms != null ? String(profile.bedrooms) : "-")}</td><td>${escapePrintableHtml(delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-")}</td></tr>
+            <tr><td>Baths</td><td>${escapePrintableHtml(subjectProfile?.bathText || "-")}</td><td>${escapePrintableHtml(profile?.bathText || "-")}</td><td>${escapePrintableHtml(delta.baths != null ? formatSignedComparableCount(delta.baths) : "-")}</td></tr>
+          </tbody>
+        </table>
+        ${(supportBreakdownRows || "") && !supplemental ? `<div class="why-title">Why this support level</div><ul>${supportBreakdownRows}</ul>` : ""}
+        ${riskFlags ? `<div class="why-title">Assessor challenge flags</div><ul>${riskFlags}</ul>` : ""}
+        <div class="why-title">${reasonTitle}</div>
+        <ul>${reasonItems}</ul>
+      </section>`;
+    };
     const selectionMethodHtml = `
+    <section class="section">
+      <h2>How the grievance result was produced</h2>
+      <p><strong>Data inputs:</strong> ${escapePrintableHtml(`Assessment roll context (${neighborResult?.rollContext?.assessmentYear || subject?.assessmentYear || "current"} ${neighborResult?.rollContext?.rollType || subject?.rollType || "roll"}), residential inventory details, selected comparable homes, and ORPTS sale records already loaded in this app.`)}</p>
+      <p><strong>Filters:</strong> The app keeps broad research comparables visible, but the grievance-facing market model uses a tighter evidence pool for living area, year built, bedrooms, baths, residential family, and location tier.</p>
+      <p><strong>Adjustments:</strong> ${escapePrintableHtml(marketSaleModel?.timeAdjustmentMethod || "No time adjustment was applied because the evidence stayed in the primary 24-month window.")}</p>
+      <p><strong>Limitations:</strong> ${escapePrintableHtml((neighborResult?.packageLimitations || []).length ? neighborResult.packageLimitations.join("; ") : "No major package limitations were recorded.")}</p>
+    </section>
     <section class="section">
       <h2>How comparable homes are chosen</h2>
       <ul>
-        <li>The full visible list shows up to 12 homes with the best physical-match scores, using class, location, living area, year built, beds, baths, style, and FMV alignment.</li>
-        <li>A narrower default grievance package is then suggested. A comp must clear the quality gate, the data-confidence gate, and earn positive grievance support from raw assessed value plus normalized metrics.</li>
-        <li>Lower assessed value alone is not enough. The app also checks assessed value per square foot, equity ratio, recent arm's-length sale evidence, and package-assembly rules such as same-street limits and corroborating strong comps.</li>
+        <li>The full visible list shows nearby physical matches first so the homeowner and assessor can still see broader context.</li>
+        <li>A narrower grievance package is then suggested. A comp must clear the quality gate, the data-confidence gate, and positive grievance-support checks before it is treated as package evidence.</li>
+        ${supplementalMarketEvidenceComps.length ? "<li>When sale-backed excessive-assessment evidence leads, the packet may also retain up to 3 separate supplemental market-evidence properties. These do not replace the primary grievance-comp set.</li>" : ""}
+        <li>Claim recommendations and requested values are only shown when the separate sale-backed evidence model is sufficient.</li>
         <li>The complete authoritative rules are documented in GRIEVANCE_APP_COMPLETE_SPEC.md. This printable report is a user-facing summary of that engine.</li>
       </ul>
     </section>`;
@@ -55695,74 +56511,38 @@ self.onmessage = function(ev){
     </tr>`).join("");
     const missingRows = (grievanceHelper?.missing || []).map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("");
     const nextStepRows = (nextSteps || []).map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("");
-    const compSections = comps.map((parcel, idx) => {
-      const profile = parcel?._compProfile || buildComparableProfile(parcel);
-      const delta = parcel?._compDelta || {};
-      const relevance = parcel?._grievanceRelevance || classifyGrievanceComparable(subject, parcel);
-      const explanation = relevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevance?.kind || "neutral");
-      const reasons = (parcel?._compReasons || []).map((reason) => `<li>${escapePrintableHtml(reason)}</li>`).join("");
-      const riskFlags = (parcel?._riskFlags || []).map((flag) => `<li>${escapePrintableHtml(flag)}</li>`).join("");
-      const adjustedAv = Number.isFinite(Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue)) ? Number(parcel?._adjustedAssessedValue ?? parcel?.adjustedAssessedValue) : null;
-      const adjustedDelta = adjustedAv != null && Number.isFinite(Number(subject?.assessedValue)) ? adjustedAv - Number(subject.assessedValue) : null;
-      const adjustedSupport = parcel?._adjustmentBreakdown?.adjustedSupportLabel || null;
-      const supportBreakdownRows = (explanation?.breakdownRows || []).map((row) => `<li><strong>${escapePrintableHtml(row.label)}:</strong> ${escapePrintableHtml(row.valueText)}. ${escapePrintableHtml(row.explanation)}${row.whyItMatters ? ` Why it matters: ${escapePrintableHtml(row.whyItMatters)}` : ""}</li>`).join("");
-      return `
-      <section class="comp-card ${escapePrintableHtml(relevance.kind)}">
-        <div class="comp-head">
-          <div>
-            <div class="comp-title">Comp ${idx + 1}: ${escapePrintableHtml(parcel?.address || parcel?.parcelId || "Comparable")}</div>
-            <div class="comp-meta">${escapePrintableHtml(parcel?.parcelId || "")}${parcel?.owner1 ? ` | ${escapePrintableHtml(parcel.owner1)}` : ""}</div>
-          </div>
-          <div class="status ${escapePrintableHtml(relevance.kind)}">${escapePrintableHtml(relevance.badge)}</div>
-        </div>
-        <div class="status-copy"><strong>${escapePrintableHtml(explanation.summaryHeadline)}.</strong> ${escapePrintableHtml(explanation.summaryText)}</div>
-        <div class="status-copy"><strong>Main reason:</strong> ${escapePrintableHtml(explanation.primaryReason)}</div>
-        ${parcel?._marginalSupport ? `<div class="status-copy"><strong>Marginal support:</strong> Small assessed value gap may disappear after adjustments.</div>` : ""}
-        <table>
-          <thead><tr><th>Metric</th><th>You</th><th>Comp</th><th>Delta</th></tr></thead>
-          <tbody>
-            <tr><td>Assessed</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml($f(parcel?.assessedValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.assessed))}</td></tr>
-            <tr><td>Adjusted AV</td><td>${escapePrintableHtml($f(subject?.assessedValue))}</td><td>${escapePrintableHtml(adjustedAv != null ? $f(adjustedAv) : "-")}</td><td>${escapePrintableHtml(adjustedDelta != null ? formatSignedComparableMoney(adjustedDelta) : "-")}</td></tr>
-            <tr><td>FMV</td><td>${escapePrintableHtml($f(subject?.fullMarketValue))}</td><td>${escapePrintableHtml($f(parcel?.fullMarketValue))}</td><td>${escapePrintableHtml(formatSignedComparableMoney(delta.fmv))}</td></tr>
-            <tr><td>Equity %</td><td>${escapePrintableHtml(subjectProfile?.equity != null ? subjectProfile.equity + "%" : "-")}</td><td>${escapePrintableHtml(profile?.equity != null ? profile.equity + "%" : "-")}</td><td>${escapePrintableHtml(formatSignedComparableCount(delta.equity, "%"))}</td></tr>
-            <tr><td>Living area</td><td>${escapePrintableHtml(subjectProfile?.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(profile?.livingArea != null ? nf(profile.livingArea) + " sq ft" : "-")}</td><td>${escapePrintableHtml(delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-")}</td></tr>
-            <tr><td>Year built</td><td>${escapePrintableHtml(subjectProfile?.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(profile?.yearBuilt != null ? String(profile.yearBuilt) : "-")}</td><td>${escapePrintableHtml(delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-")}</td></tr>
-            <tr><td>Bedrooms</td><td>${escapePrintableHtml(subjectProfile?.bedrooms != null ? String(subjectProfile.bedrooms) : "-")}</td><td>${escapePrintableHtml(profile?.bedrooms != null ? String(profile.bedrooms) : "-")}</td><td>${escapePrintableHtml(delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-")}</td></tr>
-            <tr><td>Baths</td><td>${escapePrintableHtml(subjectProfile?.bathText || "-")}</td><td>${escapePrintableHtml(profile?.bathText || "-")}</td><td>${escapePrintableHtml(delta.baths != null ? formatSignedComparableCount(delta.baths) : "-")}</td></tr>
-            <tr><td>Adjusted support</td><td>-</td><td>${escapePrintableHtml(adjustedSupport || "-")}</td><td>${escapePrintableHtml(parcel?._adjustmentNarrative || "-")}</td></tr>
-          </tbody>
-        </table>
-        ${supportBreakdownRows || "" ? `<div class="why-title">Why this support level</div><ul>${supportBreakdownRows}</ul>` : ""}
-        ${parcel?._adjustmentNarrative ? `<div class="status-copy"><strong>Adjustment narrative:</strong> ${escapePrintableHtml(parcel._adjustmentNarrative)}</div>` : ""}
-        ${riskFlags ? `<div class="why-title">Assessor challenge flags</div><ul>${riskFlags}</ul>` : ""}
-        <div class="why-title">Why this home was included</div>
-        <ul>${reasons || "<li>No selection reasons were recorded for this comp.</li>"}</ul>
-      </section>`;
-    }).join("");
+    const compSections = comps.map((parcel, idx) => renderComparableCard(parcel, idx)).join("");
+    const supplementalCompSections = supplementalMarketEvidenceComps.map((parcel, idx) => renderComparableCard(parcel, idx, { supplemental: true })).join("");
     const summaryHtml = selectedComps.length ? `
     <section>
       <h2>Grievance summary</h2>
       <div class="summary-grid">
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgAssessed))}</div><div>${escapePrintableHtml(summaryLabelPrefix)} assessed average</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml($f(neighborResult.grievanceAvgFMV))}</div><div>${escapePrintableHtml(summaryLabelPrefix)} FMV average</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.grievanceAvgEquity != null ? neighborResult.grievanceAvgEquity + "%" : "-")}</div><div>${escapePrintableHtml(summaryLabelPrefix)} equity average</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(evidenceSufficiency?.label || "-")}</div><div>Sale-backed evidence status</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(selectedComps.length))}</div><div>Selected grievance comps</div></div>
+        ${supplementalMarketEvidenceComps.length ? `<div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(supplementalMarketEvidenceComps.length))}</div><div>Supplemental market-evidence properties</div></div>` : ""}
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(neighborResult.grievanceModerateOrBetterCount ?? 0))}</div><div>Moderate support or better</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Suggested requested assessed value</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedValueMethodA != null ? $f(neighborResult.suggestedValueMethodA) : "-")}</div><div>Comp-based value estimate</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedValueMethodB != null ? $f(neighborResult.suggestedValueMethodB) : "-")}</div><div>Equity-ratio value estimate</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "-")}</div><div>Recommended claim type</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(marketSaleModel?.estimatedSubjectFmv != null ? $f(marketSaleModel.estimatedSubjectFmv) : "-")}</div><div>Sale-backed market estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Requested assessed value</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "No automatic ground selected")}</div><div>Recommended ground</div></div>
       </div>
       <p><strong>Selection method:</strong> The default grievance package keeps homes with positive grievance-support scores plus adequate quality and confidence. Lower assessed value alone does not qualify a home.</p>
+      ${supplementalMarketEvidenceComps.length ? `<p><strong>Supplemental market-evidence properties:</strong> Because unequal-assessment evidence is limited here, this packet separately retains up to ${supplementalMarketEvidenceComps.length} verified-sale property${supplementalMarketEvidenceComps.length === 1 ? "" : "ies"} that help support the subject's market-value position. These remain separate from the primary grievance-comp set.</p>` : ""}
+      <p><strong>Sale-backed evidence:</strong> ${escapePrintableHtml(evidenceSufficiency?.reason || "Sale-backed evidence status is unavailable.")}</p>
       <p><strong>Package quality:</strong> Average quality score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageQualityScore) ? Number(neighborResult.grievanceAverageQualityScore).toFixed(1) : "-")} | Average confidence score ${escapePrintableHtml(Number.isFinite(neighborResult?.grievanceAverageConfidenceScore) ? Number(neighborResult.grievanceAverageConfidenceScore).toFixed(1) : "-")}.</p>
       <p><strong>Normalized metrics:</strong> ${escapePrintableHtml(neighborResult?.normalizedMetricSupport?.detail || "No normalized-metric summary is available.")}</p>
-      <p><strong>Suggested value method:</strong> ${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a requested assessed value.")}</p>
+      <p><strong>Requested value basis:</strong> ${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a requested assessed value.")}</p>
       ${neighborResult?.scarWarning ? `<p><strong>SCAR warning:</strong> ${escapePrintableHtml(neighborResult.scarWarning)}</p>` : ""}
     </section>` : `
     <section>
       <h2>Grievance summary</h2>
       <p>No comps currently meet the grievance-package thresholds. A lower assessed value by itself is not enough; the app also requires a credible physical match, usable data, and positive normalized support.</p>
     </section>`;
+    const claimGuidanceLabel = claimRecommendation?.label || "No automatic ground selected";
+    const claimGuidanceReason = claimRecommendation?.reason || claimGuidance?.reason || "The current sale-backed evidence does not support assigning an automatic grievance ground.";
+    const overassessmentIndicatorLabel = overvaluationFlag?.active ? "Indicated" : "Not indicated";
+    const overassessmentIndicatorNote = overvaluationFlag?.message || "An independent equalization-rate overassessment signal was not established from the current data.";
     const appealSummaryHtml = appealSummary && appealReadiness ? `
     <section class="section">
       <h2>Appeal summary</h2>
@@ -55774,11 +56554,11 @@ self.onmessage = function(ev){
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(`${appealReadiness.score} / 100`)}</div><div>Case assessment score</div></div>
       </div>
       <p><strong>Key reason:</strong> ${escapePrintableHtml(appealSummary.keyReason || "")}</p>
-      <p><strong>Recommended RP-524 complaint reason:</strong> ${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.selectionLabel || "Review RP-524 Part Three manually before choosing a complaint reason.")}</p>
+      <p><strong>Suggested filing ground:</strong> ${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.selectionLabel || "No automatic RP-524 ground selected")}</p>
       <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.why || "")}</p>
       <p>${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.unsupportedGroundsNote || "")}</p>
-      <p><strong>Recommended claim type:</strong> ${escapePrintableHtml(claimRecommendation?.label || "Manual review")}</p>
-      <p>${escapePrintableHtml(claimRecommendation?.reason || "")}</p>
+      <p><strong>Recommended ground from current evidence:</strong> ${escapePrintableHtml(claimGuidanceLabel)}</p>
+      <p>${escapePrintableHtml(claimGuidanceReason)}</p>
       ${(appealSummary.why || []).length ? `<div class="subhead">Why this recommendation</div><ul>${appealSummary.why.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
       ${(appealReadiness.why || []).length ? `<div class="subhead">Why this score</div><ul>${appealReadiness.why.map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>` : ""}
     </section>` : "";
@@ -55791,12 +56571,12 @@ self.onmessage = function(ev){
           <ul>${(appealEvidence.evidenceFor || []).map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>
         </div>
         <div class="evidence-box caution">
-          <div class="subhead">Evidence that may weaken your grievance</div>
+          <div class="subhead">Evidence limitations and counterpoints</div>
           <ul>${(appealEvidence.evidenceAgainst || []).map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>
         </div>
       </div>
       <div class="evidence-box neutral" style="margin-top:12px;">
-        <div class="subhead">What the assessor may say</div>
+        <div class="subhead">Potential assessor counterarguments</div>
         <ul>${(appealEvidence.assessorPushback || []).map((item) => `<li>${escapePrintableHtml(item)}</li>`).join("")}</ul>
       </div>
     </section>` : "";
@@ -55822,56 +56602,83 @@ self.onmessage = function(ev){
     <section class="section">
       <h2>Valuation model outputs</h2>
       <div class="summary-grid">
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimRecommendation?.label || "-")}</div><div>Recommended claim type</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedValueMethodA != null ? $f(neighborResult.suggestedValueMethodA) : "-")}</div><div>Comp-based value estimate</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedValueMethodB != null ? $f(neighborResult?.suggestedValueMethodB) : "-")}</div><div>Equity-ratio value estimate</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Filing recommendation</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(overvaluationFlag?.active ? "Yes" : "No")}</div><div>Separate overassessment check</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(claimGuidanceLabel)}</div><div>Recommended ground</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(marketSaleModel?.estimatedSubjectFmv != null ? $f(marketSaleModel.estimatedSubjectFmv) : "-")}</div><div>Sale-backed market estimate</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValue != null ? $f(neighborResult.suggestedRequestedAssessedValue) : "-")}</div><div>Requested assessed value</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(overassessmentIndicatorLabel)}</div><div>Independent overassessment indicator</div></div>
       </div>
-      <p>${escapePrintableHtml(claimRecommendation?.reason || "Claim recommendation is not available from the current package.")}</p>
+      <p>${escapePrintableHtml(claimGuidanceReason)}</p>
       <p>${escapePrintableHtml(neighborResult?.suggestedRequestedAssessedValueNote || "Manual review is required before the app can recommend a filing value.")}</p>
-      ${overvaluationFlag?.message ? `<p>${escapePrintableHtml(overvaluationFlag.message)}</p>` : ""}
+      <p>${escapePrintableHtml(overassessmentIndicatorNote)}</p>
       ${neighborResult?.scarWarning ? `<p><strong>SCAR warning:</strong> ${escapePrintableHtml(neighborResult.scarWarning)}</p>` : ""}
     </section>`;
     const marketModelHtml = `
     <section class="section">
-      <h2>Market and equity models</h2>
+      <h2>Market evidence and ratio diagnostics</h2>
       <div class="evidence-grid">
         <div class="evidence-box neutral">
           <div class="subhead">Market value estimate</div>
           ${marketSaleModel?.available ? `
-            <p>${escapePrintableHtml(`${marketSaleModel.saleCount} recent arm's-length sales${marketSaleModel.expandedRadius ? " | radius expanded to 1.5 miles" : ""}`)}</p>
+            <p>${escapePrintableHtml(`${marketSaleModel.saleCount} usable sale-backed records | ${marketSaleModel.windowLabel} | ${marketSaleModel.tierLabel}`)}</p>
             <ul>
               <li>Neighborhood median sale $/sq ft: ${escapePrintableHtml(`$${Number(marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`)}</li>
               <li>Estimated subject FMV: ${escapePrintableHtml(marketSaleModel.estimatedSubjectFmv != null ? $f(marketSaleModel.estimatedSubjectFmv) : "-")}</li>
+              <li>Estimated value range: ${escapePrintableHtml(marketSaleModel.estimatedValueLow != null && marketSaleModel.estimatedValueHigh != null ? `${$f(marketSaleModel.estimatedValueLow)} to ${$f(marketSaleModel.estimatedValueHigh)}` : "-")}</li>
               <li>Implied gap versus assessed value: ${escapePrintableHtml(marketSaleModel.impliedDifference != null ? `${marketSaleModel.impliedDifference >= 0 ? "+" : ""}${$f(Math.abs(marketSaleModel.impliedDifference))}` : "-")}</li>
             </ul>
+            ${marketSaleModel.timeAdjustmentMethod ? `<p>${escapePrintableHtml(marketSaleModel.timeAdjustmentMethod)}</p>` : ""}
             ${marketSaleModel.note ? `<p>${escapePrintableHtml(marketSaleModel.note)}</p>` : ""}
           ` : `<p>${escapePrintableHtml(marketSaleModel?.note || "Insufficient recent sales for market estimate.")}</p>`}
         </div>
         <div class="evidence-box neutral">
-          <div class="subhead">Neighborhood equity distribution</div>
+          <div class="subhead">Verified sale-ratio study</div>
           ${neighborhoodEquityModel?.available ? `
-            <p>${escapePrintableHtml(`${neighborhoodEquityModel.sampleSize} sale-backed ratios | ${neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : "Subject neighborhood sample"}`)}</p>
+            <p>${escapePrintableHtml(`${neighborhoodEquityModel.trimmedSampleSize || neighborhoodEquityModel.sampleSize} trimmed ratios | ${neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : neighborhoodEquityModel.scope === "neighborhood" ? "Subject neighborhood sample" : "Broadened local sample"}`)}</p>
             <ul>
               <li>Neighborhood median ratio: ${escapePrintableHtml(neighborhoodEquityModel.medianRatio != null ? `${(neighborhoodEquityModel.medianRatio * 100).toFixed(1)}%` : "-")}</li>
-              <li>Your ratio: ${escapePrintableHtml(neighborhoodEquityModel.subjectRatio != null ? `${(neighborhoodEquityModel.subjectRatio * 100).toFixed(1)}%` : "-")}</li>
-              <li>Your percentile: ${escapePrintableHtml(neighborhoodEquityModel.subjectPercentile != null ? `${Number(neighborhoodEquityModel.subjectPercentile).toFixed(1)}th` : "-")}</li>
+              ${ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly ? `<li>Subject verified sale ratio: ${escapePrintableHtml(ratioStudyDirectComparison.subjectVerifiedSaleRatio != null ? `${(Number(ratioStudyDirectComparison.subjectVerifiedSaleRatio) * 100).toFixed(1)}%` : "-")}</li>` : ""}
               <li>COD (consistency measure): ${escapePrintableHtml(neighborhoodEquityModel.cod != null ? Number(neighborhoodEquityModel.cod).toFixed(1) : "-")}</li>
+              <li>PRD: ${escapePrintableHtml(neighborhoodEquityModel.prd != null ? Number(neighborhoodEquityModel.prd).toFixed(3) : "Suppressed below 20 trimmed sales")}</li>
+              <li>PRB: ${escapePrintableHtml(neighborhoodEquityModel.prb != null ? Number(neighborhoodEquityModel.prb).toFixed(2) : "Suppressed below 20 trimmed sales")}</li>
+              <li>Reliability: ${escapePrintableHtml(neighborhoodEquityModel.reliabilityLabel === "low" ? "Low" : "Standard")}</li>
               <li>IAAO standard: ${escapePrintableHtml(`<= ${Number(neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`)}</li>
             </ul>
-            ${buildNeighborhoodPercentileExplanation(neighborhoodEquityModel) ? `<p>${escapePrintableHtml(buildNeighborhoodPercentileExplanation(neighborhoodEquityModel))}</p>` : ""}
-            ${buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel) ? `<p>${escapePrintableHtml(buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel))}</p>` : ""}
-            ${buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel) ? `<p><strong>${escapePrintableHtml(buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel))}</strong></p>` : ""}
-            ${neighborhoodBenchmark?.interpretation ? `<p>${escapePrintableHtml(`Separate neighborhood benchmark: ${neighborhoodBenchmark.interpretation}`)}</p>` : ""}
+            <p>${escapePrintableHtml(ratioStudyDirectComparison?.note || neighborhoodEquityModel.note || "")}</p>
+            ${benchmarkContext.showInPacket ? `<p>${escapePrintableHtml(benchmarkContext.sentence)}</p>` : ""}
             ${neighborhoodEquityModel.codWarning ? `<p>${escapePrintableHtml(neighborhoodEquityModel.codWarning)}</p>` : ""}
-          ` : `<p>${escapePrintableHtml(neighborhoodEquityModel?.note || "Insufficient sales data for neighborhood equity analysis.")}</p>`}
+          ` : `<p>${escapePrintableHtml(neighborhoodEquityModel?.note || "Insufficient verified-sale data for the local ratio study.")}</p>`}
         </div>
       </div>
       ${subjectSaleModel?.note ? `<p>${escapePrintableHtml(subjectSaleModel.note)}</p>` : ""}
       ${subjectSaleModel?.status === "supports" ? `<p>${escapePrintableHtml("Your recent arm's-length subject sale sits materially below the current FMV estimate, which supports the grievance.")}</p>` : ""}
       ${subjectSaleModel?.status === "weakens" ? `<p>${escapePrintableHtml("Your recent arm's-length subject sale sits at or above the current FMV estimate, which may support the assessor's position.")}</p>` : ""}
     </section>`;
+    const salesAppendixHtml = `
+    <section class="section">
+      <h2>Sales appendix</h2>
+      <div class="subhead">Included market-evidence sales</div>
+      ${renderSaleAppendixRows(marketIncludedSales, "included")}
+      <div class="subhead">Excluded market-evidence sales summary</div>
+      ${renderExclusionSummary(marketExcludedSales, marketExclusionSummary, "market-evidence")}
+      <div class="subhead">Key excluded market-evidence sales</div>
+      ${renderSaleAppendixRows(keyMarketExcludedSales, "excluded")}
+      <div class="subhead">Included ratio-study sales</div>
+      ${renderSaleAppendixRows(ratioIncludedSales, "included")}
+      <div class="subhead">Excluded ratio-study sales summary</div>
+      ${renderExclusionSummary(ratioExcludedSales, ratioExclusionSummary, "ratio-study")}
+      <div class="subhead">Key excluded ratio-study sales</div>
+      ${renderSaleAppendixRows(keyRatioExcludedSales, "excluded")}
+    </section>`;
+    const supplementalMarketEvidenceHtml = supplementalMarketEvidenceComps.length ? `
+    <section class="section">
+      <h2>Supplemental market-evidence properties</h2>
+      <p>Because unequal-assessment evidence is limited here, this packet gives greater weight to comparable properties with verified arm's-length sale data that help support the subject's market-value position. These supplemental market-evidence properties are identified separately from the primary grievance comp set.</p>
+      <table>
+        <thead><tr><th>Address</th><th>Quality</th><th>Confidence</th><th>Distance</th><th>Status</th></tr></thead>
+        <tbody>${supplementalMarketEvidenceComps.map((parcel) => `<tr><td>${escapePrintableHtml(parcel?.address || parcel?.parcelId || "-")}</td><td>${escapePrintableHtml(Number.isFinite(Number(parcel?._comparableQualityScore)) ? Number(parcel._comparableQualityScore).toFixed(0) : "-")}</td><td>${escapePrintableHtml(Number.isFinite(Number(parcel?._dataConfidenceScore)) ? Number(parcel._dataConfidenceScore).toFixed(0) : "-")}</td><td>${escapePrintableHtml(Number.isFinite(Number(parcel?._distanceMiles)) ? formatComparableMiles(parcel._distanceMiles) : "-")}</td><td>${escapePrintableHtml(parcel?._packetSupplementalLabel || "Retained for market-value evidence")}</td></tr>`).join("")}</tbody>
+      </table>
+      ${supplementalCompSections}
+    </section>` : "";
     return `<!doctype html>
 <html>
 <head>
@@ -55905,6 +56712,7 @@ self.onmessage = function(ev){
   .comp-card.weak_support{border-color:#fcd34d;background:#fffbeb}
   .comp-card.weakens_case{border-color:#fecaca;background:#fef2f2}
   .comp-card.neutral{border-color:#cbd5e1;background:#f8fafc}
+  .comp-card.supplemental{border-color:#93c5fd;background:#eff6ff}
   .comp-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
   .comp-title{font-size:16px;font-weight:700}
   .comp-meta{font-size:12px;color:#475569;margin-top:3px}
@@ -55913,6 +56721,7 @@ self.onmessage = function(ev){
   .status.weak_support{color:#b45309}
   .status.weakens_case{color:#b91c1c}
   .status.neutral{color:#475569}
+  .status.supplemental{color:#1d4ed8}
   .status-copy{font-size:12px;margin-top:10px}
   .why-title{font-weight:700;font-size:12px;margin-top:10px}
   .print-map-shell{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(240px,.9fr);gap:14px;align-items:stretch}
@@ -55938,21 +56747,27 @@ self.onmessage = function(ev){
 <body>
   <h1>${escapePrintableHtml(reportTitle)}</h1>
   <div class="meta">Generated ${escapePrintableHtml(generatedAt)} | Subject: ${escapePrintableHtml(subject?.address || "-")} | Parcel ID: ${escapePrintableHtml(subject?.parcelId || "-")}</div>
-  <section class="hero">
-    <h2>Shareable comparable snapshot</h2>
-    <p>${escapePrintableHtml(shareLink || "No share link available")}</p>
-    <p class="links"><a href="${escapePrintableHtml(grievanceResourceUrls.rp524FormUrl)}">RP-524 form</a> | <a href="${escapePrintableHtml(grievanceResourceUrls.grievanceBookletUrl)}">Grievance booklet</a> | <a href="${escapePrintableHtml(grievanceResourceUrls.exemptionFaqUrl)}">${escapePrintableHtml(grievanceResourceUrls.exemptionFaqLabel)}</a></p>
-    <p><strong>Filing deadline:</strong> ${escapePrintableHtml(grievanceHelper?.grievanceDayDeadline || "Confirm the filing deadline with the City of Albany Assessor's Office.")}</p>
-    <p>Use the browser print dialog destination to print on paper or choose Save as PDF.</p>
+  <section class="section">
+    <h2>Assessor exhibit</h2>
+    <p>This exhibit summarizes the evidence, method, and limitations used to prepare the grievance recommendation for the subject parcel.</p>
   </section>
   ${appealSummaryHtml}
   ${appealEvidenceHtml}
-  ${benchmarkHtml}
   ${valuationModelHtml}
   ${marketModelHtml}
   ${summaryHtml}
-  ${comparableMapHtml}
+  ${supplementalMarketEvidenceHtml}
   ${selectionMethodHtml}
+  ${comparableMapHtml}
+  ${salesAppendixHtml}
+  <section class="section">
+    <h2>${includeContextComps ? "Comparable homes shown in this report" : "Supporting comparable homes in this grievance package"}</h2>
+    ${compSections || "<p>No comparable homes are available for this print selection.</p>"}
+  </section>
+  <section class="section">
+    <h2>Homeowner appendix</h2>
+    <p>This appendix translates the same result into filing guidance and next steps for the homeowner.</p>
+  </section>
   <section class="section">
     <h2>Auto-generated grievance narrative</h2>
     <p>${escapePrintableHtml(grievanceHelper?.narrative || "No grievance narrative is available because no comps currently meet the grievance-package thresholds.")}</p>
@@ -55974,10 +56789,6 @@ self.onmessage = function(ev){
   <section class="section">
     <h2>What to do next</h2>
     <ul>${nextStepRows || "<li>Review your comparable homes and complete RP-524 before Grievance Day.</li>"}</ul>
-  </section>
-  <section class="section">
-    <h2>${includeContextComps ? "Comparable homes shown in this report" : "Supporting comparable homes in this grievance package"}</h2>
-    ${compSections || "<p>No comparable homes are available for this print selection.</p>"}
   </section>
 </body>
 </html>`;
@@ -57273,6 +58084,25 @@ self.onmessage = function(ev){
       ...effectiveSelectedGrievancePackage,
       grievancePackageCustom: customGrievanceSelectionActive
     } : displayNeighborResult, [customGrievanceSelectionActive, displayNeighborResult, effectiveSelectedGrievancePackage]);
+    const comparableExplainabilityEntries = (0, import_react45.useMemo)(() => {
+      if (!effectiveNeighborResult?.p) return [];
+      const subject = effectiveNeighborResult.p;
+      const subjectProfile = effectiveNeighborResult.subjectProfile || buildComparableProfile(subject);
+      return (effectiveNeighborResult.neighbors || []).map((parcel, idx) => buildComparableExplainabilityEntry({
+        subject,
+        subjectProfile,
+        parcel,
+        visibleRank: idx + 1,
+        currentIncluded: isParcelIncludedInGrievance(parcel)
+      })).filter(Boolean);
+    }, [effectiveNeighborResult, isParcelIncludedInGrievance]);
+    const comparableExplainabilityEntryById = (0, import_react45.useMemo)(() => {
+      const map3 = /* @__PURE__ */ new Map();
+      for (const entry of comparableExplainabilityEntries) {
+        if (entry?.parcelId) map3.set(entry.parcelId, entry);
+      }
+      return map3;
+    }, [comparableExplainabilityEntries]);
     const grievancePackageSummaryLabel = customGrievanceSelectionActive ? "Selected grievance comp" : "Supporting comp";
     const assistantStorageKeyBase = (0, import_react45.useMemo)(() => {
       if (!displayNeighborResult?.p) return "";
@@ -57463,6 +58293,29 @@ self.onmessage = function(ev){
       setTimeout(() => URL.revokeObjectURL(href), 1e3);
       setPrintMessage(includeContextComps ? "Downloaded a packet with the current grievance package plus context comps." : "Downloaded a packet for the current grievance selection.");
     }, [appealEvidence, appealReadiness, appealSummary, effectiveNeighborResult, meta, neighborhoodBenchmark, salesByParcelId, shareLink]);
+    const downloadComparableExplainabilityReport = (0, import_react45.useCallback)(() => {
+      if (!effectiveNeighborResult?.p || typeof window === "undefined") return;
+      const subject = effectiveNeighborResult.p;
+      const subjectProfile = effectiveNeighborResult.subjectProfile || buildComparableProfile(subject);
+      const reportHtml = buildComparableExplainabilityReportHtml({
+        subject,
+        subjectProfile,
+        neighborResult: effectiveNeighborResult,
+        explainabilityEntries: comparableExplainabilityEntries
+      });
+      const safeLabel = (subject.address || subject.parcelId || "comparable-explainability").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const dateStamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8" });
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = `${safeLabel || "comparable-explainability"}-${dateStamp}-admin-report.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(href), 1e3);
+      setPrintMessage("Downloaded the internal comparable explainability report.");
+    }, [comparableExplainabilityEntries, effectiveNeighborResult]);
     (0, import_react45.useEffect)(() => {
       const requestedSnapshot = requestedSnapshotRef.current;
       if (requestedSnapshot?.tool === "neighbor") setView("neighbor");
@@ -57753,7 +58606,7 @@ self.onmessage = function(ev){
       const grievanceHelper = buildGrievanceFilingHelper(subject, subjectProfile, effectiveNeighborResult, meta, salesByParcelId, neighborhoodBenchmark);
       const subjectSaleBadge = buildSaleHeaderBadge(subject, salesByParcelId);
       const recommendationTheme = appealSummary ? appealRecommendationTheme(appealSummary.recommendedAction) : null;
-      const renderPacketActions = ({ title, description, note = "", marginBottom = 12 } = {}) => /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.16)", borderRadius: 10, padding: "12px 14px", marginBottom } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 4, maxWidth: 760, lineHeight: 1.6 } }, description), note ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--blue3)", marginTop: 6, fontWeight: 700 } }, note) : null), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" } }, copiedShareLink && /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700, marginTop: 8 } }, "Link copied"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: copyShareLink, disabled: !shareLink, style: { background: shareLink ? "var(--blue)" : "rgba(148,163,184,.18)", color: shareLink ? "white" : "var(--gray3)", border: "none", borderRadius: 8, padding: "8px 14px", cursor: shareLink ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Copy share link"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => downloadGrievancePacket(false), disabled: !neighborResult?.p, style: { background: "var(--purple)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Download My Grievance Packet"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Current grievance package only - downloadable HTML packet")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => downloadGrievancePacket(true), disabled: !neighborResult?.p, style: { background: "rgba(139,92,246,.12)", color: "var(--purple)", border: "1px solid rgba(139,92,246,.24)", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Download with context comps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Optional packet with added context comps")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { title: "Current grievance package only - for filing", onClick: () => openPrintableReport(false), disabled: !neighborResult?.p, style: { background: "var(--green2)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Print grievance package"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Current grievance package only - for filing")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { title: "Current grievance package plus context comps - for research", onClick: () => openPrintableReport(true), disabled: !neighborResult?.p, style: { background: "rgba(15,23,42,.06)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Print with context comps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Current grievance package plus context comps")))));
+      const renderPacketActions = ({ title, description, note = "", marginBottom = 12 } = {}) => /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.16)", borderRadius: 10, padding: "12px 14px", marginBottom } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, title), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray3)", marginTop: 4, maxWidth: 760, lineHeight: 1.6 } }, description), note ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--blue3)", marginTop: 6, fontWeight: 700 } }, note) : null), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" } }, copiedShareLink && /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 11, color: "var(--green2)", fontWeight: 700, marginTop: 8 } }, "Link copied"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: copyShareLink, disabled: !shareLink, style: { background: shareLink ? "var(--blue)" : "rgba(148,163,184,.18)", color: shareLink ? "white" : "var(--gray3)", border: "none", borderRadius: 8, padding: "8px 14px", cursor: shareLink ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Copy share link"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: downloadComparableExplainabilityReport, disabled: !neighborResult?.p, style: { background: "rgba(15,23,42,.06)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Download Admin Explainability Report"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Internal report for why each visible comp was treated the way it was")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => downloadGrievancePacket(false), disabled: !neighborResult?.p, style: { background: "var(--purple)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Download My Grievance Packet"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Current grievance package only - downloadable HTML packet")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => downloadGrievancePacket(true), disabled: !neighborResult?.p, style: { background: "rgba(139,92,246,.12)", color: "var(--purple)", border: "1px solid rgba(139,92,246,.24)", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Download with context comps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Optional packet with added context comps")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { title: "Current grievance package only - for filing", onClick: () => openPrintableReport(false), disabled: !neighborResult?.p, style: { background: "var(--green2)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Print grievance package"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Current grievance package only - for filing")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("button", { title: "Current grievance package plus context comps - for research", onClick: () => openPrintableReport(true), disabled: !neighborResult?.p, style: { background: "rgba(15,23,42,.06)", color: "var(--gray)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 14px", cursor: neighborResult?.p ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 12 } }, "Print with context comps"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textAlign: "center" } }, "Current grievance package plus context comps")))));
       const renderComparableCard = (parcel, idx, options = {}) => {
         const compProfile = parcel._compProfile || buildComparableProfile(parcel);
         const delta = parcel._compDelta || {};
@@ -57769,6 +58622,7 @@ self.onmessage = function(ev){
         const grievanceExplanation = parcel?._grievanceRelevance?.explanation || buildGrievanceComparableExplanation(subject, parcel, relevanceKind);
         const packageDecision = parcel?._packageDecision || parcel?._selectionDiagnostics?.packageDecision || null;
         const selectionIndicator = parcel?._selectionIndicator || parcel?._selectionDiagnostics?.selectionIndicator || null;
+        const explainabilityEntry = comparableExplainabilityEntryById.get(parcel?.parcelId) || null;
         const distanceLabel = Number.isFinite(parcel?._distanceMiles) ? formatComparableMiles(parcel._distanceMiles) : null;
         const cardAccentColor = grievanceRelevanceAccentColor(relevanceKind);
         const cardBorderColor = isIncludedInGrievance ? "rgba(22,163,74,.24)" : "var(--border)";
@@ -57834,35 +58688,12 @@ self.onmessage = function(ev){
           const tone = explanationStatusTone(row.status);
           return /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-support-row-${rowIdx}`, style: { background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 8, padding: "8px 9px", display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)" } }, row.label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: tone.color } }, row.valueText)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)", lineHeight: 1.5 } }, row.explanation), row.whyItMatters ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Why it matters:"), " ", row.whyItMatters) : null);
         }))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10, flex: "1 1 320px", minWidth: 260 } }, /* @__PURE__ */ import_react45.default.createElement(StreetViewPreview, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, streetViewLatLng: streetViewLatLngForParcel(parcel) }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, color: "var(--amber)", fontWeight: 700 } }, $f(parcel.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700 } }, $f(parcel.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", textAlign: "right" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 13, fontWeight: 700, color: FC[eqFlagFast(parcel)] } }, eqRFast(parcel), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Comp equity")))));
-        return /* @__PURE__ */ import_react45.default.createElement("div", { key: cardKey, style: { ...containerStyle, position: "relative", overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, header), isExpanded && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, isAbsenteeFast(parcel) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Value comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "FMV", youValue: $f(subject.fullMarketValue), compValue: $f(parcel.fullMarketValue), deltaValue: formatSignedComparableMoney(delta.fmv), deltaTone: comparableDeltaTone(delta.fmv), deltaInfo: buildComparableDeltaInfo("fmv", delta.fmv) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Assessed", youValue: $f(subject.assessedValue), compValue: $f(parcel.assessedValue), deltaValue: formatSignedComparableMoney(delta.assessed), deltaTone: comparableDeltaTone(delta.assessed, true), deltaInfo: buildComparableDeltaInfo("assessed", delta.assessed) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Equity %", youValue: subjectProfile.equity != null ? subjectProfile.equity + "%" : "-", compValue: compProfile.equity != null ? compProfile.equity + "%" : "-", deltaValue: formatSignedComparableCount(delta.equity, "%"), deltaTone: comparableDeltaTone(delta.equity, true), deltaInfo: buildComparableDeltaInfo("equity", delta.equity) }))), (adjustedAssessedValue != null || riskFlags.length > 0) && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Adjustment and risk review"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(
-          CompareMetricCard,
-          {
-            label: "Adjusted AV",
-            youValue: $f(subject.assessedValue),
-            compValue: adjustedAssessedValue != null ? $f(adjustedAssessedValue) : "-",
-            deltaValue: adjustedAssessedDelta != null ? formatSignedComparableMoney(adjustedAssessedDelta) : "-",
-            deltaTone: comparableDeltaTone(adjustedAssessedDelta, true),
-            deltaInfo: adjustedAssessedValue != null ? parcel?._adjustmentNarrative || "Adjusted for size and bath differences using the neighborhood price-per-square-foot model and equalization rate." : "Adjusted assessed value could not be calculated from the available data."
-          }
-        ), /* @__PURE__ */ import_react45.default.createElement(
-          CompareMetricCard,
-          {
-            label: "Adjusted support",
-            youValue: "-",
-            compValue: adjustedSupportLabel || "-",
-            deltaValue: adjustedSupportLabel || "-",
-            deltaTone: adjustedSupportColor,
-            deltaInfo: adjustedSupportLabel === "Yes" ? "After adjustments, this comp still sits below your assessment." : adjustedSupportLabel === "Marginal" ? "After adjustments, this comp is close enough to your assessment that it only provides marginal support." : adjustedSupportLabel === "No" ? "After adjustments, this comp no longer sits below your assessment." : "Adjusted support could not be determined from the available data."
-          }
-        )), riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(239,68,68,.05)", border: "1px solid rgba(239,68,68,.16)", borderRadius: 8, padding: "10px 12px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--red2)", letterSpacing: 0.35, textTransform: "uppercase" } }, `Assessor challenge flags (${riskFlags.length})`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, riskFlags.map((flag, flagIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-risk-${flagIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", flag))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Physical comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Living area", youValue: subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-", compValue: compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-", deltaValue: delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-", deltaTone: comparableDeltaTone(delta.livingArea), deltaInfo: buildComparableDeltaInfo("livingArea", delta.livingArea) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Year built", youValue: subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-", compValue: compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-", deltaValue: delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-", deltaTone: comparableDeltaTone(delta.yearBuilt), deltaInfo: buildComparableDeltaInfo("yearBuilt", delta.yearBuilt) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Bedrooms", youValue: subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-", compValue: compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-", deltaValue: delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-", deltaTone: comparableDeltaTone(delta.bedrooms), deltaInfo: buildComparableDeltaInfo("bedrooms", delta.bedrooms) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Baths", youValue: subjectProfile.bathText || "-", compValue: compProfile.bathText || "-", deltaValue: delta.baths != null ? formatSignedComparableCount(delta.baths) : "-", deltaTone: comparableDeltaTone(delta.baths), deltaInfo: buildComparableDeltaInfo("baths", delta.baths) }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Profile match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Neighborhood", youValue: subjectProfile.neighborhood || "-", compValue: compProfile.neighborhood || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Class", youValue: subjectProfile.classLabel || "-", compValue: compProfile.classLabel || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Style", youValue: subjectProfile.style || "-", compValue: compProfile.style || "-" }))), renderSaleHistorySection(parcel, compProfile.livingArea, { title: "Sale history" }), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.14)", borderRadius: 8, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--blue3)", letterSpacing: 0.4, textTransform: "uppercase" } }, `Why this home was included${reasons.length ? ` (${reasons.length} reasons)` : ""}`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, reasons.length ? reasons.map((reason, reasonIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId + "-reason-" + reasonIdx, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55, overflowWrap: "anywhere" } }, "- ", reason)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "No additional selection notes were recorded for this comparable."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, usingFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Matched using: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, usingFields.join(", ")), unusedFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | Not used: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, unusedFields.join(", "))) : null, ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "This match relied on residential class and nearby location because detailed home characteristics were not available on both parcels."))))), !isExpanded && isCollapsible && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", "aria-hidden": "true", style: { position: "absolute", left: 6, right: 0, bottom: 0, height: 64, background: `linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`, pointerEvents: "none", zIndex: 1 } }), detailsToggleControl);
+        return /* @__PURE__ */ import_react45.default.createElement("div", { key: cardKey, style: { ...containerStyle, position: "relative", overflow: "hidden" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, header), isExpanded && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, isAbsenteeFast(parcel) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Value comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "FMV", youValue: $f(subject.fullMarketValue), compValue: $f(parcel.fullMarketValue), deltaValue: formatSignedComparableMoney(delta.fmv), deltaTone: comparableDeltaTone(delta.fmv), deltaInfo: buildComparableDeltaInfo("fmv", delta.fmv) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Assessed", youValue: $f(subject.assessedValue), compValue: $f(parcel.assessedValue), deltaValue: formatSignedComparableMoney(delta.assessed), deltaTone: comparableDeltaTone(delta.assessed, true), deltaInfo: buildComparableDeltaInfo("assessed", delta.assessed) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Equity %", youValue: subjectProfile.equity != null ? subjectProfile.equity + "%" : "-", compValue: compProfile.equity != null ? compProfile.equity + "%" : "-", deltaValue: formatSignedComparableCount(delta.equity, "%"), deltaTone: comparableDeltaTone(delta.equity, true), deltaInfo: buildComparableDeltaInfo("equity", delta.equity) }))), riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(239,68,68,.05)", border: "1px solid rgba(239,68,68,.16)", borderRadius: 8, padding: "10px 12px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--red2)", letterSpacing: 0.35, textTransform: "uppercase" } }, `Assessor challenge flags (${riskFlags.length})`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, riskFlags.map((flag, flagIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-risk-${flagIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", flag)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Physical comparison"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Living area", youValue: subjectProfile.livingArea != null ? nf(subjectProfile.livingArea) + " sq ft" : "-", compValue: compProfile.livingArea != null ? nf(compProfile.livingArea) + " sq ft" : "-", deltaValue: delta.livingArea != null ? formatSignedComparableCount(delta.livingArea, " sq ft") : "-", deltaTone: comparableDeltaTone(delta.livingArea), deltaInfo: buildComparableDeltaInfo("livingArea", delta.livingArea) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Year built", youValue: subjectProfile.yearBuilt != null ? String(subjectProfile.yearBuilt) : "-", compValue: compProfile.yearBuilt != null ? String(compProfile.yearBuilt) : "-", deltaValue: delta.yearBuilt != null ? formatSignedComparableCount(delta.yearBuilt, " yrs") : "-", deltaTone: comparableDeltaTone(delta.yearBuilt), deltaInfo: buildComparableDeltaInfo("yearBuilt", delta.yearBuilt) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Bedrooms", youValue: subjectProfile.bedrooms != null ? String(subjectProfile.bedrooms) : "-", compValue: compProfile.bedrooms != null ? String(compProfile.bedrooms) : "-", deltaValue: delta.bedrooms != null ? formatSignedComparableCount(delta.bedrooms) : "-", deltaTone: comparableDeltaTone(delta.bedrooms), deltaInfo: buildComparableDeltaInfo("bedrooms", delta.bedrooms) }), /* @__PURE__ */ import_react45.default.createElement(CompareMetricCard, { label: "Baths", youValue: subjectProfile.bathText || "-", compValue: compProfile.bathText || "-", deltaValue: delta.baths != null ? formatSignedComparableCount(delta.baths) : "-", deltaTone: comparableDeltaTone(delta.baths), deltaInfo: buildComparableDeltaInfo("baths", delta.baths) }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Profile match"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Neighborhood", youValue: subjectProfile.neighborhood || "-", compValue: compProfile.neighborhood || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Class", youValue: subjectProfile.classLabel || "-", compValue: compProfile.classLabel || "-" }), /* @__PURE__ */ import_react45.default.createElement(CompareProfileRow, { label: "Style", youValue: subjectProfile.style || "-", compValue: compProfile.style || "-" }))), renderSaleHistorySection(parcel, compProfile.livingArea, { title: "Sale history" }), explainabilityEntry && /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.4, textTransform: "uppercase" } }, "Engine decision trace"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10, marginTop: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)" } }, "Visible-list rank"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray)" } }, `#${explainabilityEntry.visibleRank} of ${(effectiveNeighborResult?.neighbors || []).length}`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, "This is where the comp landed in the visible list that the app shows first.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)" } }, "Default package result"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: explainabilityEntry.defaultIncluded ? "var(--green2)" : "var(--gray)" } }, explainabilityEntry.defaultStatusLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, explainabilityEntry.packageDecisionMessage)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)" } }, "Current live status"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: explainabilityEntry.currentIncluded ? "var(--green2)" : "var(--gray)" } }, explainabilityEntry.currentStatusLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, explainabilityEntry.overrideNote || "Matches the default engine result."))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Why it made the visible list"), explainabilityEntry.visibleReasons.map((reason, reasonIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-trace-visible-${reasonIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", reason))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Gate checks for default package"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 } }, explainabilityEntry.gateChecks.map((check) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-${check.label}`, style: { background: check.passed ? "rgba(22,163,74,.08)" : "rgba(239,68,68,.06)", border: `1px solid ${check.passed ? "rgba(22,163,74,.18)" : "rgba(239,68,68,.14)"}`, borderRadius: 8, padding: "8px 10px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: check.passed ? "var(--green2)" : "var(--red2)" } }, check.label), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.5 } }, check.detail))))), !!explainabilityEntry.normalizedLines.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Normalized value checks"), explainabilityEntry.normalizedLines.map((line, lineIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-trace-normalized-${lineIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", line))), !!explainabilityEntry.supportReasons.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Support reasons recorded by the engine"), explainabilityEntry.supportReasons.map((line, lineIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-trace-support-${lineIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", line))), !!explainabilityEntry.confidenceNotes.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Confidence notes"), explainabilityEntry.confidenceNotes.map((line, lineIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-trace-confidence-${lineIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", line))), !!explainabilityEntry.concerns.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "var(--gray2)", letterSpacing: 0.35, textTransform: "uppercase" } }, "Why this comp was limited or challenged"), explainabilityEntry.concerns.map((line, lineIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${parcel.parcelId}-trace-concern-${lineIdx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", line))))), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.14)", borderRadius: 8, padding: "10px 12px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 10, fontWeight: 700, color: "var(--blue3)", letterSpacing: 0.4, textTransform: "uppercase" } }, `Why this home was included${reasons.length ? ` (${reasons.length} reasons)` : ""}`), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } }, reasons.length ? reasons.map((reason, reasonIdx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId + "-reason-" + reasonIdx, style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55, overflowWrap: "anywhere" } }, "- ", reason)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, "No additional selection notes were recorded for this comparable."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, usingFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Matched using: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, usingFields.join(", ")), unusedFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " | Not used: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, unusedFields.join(", "))) : null, ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "This match relied on residential class and nearby location because detailed home characteristics were not available on both parcels."))))), !isExpanded && isCollapsible && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", "aria-hidden": "true", style: { position: "absolute", left: 6, right: 0, bottom: 0, height: 64, background: `linear-gradient(180deg, rgba(255,255,255,0) 0%, ${collapseFadeColor} 85%)`, pointerEvents: "none", zIndex: 1 } }), detailsToggleControl);
       };
-      return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { ref: compareResultRef, className: "fi", style: { display: "grid", gap: 14 } }, appealSummary && appealReadiness && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-4-appeal-summary", className: "workflow-step-anchor", "data-workflow-step-id": "step-4-appeal-summary" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 4 - See your appeal summary", title: "Should you file a grievance?", subtitle: "This summary uses the current comparable package, including any comp overrides you have selected." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: recommendationTheme?.background || "rgba(148,163,184,.12)", border: `1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`, borderRadius: 12, padding: "14px 16px", display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Recommendation"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: recommendationTheme?.color || "var(--gray2)" } }, appealSummary.recommendation)), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Case strength"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.15 } }, appealReadiness.caseStrengthBase), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.35 } }, appealReadiness.complaintReasonGuidance.displayLabel))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Potential assessed value reduction"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Supporting comparable homes found"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.supportingComparableHomes))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Claim type"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray2)" } }, effectiveNeighborResult?.claimRecommendation?.label || "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "methodA", tone: "var(--gray2)" }, "Comp-based value estimate")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, Number.isFinite(effectiveNeighborResult?.suggestedValueMethodA) ? $f(effectiveNeighborResult.suggestedValueMethodA) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "methodB", tone: "var(--gray2)" }, "Equity-ratio value estimate")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, Number.isFinite(effectiveNeighborResult?.suggestedValueMethodB) ? $f(effectiveNeighborResult.suggestedValueMethodB) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "independentOvervaluation", tone: "var(--gray2)" }, "Separate overassessment check")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult?.overvaluationFlag?.active ? "Yes" : "No"))), effectiveNeighborResult?.scarWarning && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.24)", borderRadius: 10, padding: "10px 12px", fontSize: 11, color: "var(--amber2)", lineHeight: 1.6 } }, effectiveNeighborResult.scarWarning), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.7 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Key reason:"), " ", appealSummary.keyReason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(255,255,255,.24)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Recommended RP-524 complaint reason"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: "var(--gray2)" } }, appealReadiness.complaintReasonGuidance.selectionLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, appealReadiness.complaintReasonGuidance.why), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "minmax(0,1.4fr) minmax(260px,.9fr)", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Case assessment score"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel) } }, appealReadiness.score, " / 100")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "75-100 usually supports filing, 58-74 suggests filing with caution, 40-57 needs manual review, and 0-39 usually does not support filing. Downgrade rules can still lower the final recommendation. This is a decision aid, not a guarantee."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Why this score?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, appealReadiness.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `score-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Why this recommendation?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 10 } }, appealSummary.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `recommendation-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item))))))))), appealEvidence && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-5-review-evidence", className: "workflow-step-anchor", "data-workflow-step-id": "step-5-review-evidence" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 5 - Review evidence", title: "Evidence for and against your grievance", subtitle: "This section shows both the facts that help your argument and the facts the assessor may use in response." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 20, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(22,163,74,.08)", border: "1px solid rgba(22,163,74,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Evidence that supports your grievance"), appealEvidence.evidenceFor.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `for-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(220,38,38,.06)", border: "1px solid rgba(220,38,38,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--red2)" } }, "Evidence that may weaken your grievance"), appealEvidence.evidenceAgainst.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `against-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Market value estimate"), effectiveNeighborResult?.marketSaleModel?.available ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, effectiveNeighborResult.marketSaleModel.saleCount, " recent arm's-length sales", effectiveNeighborResult.marketSaleModel.expandedRadius ? " | radius expanded to 1.5 miles" : ""), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Neighborhood median sale $/sq ft"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, `$${Number(effectiveNeighborResult.marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Estimated subject FMV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv != null ? $f(effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Current assessed value"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Implied gap"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (effectiveNeighborResult.marketSaleModel.impliedDifference || 0) > 0 ? "var(--red2)" : "var(--green2)" } }, effectiveNeighborResult.marketSaleModel.impliedDifference != null ? `${effectiveNeighborResult.marketSaleModel.impliedDifference >= 0 ? "+" : ""}${$f(Math.abs(effectiveNeighborResult.marketSaleModel.impliedDifference))}` : "-"))), effectiveNeighborResult.marketSaleModel.note && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, effectiveNeighborResult.marketSaleModel.note)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.marketSaleModel?.note || "Insufficient recent sales for market estimate.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Neighborhood equity distribution"), effectiveNeighborResult?.neighborhoodEquityModel?.available ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, (() => {
+      return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { ref: compareResultRef, className: "fi", style: { display: "grid", gap: 14 } }, appealSummary && appealReadiness && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-4-appeal-summary", className: "workflow-step-anchor", "data-workflow-step-id": "step-4-appeal-summary" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 4 - See your appeal summary", title: "Should you file a grievance?", subtitle: "This summary uses the current comparable package, including any comp overrides you have selected." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: recommendationTheme?.background || "rgba(148,163,184,.12)", border: `1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`, borderRadius: 12, padding: "14px 16px", display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Recommendation"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: recommendationTheme?.color || "var(--gray2)" } }, appealSummary.recommendation)), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Case strength"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.15 } }, appealReadiness.caseStrengthBase), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel), lineHeight: 1.35 } }, appealReadiness.complaintReasonGuidance.displayLabel))), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Potential assessed value reduction"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Supporting comparable homes found"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "var(--gray)" } }, appealSummary.supportingComparableHomes))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Evidence status"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray2)" } }, effectiveNeighborResult?.evidenceSufficiency?.label || "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Sale-backed market estimate"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, Number.isFinite(effectiveNeighborResult?.marketEvidenceModel?.estimatedSubjectFmv) ? $f(effectiveNeighborResult.marketEvidenceModel.estimatedSubjectFmv) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, "Requested assessed value"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "var(--gray)" } }, Number.isFinite(effectiveNeighborResult?.suggestedRequestedAssessedValue) ? $f(effectiveNeighborResult.suggestedRequestedAssessedValue) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "independentOvervaluation", tone: "var(--gray2)" }, "Separate overassessment check")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult?.overvaluationFlag?.active ? "Yes" : "No"))), effectiveNeighborResult?.scarWarning && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.24)", borderRadius: 10, padding: "10px 12px", fontSize: 11, color: "var(--amber2)", lineHeight: 1.6 } }, effectiveNeighborResult.scarWarning), effectiveNeighborResult?.evidenceSufficiency?.reason && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(148,163,184,.22)", borderRadius: 10, padding: "10px 12px", fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Sale-backed evidence:"), " ", effectiveNeighborResult.evidenceSufficiency.reason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, color: "var(--gray)", lineHeight: 1.7 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Key reason:"), " ", appealSummary.keyReason), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.72)", border: "1px solid rgba(255,255,255,.24)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Recommended RP-524 complaint reason"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: "var(--gray2)" } }, appealReadiness.complaintReasonGuidance.selectionLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, appealReadiness.complaintReasonGuidance.why), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", lineHeight: 1.55 } }, appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: isWorkflowNavMobile ? "1fr" : "minmax(0,1.4fr) minmax(260px,.9fr)", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Case assessment score"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 18, fontWeight: 800, color: appealCaseStrengthColor(appealReadiness.caseStrengthLabel) } }, appealReadiness.score, " / 100")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "75-100 usually supports filing, 58-74 suggests filing with caution, 40-57 needs manual review, and 0-39 usually does not support filing. Downgrade rules can still lower the final recommendation. This is a decision aid, not a guarantee."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)" } }, "Why this score?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, appealReadiness.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `score-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("details", { style: { background: "rgba(255,255,255,.68)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("summary", { style: { cursor: "pointer", fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Why this recommendation?"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6, marginTop: 10 } }, appealSummary.why.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `recommendation-why-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.55 } }, "- ", item))))))))), appealEvidence && /* @__PURE__ */ import_react45.default.createElement("div", { id: "step-5-review-evidence", className: "workflow-step-anchor", "data-workflow-step-id": "step-5-review-evidence" }, /* @__PURE__ */ import_react45.default.createElement(WorkflowStepCard, { step: "Step 5 - Review evidence", title: "Evidence for and against your grievance", subtitle: "This section shows both the facts that help your argument and the facts the assessor may use in response." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 20, marginBottom: 18 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(22,163,74,.08)", border: "1px solid rgba(22,163,74,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--green2)" } }, "Evidence that supports your grievance"), appealEvidence.evidenceFor.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `for-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(220,38,38,.06)", border: "1px solid rgba(220,38,38,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--red2)" } }, "Evidence that may weaken your grievance"), appealEvidence.evidenceAgainst.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `against-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Market value estimate"), effectiveNeighborResult?.marketSaleModel?.available ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, effectiveNeighborResult.marketSaleModel.saleCount, " usable sale-backed records | ", effectiveNeighborResult.marketSaleModel.windowLabel, " | ", effectiveNeighborResult.marketSaleModel.tierLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Neighborhood median sale $/sq ft"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, `$${Number(effectiveNeighborResult.marketSaleModel.neighborhoodMedianPpsf).toFixed(0)}/sq ft`)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Estimated subject FMV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv != null ? $f(effectiveNeighborResult.marketSaleModel.estimatedSubjectFmv) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Estimated range"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.marketSaleModel.estimatedValueLow != null && effectiveNeighborResult.marketSaleModel.estimatedValueHigh != null ? `${$f(effectiveNeighborResult.marketSaleModel.estimatedValueLow)} to ${$f(effectiveNeighborResult.marketSaleModel.estimatedValueHigh)}` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Current assessed value"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, Number.isFinite(subject?.assessedValue) ? $f(subject.assessedValue) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Implied gap"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (effectiveNeighborResult.marketSaleModel.impliedDifference || 0) > 0 ? "var(--red2)" : "var(--green2)" } }, effectiveNeighborResult.marketSaleModel.impliedDifference != null ? `${effectiveNeighborResult.marketSaleModel.impliedDifference >= 0 ? "+" : ""}${$f(Math.abs(effectiveNeighborResult.marketSaleModel.impliedDifference))}` : "-"))), effectiveNeighborResult.marketSaleModel.timeAdjustmentMethod && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, effectiveNeighborResult.marketSaleModel.timeAdjustmentMethod), effectiveNeighborResult.marketSaleModel.note && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, effectiveNeighborResult.marketSaleModel.note)) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.marketSaleModel?.note || "Insufficient recent sales for market estimate.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.18)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--blue3)" } }, "Verified sale-ratio study"), effectiveNeighborResult?.neighborhoodEquityModel?.available ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, (() => {
         const neighborhoodEquityModel = effectiveNeighborResult.neighborhoodEquityModel;
-        const percentileExplanation = buildNeighborhoodPercentileExplanation(neighborhoodEquityModel);
-        const consistencyExplanation = buildNeighborhoodConsistencyExplanation(neighborhoodEquityModel);
-        const plainSummary = buildNeighborhoodEquityPlainSummary(neighborhoodEquityModel);
-        return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, effectiveNeighborResult.neighborhoodEquityModel.sampleSize, " sale-backed ratios | ", effectiveNeighborResult.neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : "Subject neighborhood sample"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Neighborhood median ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.medianRatio != null ? `${(effectiveNeighborResult.neighborhoodEquityModel.medianRatio * 100).toFixed(1)}%` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Your ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.subjectRatio != null ? `${(effectiveNeighborResult.neighborhoodEquityModel.subjectRatio * 100).toFixed(1)}%` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Your percentile"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.subjectPercentile != null ? `${Number(effectiveNeighborResult.neighborhoodEquityModel.subjectPercentile).toFixed(1)}th` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "cod", tone: "var(--gray2)" }, "COD")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (effectiveNeighborResult.neighborhoodEquityModel.cod || 0) > 15 ? "var(--red2)" : "var(--gray)" } }, effectiveNeighborResult.neighborhoodEquityModel.cod != null ? Number(effectiveNeighborResult.neighborhoodEquityModel.cod).toFixed(1) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "iaaoStandard", tone: "var(--gray2)" }, "IAAO standard")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, `<= ${Number(effectiveNeighborResult.neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`))), percentileExplanation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65 } }, percentileExplanation), consistencyExplanation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65 } }, consistencyExplanation), plainSummary && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65, fontWeight: 600 } }, plainSummary), neighborhoodBenchmark?.interpretation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Separate neighborhood benchmark:"), " ", neighborhoodBenchmark.interpretation), effectiveNeighborResult.neighborhoodEquityModel.codWarning && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult.neighborhoodEquityModel.codWarning));
-      })()) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.neighborhoodEquityModel?.note || "Insufficient sales data for neighborhood equity analysis.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "What the assessor may say"), appealEvidence.assessorPushback.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `pushback-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-6-build-grievance", className: "workflow-step-anchor", "data-workflow-step-id": "step-6-build-grievance" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, "Step 6 - Build your grievance"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "var(--gray)", marginBottom: 8 } }, "Selected comparable evidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 12, maxWidth: 920 } }, "Use selected comps, narrative context, and side-by-side table evidence to build the ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "grievancePackage", tone: "var(--gray2)" }, "grievance package"), " you may use when filing."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 10, padding: "14px 16px", minWidth: 0, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: "100%", textAlign: "left", display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => setSubjectCardExpanded((v) => !v), style: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "fit-content" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 999, background: subjectCardExpanded ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.55)", fontFamily: "var(--fm)", fontSize: 14, lineHeight: 1 } }, subjectCardExpanded ? "-" : "+"), /* @__PURE__ */ import_react45.default.createElement("span", null, subjectCardExpanded ? "Hide full property details" : "Show full property details")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", marginBottom: 4, fontWeight: 600 } }, "Your Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 16, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: subject.address, zip: subject.zip, neighborhood: subject.neighborhood, parcelId: subject.parcelId, parcel: subject, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(subject) }, subject.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", overflowWrap: "anywhere", wordBreak: "break-word" } }, subject.owner1 || "Owner unavailable", " | ", subject.parcelId, " | ", parcelNeighborhoodName(subject) || "Neighborhood unknown"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#2563eb", small: true }, propClassLabel(subject)), comparableProfileBadgeItems(subject).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: subject.parcelId + item, color: "#64748b", small: true }, item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel: subject, small: true }), subjectSaleBadge && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: subjectSaleBadge.color, small: true, title: subjectSaleBadge.title }, subjectSaleBadge.label)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginTop: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, color: "var(--amber)", fontWeight: 700 } }, $f(subject.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700 } }, $f(subject.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: FC[eqFlagFast(subject)] } }, eqRFast(subject), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Equity %")))), subjectCardExpanded && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, isAbsenteeFast(subject) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: subject, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel: subject, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.55 } }, subjectProfile.availablePhysicalFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Available home details for matching: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, subjectProfile.availablePhysicalFields.join(", ")), ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Residential inventory detail was not available on your parcel, so the comparison relied on class and nearby location signals.")), renderSaleHistorySection(subject, subjectProfile.livingArea, { title: "Your sale history", showExplainer: true, background: "rgba(255,255,255,.32)", border: "1px solid rgba(37,99,235,.20)", titleColor: "var(--blue3)" }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 4, fontWeight: 600 }, title: "Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available." }, effectiveNeighborResult?.analysisState === "research_only" ? "Research Comparables" : "Best Comparable Homes", " (", displayNeighborResult?.neighbors?.length || 0, " comps)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, displayNeighborResult.comparableMode === "snapshot" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were loaded from a ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "shared comparable snapshot"), " and then grouped to show grievance-supporting comps first.") : displayNeighborResult.comparableMode === "physical" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were ranked for ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "physical similarity"), " to your parcel, with ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, displayNeighborResult.scopeNeighborhood || "Albany"), " preferred first.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class."), displayNeighborResult.usedInventory && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("br", null), "Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, effectiveNeighborResult.grievanceSupportCount ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "The default grievance package currently keeps ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--green2)" } }, effectiveNeighborResult.grievanceCandidates.length), " of the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0), " visible comps because they clear the support, quality, and confidence checks. Lower assessed value alone is not enough; the rest stay available for context or custom inclusion.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, effectiveNeighborResult?.noPackageReasonText || "These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically.")), customGrievanceSelectionActive && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", lineHeight: 1.55, fontWeight: 600 } }, "Custom comp selection (", effectiveNeighborResult.grievanceCandidates.length, " of ", grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0, " included)"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setGrievanceCompOverrides({}), style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "Reset to default")), effectiveNeighborResult.grievanceCandidates.length > 0 ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average Full Market Value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " FMV avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average assessed value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgAssessed)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " assessed avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average equity ratio across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: (effectiveNeighborResult.grievanceDeltaEquity ?? 0) > 8 ? "var(--red2)" : (effectiveNeighborResult.grievanceDeltaEquity ?? 0) < -8 ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult.grievanceAvgEquity != null ? effectiveNeighborResult.grievanceAvgEquity + "%" : "-"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " equity avg"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.55, display: "grid", gap: 6 } }, effectiveNeighborResult.grievanceDeltaFMV != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your FMV is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, (effectiveNeighborResult.grievanceDeltaFMV >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaFMV))), effectiveNeighborResult.grievanceDeltaFMVPct != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (", effectiveNeighborResult.grievanceDeltaFMVPct >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaFMVPct.toFixed(1), "%)"), " versus the selected grievance comp average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("fmv", -effectiveNeighborResult.grievanceDeltaFMV, effectiveNeighborResult.grievanceCandidates.length), tone: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" })), effectiveNeighborResult.grievanceDeltaAssessed != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your assessed value is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" } }, (effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaAssessed))), " relative to the selected grievance assessed average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("assessed", -effectiveNeighborResult.grievanceDeltaAssessed, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" })), effectiveNeighborResult.grievanceDeltaEquity != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your equity ratio is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" } }, effectiveNeighborResult.grievanceDeltaEquity >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaEquity, "%"), " relative to the selected grievance comp average. ", effectiveNeighborResult.grievanceSignal, /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("equity", -effectiveNeighborResult.grievanceDeltaEquity, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" })))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(148,163,184,.10)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.noPackageReasonText || "No comps are currently included in the grievance package summary. Review the physical matches below and include only the homes you want carried into RP-524 support materials."))), effectiveNeighborResult.grievanceCandidates.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(168,85,247,.06)", border: "1px solid rgba(168,85,247,.18)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(
+        return /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 } }, effectiveNeighborResult.neighborhoodEquityModel.trimmedSampleSize || effectiveNeighborResult.neighborhoodEquityModel.sampleSize, " trimmed ratios | ", effectiveNeighborResult.neighborhoodEquityModel.scope === "zip" ? "ZIP fallback sample" : effectiveNeighborResult.neighborhoodEquityModel.scope === "neighborhood" ? "Subject neighborhood sample" : "Broadened local sample"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "equityRatio" }, "Neighborhood median ratio")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.medianRatio != null ? `${(effectiveNeighborResult.neighborhoodEquityModel.medianRatio * 100).toFixed(1)}%` : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "cod", tone: "var(--gray2)" }, "COD")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: (effectiveNeighborResult.neighborhoodEquityModel.cod || 0) > 15 ? "var(--red2)" : "var(--gray)" } }, effectiveNeighborResult.neighborhoodEquityModel.cod != null ? Number(effectiveNeighborResult.neighborhoodEquityModel.cod).toFixed(1) : "-")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Reliability"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.reliabilityLabel === "low" ? "Low" : "Standard")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "PRD"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.prd != null ? Number(effectiveNeighborResult.neighborhoodEquityModel.prd).toFixed(3) : "Suppressed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "PRB"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, effectiveNeighborResult.neighborhoodEquityModel.prb != null ? Number(effectiveNeighborResult.neighborhoodEquityModel.prb).toFixed(2) : "Suppressed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "iaaoStandard", tone: "var(--gray2)" }, "IAAO standard")), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700 } }, `<= ${Number(effectiveNeighborResult.neighborhoodEquityModel.iaaoStandard || 15).toFixed(1)}`))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.65 } }, effectiveNeighborResult.neighborhoodEquityModel.note), neighborhoodBenchmark?.interpretation && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "Separate neighborhood benchmark:"), " ", neighborhoodBenchmark.interpretation), effectiveNeighborResult.neighborhoodEquityModel.codWarning && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult.neighborhoodEquityModel.codWarning));
+      })()) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.neighborhoodEquityModel?.note || "Insufficient verified-sale data for the local ratio study.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: "var(--gray2)" } }, "What the assessor may say"), appealEvidence.assessorPushback.map((item, idx) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `pushback-${idx}`, style: { fontSize: 11, color: "var(--gray)", lineHeight: 1.6 } }, "- ", item)))))), /* @__PURE__ */ import_react45.default.createElement("section", { id: "step-6-build-grievance", className: "workflow-step-anchor", "data-workflow-step-id": "step-6-build-grievance" }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--blue3)", textTransform: "uppercase", letterSpacing: 0.9, marginBottom: 4 } }, "Step 6 - Build your grievance"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "var(--gray)", marginBottom: 8 } }, "Selected comparable evidence"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 12, maxWidth: 920 } }, "Use selected comps, narrative context, and side-by-side table evidence to build the ", /* @__PURE__ */ import_react45.default.createElement(TermWithHelp, { termKey: "grievancePackage", tone: "var(--gray2)" }, "grievance package"), " you may use when filing."), /* @__PURE__ */ import_react45.default.createElement("div", { className: "cols-2", style: { display: "grid", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.1)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 10, padding: "14px 16px", minWidth: 0, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { width: "100%", textAlign: "left", display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("button", { type: "button", onClick: () => setSubjectCardExpanded((v) => !v), style: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.20)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "fit-content" } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 999, background: subjectCardExpanded ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.55)", fontFamily: "var(--fm)", fontSize: 14, lineHeight: 1 } }, subjectCardExpanded ? "-" : "+"), /* @__PURE__ */ import_react45.default.createElement("span", null, subjectCardExpanded ? "Hide full property details" : "Show full property details")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", marginBottom: 4, fontWeight: 600 } }, "Your Property"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fd)", fontWeight: 700, fontSize: 16, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: subject.address, zip: subject.zip, neighborhood: subject.neighborhood, parcelId: subject.parcelId, parcel: subject, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(subject) }, subject.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", overflowWrap: "anywhere", wordBreak: "break-word" } }, subject.owner1 || "Owner unavailable", " | ", subject.parcelId, " | ", parcelNeighborhoodName(subject) || "Neighborhood unknown"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#2563eb", small: true }, propClassLabel(subject)), comparableProfileBadgeItems(subject).map((item) => /* @__PURE__ */ import_react45.default.createElement(Badge, { key: subject.parcelId + item, color: "#64748b", small: true }, item))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel: subject, small: true }), subjectSaleBadge && /* @__PURE__ */ import_react45.default.createElement(Badge, { color: subjectSaleBadge.color, small: true, title: subjectSaleBadge.title }, subjectSaleBadge.label)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginTop: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, color: "var(--amber)", fontWeight: 700 } }, $f(subject.fullMarketValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your FMV")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700 } }, $f(subject.assessedValue)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Assessed")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.18)", borderRadius: 8, padding: "8px 10px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 15, fontWeight: 700, color: FC[eqFlagFast(subject)] } }, eqRFast(subject), "%"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, "Your Equity %")))), subjectCardExpanded && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, isAbsenteeFast(subject) && /* @__PURE__ */ import_react45.default.createElement(AbsenteeExplain, { parcel: subject, compact: true }), /* @__PURE__ */ import_react45.default.createElement(OwnerPortfolioSection, { parcel: subject, ownerPortfolioIndex, onSelectParcel: focusNeighborParcel }), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", lineHeight: 1.55 } }, subjectProfile.availablePhysicalFields.length ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Available home details for matching: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, subjectProfile.availablePhysicalFields.join(", ")), ".") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Residential inventory detail was not available on your parcel, so the comparison relied on class and nearby location signals.")), renderSaleHistorySection(subject, subjectProfile.livingArea, { title: "Your sale history", showExplainer: true, background: "rgba(255,255,255,.32)", border: "1px solid rgba(37,99,235,.20)", titleColor: "var(--blue3)" }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", marginBottom: 4, fontWeight: 600 }, title: "Best-match comparable homes ranked by class, neighborhood, living area, year built, beds, baths, and style when available." }, effectiveNeighborResult?.analysisState === "research_only" ? "Research Comparables" : "Best Comparable Homes", " (", displayNeighborResult?.neighbors?.length || 0, " comps)"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, displayNeighborResult.comparableMode === "snapshot" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were loaded from a ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "shared comparable snapshot"), " and then grouped to show grievance-supporting comps first.") : displayNeighborResult.comparableMode === "physical" ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "These homes were ranked for ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, "physical similarity"), " to your parcel, with ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, displayNeighborResult.scopeNeighborhood || "Albany"), " preferred first.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "Inventory detail was too thin for a physical match set, so this view is using a lighter nearby fallback for the same residential class."), displayNeighborResult.usedInventory && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("br", null), "Your parcel has residential inventory data, so living area, year built, beds, baths, and style were used where available.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, effectiveNeighborResult.grievanceSupportCount ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, "The default grievance package currently keeps ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--green2)" } }, effectiveNeighborResult.grievanceCandidates.length), " of the ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray2)" } }, grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0), " visible comps because they clear the support, quality, and confidence checks. Lower assessed value alone is not enough; the rest stay available for context or custom inclusion.") : /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, effectiveNeighborResult?.noPackageReasonText || "These are still useful physical matches for research, but none currently clear the full grievance-package thresholds. A comp needs more than a lower assessed value to be selected automatically.")), customGrievanceSelectionActive && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", marginBottom: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--blue3)", lineHeight: 1.55, fontWeight: 600 } }, "Custom comp selection (", effectiveNeighborResult.grievanceCandidates.length, " of ", grievanceSelectableComparables.length || displayNeighborResult?.neighbors?.length || 0, " included)"), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setGrievanceCompOverrides({}), style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "Reset to default")), effectiveNeighborResult.grievanceCandidates.length > 0 ? /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average Full Market Value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgFMV)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " FMV avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average assessed value across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: "var(--gray)" } }, $f(effectiveNeighborResult.grievanceAvgAssessed)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " assessed avg")), /* @__PURE__ */ import_react45.default.createElement("div", { title: "Average equity ratio across the grievance comps currently included in the package." }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontFamily: "var(--fm)", fontSize: 16, color: (effectiveNeighborResult.grievanceDeltaEquity ?? 0) > 8 ? "var(--red2)" : (effectiveNeighborResult.grievanceDeltaEquity ?? 0) < -8 ? "var(--green2)" : "var(--gray)" } }, effectiveNeighborResult.grievanceAvgEquity != null ? effectiveNeighborResult.grievanceAvgEquity + "%" : "-"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray)" } }, grievancePackageSummaryLabel, " equity avg"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray3)", marginTop: 8, lineHeight: 1.55, display: "grid", gap: 6 } }, effectiveNeighborResult.grievanceDeltaFMV != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your FMV is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" } }, (effectiveNeighborResult.grievanceDeltaFMV >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaFMV))), effectiveNeighborResult.grievanceDeltaFMVPct != null && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, " (", effectiveNeighborResult.grievanceDeltaFMVPct >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaFMVPct.toFixed(1), "%)"), " versus the selected grievance comp average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("fmv", -effectiveNeighborResult.grievanceDeltaFMV, effectiveNeighborResult.grievanceCandidates.length), tone: (effectiveNeighborResult.grievanceDeltaFMV ?? 0) >= 0 ? "var(--green2)" : "var(--red2)" })), effectiveNeighborResult.grievanceDeltaAssessed != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your assessed value is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" } }, (effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "+" : "-") + $f(Math.abs(effectiveNeighborResult.grievanceDeltaAssessed))), " relative to the selected grievance assessed average.", /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("assessed", -effectiveNeighborResult.grievanceDeltaAssessed, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaAssessed >= 0 ? "var(--red2)" : "var(--green2)" })), effectiveNeighborResult.grievanceDeltaEquity != null && /* @__PURE__ */ import_react45.default.createElement("div", null, "Your equity ratio is ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" } }, effectiveNeighborResult.grievanceDeltaEquity >= 0 ? "+" : "", effectiveNeighborResult.grievanceDeltaEquity, "%"), " relative to the selected grievance comp average. ", effectiveNeighborResult.grievanceSignal, /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableGroupDeltaInfo("equity", -effectiveNeighborResult.grievanceDeltaEquity, effectiveNeighborResult.grievanceCandidates.length), tone: effectiveNeighborResult.grievanceDeltaEquity > 8 ? "var(--red2)" : effectiveNeighborResult.grievanceDeltaEquity < -8 ? "var(--green2)" : "var(--gray2)" })))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(148,163,184,.10)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, effectiveNeighborResult?.noPackageReasonText || "No comps are currently included in the grievance package summary. Review the physical matches below and include only the homes you want carried into RP-524 support materials."))), effectiveNeighborResult.grievanceCandidates.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(168,85,247,.06)", border: "1px solid rgba(168,85,247,.18)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "grid", gap: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ import_react45.default.createElement(
         ComparableMapFeatureCard,
         {
           subject,
@@ -57891,8 +58722,8 @@ self.onmessage = function(ev){
         return /* @__PURE__ */ import_react45.default.createElement("div", { key: parcel.parcelId, style: { background: isSubject ? "rgba(37,99,235,.08)" : "var(--card)", border: isSubject ? "1px solid rgba(37,99,235,.26)" : "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: isSubject ? "#2563eb" : "#8b5cf6", small: true }, entry.label), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement(Badge, { color: "#0d9488", small: true }, matchedHomeDetailsLabel(parcel)), /* @__PURE__ */ import_react45.default.createElement(InlineInfoIcon, { text: MATCHED_HOME_DETAILS_INFO, tone: "var(--gray2)", small: true }))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginTop: 8, overflowWrap: "anywhere", wordBreak: "break-word" } }, /* @__PURE__ */ import_react45.default.createElement(AddrLink, { address: parcel.address, zip: parcel.zip, neighborhood: parcel.neighborhood, parcelId: parcel.parcelId, parcel, showStreetView: true, streetViewLatLng: streetViewLatLngForParcel(parcel) }, parcel.address)), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--gray2)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" } }, parcel.owner1), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 } }, /* @__PURE__ */ import_react45.default.createElement(ComparableOwnershipBadges, { parcel, small: true })))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 6 } }, profileRows.map(([label, value]) => {
           const valueColor = !isSubject && label === "Assessed" ? comparableDeltaTone(delta?.assessed, true) : "inherit";
           return /* @__PURE__ */ import_react45.default.createElement("div", { key: label, style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, minWidth: 0 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, label), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: label === "Assessed" ? 700 : 600, color: valueColor, textAlign: "right", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" } }, value));
-        }), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Assessed vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.assessed, true) } }, formatSignedComparableMoney(delta?.assessed))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("assessed", delta?.assessed), tone: comparableDeltaTone(delta?.assessed, true) })), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Adjusted AV"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: adjustedDelta != null ? comparableDeltaTone(adjustedDelta, true) : "var(--gray2)" } }, adjustedAv != null ? $f(adjustedAv) : "-")), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: adjustedAv != null ? parcel?._adjustmentNarrative || "Adjusted for size and bath differences." : "Adjusted assessed value is not available for this comp.", tone: adjustedDelta != null ? comparableDeltaTone(adjustedDelta, true) : "var(--gray2)" })), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Adjusted support"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: adjustedSupport === "Yes" ? "var(--green2)" : adjustedSupport === "Marginal" ? "var(--amber2)" : adjustedSupport === "No" ? "var(--red2)" : "var(--gray2)" } }, adjustedSupport || "-"))), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Equity vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.equity, true) } }, formatSignedComparableCount(delta?.equity, "%"))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("equity", delta?.equity), tone: comparableDeltaTone(delta?.equity, true) })), !isSubject && riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--red2)", lineHeight: 1.55 } }, `${riskFlags.length} assessor challenge flag${riskFlags.length === 1 ? "" : "s"} recorded for this comp.`)));
-      }))), (displayNeighborResult?.neighbors?.length || 0) > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 48, padding: "12px 4px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray2)" } }, "Detailed comparables"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 }, title: "These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package." }, effectiveNeighborResult?.analysisState === "research_only" ? `Research-only comparable parcels (${displayNeighborResult?.neighbors?.length || 0} comps)` : `Best Comparable Parcels (${displayNeighborResult?.neighbors?.length || 0} comps)`)), displayNeighborResult.neighbors.map((parcel, idx) => renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx === 0, onToggle: toggleComparableCard }))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", textAlign: "center", padding: 20 } }, displayNeighborResult?.noPackageReasonText || "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."), (displayNeighborResult?.neighbors?.length || 0) > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginTop: 12, marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 4 } }, "Broadened search for ", subject.address), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, maxWidth: 760 } }, "Your original Best Comparable Homes stay above unchanged. Use this optional search only when you want to widen the research area without changing the default grievance package.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: runBroadenedSearch, style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, broadenedSearchButtonLabel), broadenedSearchRan && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowBroadenedResults((v) => !v), style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, showBroadenedResults ? "Hide broadened results" : "Show broadened results"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "Current broadened scope: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray)" } }, broadenedSearchScopeLabel), ". Each click broadens farther from same-ZIP matches to 2 miles and then 4 miles."), broadenedSearchRan && !showBroadenedResults && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Broadened results are hidden. Your original local comps remain visible above."), broadenedSearchRan && showBroadenedResults && !broadenedComparables.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "No additional comps were found within the current broadened search area after excluding the default local list.")), (displayNeighborResult?.neighbors?.length || 0) > 0 && broadenedSearchRan && showBroadenedResults && broadenedComparables.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 6 } }, "Broadened search results"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, "Ordered by ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--blue3)" } }, "best grievance support first"), ", then overall comparable quality, then broadened area, distance, and FMV closeness."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 40, padding: "12px 4px" } }, broadenedComparables.map((parcel, idx) => {
+        }), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Assessed vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.assessed, true) } }, formatSignedComparableMoney(delta?.assessed))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("assessed", delta?.assessed), tone: comparableDeltaTone(delta?.assessed, true) })), !isSubject && /* @__PURE__ */ import_react45.default.createElement(import_react45.default.Fragment, null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("span", { style: { color: "var(--gray)" } }, "Equity vs you"), /* @__PURE__ */ import_react45.default.createElement("span", { style: { fontWeight: 700, color: comparableDeltaTone(delta?.equity, true) } }, formatSignedComparableCount(delta?.equity, "%"))), /* @__PURE__ */ import_react45.default.createElement(DeltaInfoNote, { text: buildComparableDeltaInfo("equity", delta?.equity), tone: comparableDeltaTone(delta?.equity, true) })), !isSubject && riskFlags.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 10, color: "var(--red2)", lineHeight: 1.55 } }, `${riskFlags.length} assessor challenge flag${riskFlags.length === 1 ? "" : "s"} recorded for this comp.`)));
+      }))), (displayNeighborResult?.neighbors?.length || 0) > 0 ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 48, padding: "12px 4px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 4 } }, "Admin explainability"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, maxWidth: 820 } }, "This internal table explains why each visible comp made the top list and whether it passed the default package gates. Use the detailed comparable cards below for the full engine trace on any one property.")), /* @__PURE__ */ import_react45.default.createElement("button", { onClick: downloadComparableExplainabilityReport, style: { background: "rgba(15,23,42,.06)", border: "1px solid var(--border)", color: "var(--gray)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Download admin report")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ import_react45.default.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 11 } }, /* @__PURE__ */ import_react45.default.createElement("thead", null, /* @__PURE__ */ import_react45.default.createElement("tr", { style: { textAlign: "left", color: "var(--gray2)" } }, /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "0 0 8px" } }, "Rank"), /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "0 0 8px" } }, "Address"), /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "0 0 8px" } }, "Why visible"), /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "0 0 8px" } }, "Default package"), /* @__PURE__ */ import_react45.default.createElement("th", { style: { padding: "0 0 8px" } }, "Gate checks"))), /* @__PURE__ */ import_react45.default.createElement("tbody", null, comparableExplainabilityEntries.map((entry) => /* @__PURE__ */ import_react45.default.createElement("tr", { key: `explain-${entry.parcelId || entry.visibleRank}`, style: { borderTop: "1px solid var(--border)" } }, /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "8px 8px 8px 0", whiteSpace: "nowrap", fontWeight: 700 } }, `#${entry.visibleRank}`), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "8px 8px 8px 0", minWidth: 180 } }, entry.address), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "8px 8px 8px 0", minWidth: 260, lineHeight: 1.55 } }, entry.visibleReasons[0] || "No visible-list reason recorded."), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "8px 8px 8px 0", minWidth: 220, lineHeight: 1.55 } }, /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: entry.defaultIncluded ? "var(--green2)" : "var(--gray)" } }, entry.defaultStatusLabel), /* @__PURE__ */ import_react45.default.createElement("div", { style: { color: "var(--gray2)", marginTop: 3 } }, entry.packageDecisionMessage), entry.overrideNote ? /* @__PURE__ */ import_react45.default.createElement("div", { style: { color: "var(--amber2)", marginTop: 3 } }, entry.overrideNote) : null), /* @__PURE__ */ import_react45.default.createElement("td", { style: { padding: "8px 0 8px 0", minWidth: 220, lineHeight: 1.55 } }, entry.gateChecks.map((check) => /* @__PURE__ */ import_react45.default.createElement("div", { key: `${entry.parcelId}-${check.label}`, style: { color: check.passed ? "var(--green2)" : "var(--red2)" } }, `${check.label}: ${check.passed ? "pass" : "fail"}`))))))))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 4 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: "var(--gray2)" } }, "Detailed comparables"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 }, title: "These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package." }, effectiveNeighborResult?.analysisState === "research_only" ? `Research-only comparable parcels (${displayNeighborResult?.neighbors?.length || 0} comps)` : `Best Comparable Parcels (${displayNeighborResult?.neighbors?.length || 0} comps)`)), displayNeighborResult.neighbors.map((parcel, idx) => renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx === 0, onToggle: toggleComparableCard }))) : /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 12, color: "var(--gray2)", textAlign: "center", padding: 20 } }, displayNeighborResult?.noPackageReasonText || "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."), (displayNeighborResult?.neighbors?.length || 0) > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginTop: 12, marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } }, /* @__PURE__ */ import_react45.default.createElement("div", null, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 4 } }, "Broadened search for ", subject.address), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, maxWidth: 760 } }, "Your original Best Comparable Homes stay above unchanged. Use this optional search only when you want to widen the research area without changing the default grievance package.")), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react45.default.createElement("button", { onClick: runBroadenedSearch, style: { background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.24)", color: "var(--blue3)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, broadenedSearchButtonLabel), broadenedSearchRan && /* @__PURE__ */ import_react45.default.createElement("button", { onClick: () => setShowBroadenedResults((v) => !v), style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, showBroadenedResults ? "Hide broadened results" : "Show broadened results"))), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "Current broadened scope: ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--gray)" } }, broadenedSearchScopeLabel), ". Each click broadens farther from same-ZIP matches to 2 miles and then 4 miles."), broadenedSearchRan && !showBroadenedResults && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "Broadened results are hidden. Your original local comps remain visible above."), broadenedSearchRan && showBroadenedResults && !broadenedComparables.length && /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6 } }, "No additional comps were found within the current broadened search area after excluding the default local list.")), (displayNeighborResult?.neighbors?.length || 0) > 0 && broadenedSearchRan && showBroadenedResults && broadenedComparables.length > 0 && /* @__PURE__ */ import_react45.default.createElement("div", { className: "print-hide", style: { background: "rgba(15,23,42,.04)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 } }, /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--gray2)", marginBottom: 6 } }, "Broadened search results"), /* @__PURE__ */ import_react45.default.createElement("div", { style: { fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 8 } }, "These broader-area comps are shown separately so the main grievance package remains focused on the strongest local evidence."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { background: "rgba(37,99,235,.07)", border: "1px solid rgba(37,99,235,.18)", borderRadius: 8, padding: "9px 10px", fontSize: 11, color: "var(--gray2)", lineHeight: 1.6, marginBottom: 10 } }, "Ordered by ", /* @__PURE__ */ import_react45.default.createElement("b", { style: { color: "var(--blue3)" } }, "best grievance support first"), ", then overall comparable quality, then broadened area, distance, and FMV closeness."), /* @__PURE__ */ import_react45.default.createElement("div", { style: { display: "grid", gap: 40, padding: "12px 4px" } }, broadenedComparables.map((parcel, idx) => {
         const expanded = !!expandedBroadenedIds[parcel.parcelId];
         const distanceLabel = formatComparableMiles(parcel._broadenDistanceMiles);
         const isIncluded = isParcelIncludedInGrievance(parcel);

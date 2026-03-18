@@ -1,30 +1,25 @@
 # How Comparable Homes Are Chosen
 
-This is the short, user-facing summary of the grievance engine.
+This is the short, plain-language summary of the grievance engine.
 
 The authoritative implementation reference is [GRIEVANCE_APP_COMPLETE_SPEC.md](/C:/Users/steph/OneDrive/Documents/claude/albany_real_estate/GRIEVANCE_APP_COMPLETE_SPEC.md). If this summary and the full spec ever differ, the full spec controls.
 
 ## 1. What the app is doing
 
-The app builds comparables in two layers:
+The app now works in three layers, not one:
 
-1. A visible list of up to 12 homes that are the best physical matches to your property.
-2. A narrower default grievance package that keeps only the comps that still support a grievance after the fairness checks are applied.
+1. A visible list of up to 12 homes that look like the best physical matches to your property.
+2. A narrower default grievance package that keeps only the visible comps that still support a grievance after the fairness checks are applied.
+3. A separate sale-backed evidence pool built from verified sales, used to decide whether the app may recommend a claim type or a requested assessed value.
 
-The visible list answers:
-
-"Which homes look most similar to mine?"
-
-The grievance package answers:
-
-"Which of those homes are actually useful evidence for a tax grievance?"
+That means a home can still appear in the visible list or even in the grievance package without automatically being strong enough to support an automatic filing recommendation.
 
 ## 2. What data the app compares
 
-For your home and each candidate comp, the app uses the roll data it has available, including:
+For your home, nearby comps, and verified sales, the app uses the roll and ORPTS data it has available, including:
 
 - Property class
-- Neighborhood, ZIP, and distance
+- Neighborhood, neighborhood association, ZIP, and distance
 - Living area
 - Year built
 - Bedrooms and baths
@@ -33,217 +28,228 @@ For your home and each candidate comp, the app uses the roll data it has availab
 - Full market value (FMV)
 - Equity ratio
 - Assessed value per square foot
-- Recent ORPTS arm's-length sale history when available
+- Recent ORPTS sale history and ORPTS sale-usable flags
 
-## 3. Hard reject rules
+If residential inventory fields are available only through the inventory join, the app still uses them. Missing inventory fields lower confidence instead of silently pretending they do not exist.
 
-A comp is rejected before scoring if it is clearly too different or unusable, including cases like:
+## 3. Visible comps are chosen for physical similarity first
 
-- Same parcel as the subject
-- Incompatible residential class
-- Missing both assessed value and FMV
-- Too far away
-- Living area more than 45% different
-- Year built more than 60 years different
-- Bedrooms more than 2 different
-- Baths more than 2.5 different
+The visible list is still a physical-match engine.
 
-Albany runs in strict geography mode by default, so distance is capped at 2.0 miles for the main comparable engine.
+The app first removes clearly bad candidates, such as:
 
-## 4. Physical match score
+- The subject parcel itself
+- Incompatible residential classes
+- Parcels with missing core value data
+- Parcels that are too far away for the main comp engine
+- Homes that are much too different in living area, year built, beds, or baths
 
-Each surviving comp gets a quality score based on:
+The remaining candidates are scored on:
 
-- Residential class compatibility
+- Class compatibility
 - Location similarity
 - Living area similarity
 - Year built similarity
-- Bedroom similarity
-- Bath similarity
+- Bedroom and bath similarity
 - Style-family similarity
 - FMV alignment
 
-The app then subtracts penalties for missing or weak data, such as missing living area, missing year built, uncertain style normalization, or being outside the subject neighborhood and more than 1 mile away.
+The app then subtracts penalties for weak or missing data. This visible list answers:
 
-This quality score controls whether a home belongs in the visible list and whether it is strong enough to be considered for the default package.
+"Which homes look most like mine?"
 
-## 5. Data confidence score
+## 4. The default grievance package is narrower than the visible list
 
-Separately, each comp gets a data confidence score starting at 100.
+The app does not automatically file every visible comp into the grievance package.
 
-The score is reduced when important fields are missing or uncertain, such as:
-
-- Living area
-- Assessed value
-- FMV
-- Year built
-- Bedrooms
-- Baths
-- Style normalization
-- Distance
-
-This is why a home can look similar but still be weaker evidence if the underlying data are incomplete.
-
-## 6. Why lower assessed value alone is not enough
-
-A lower assessed value is only the starting point.
-
-The app also checks:
-
-- Assessed value per square foot
-- Equity ratio
-- Recent sale evidence
-
-These checks matter because a comp may be lower simply because it is a smaller or lower-value home overall, not because it was treated more favorably by the assessor.
-
-### Example: lower assessed value, but still not strong evidence
-
-Just because a comp has a lower assessed value than your home doesn't mean the assessor was more generous with it. What matters is how the assessed value compares to the home's full market value - that ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same.
-
-If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp's assessed value might be lower simply because it's a smaller or lower-value home overall - not because it got a better deal from the assessor.
-
-For a comp to be strong grievance evidence, you want to see that it was assessed at a lower proportion of its market value than your home - meaning the assessor undervalued it relative to what it's actually worth, compared to how they valued yours.
-
-## 7. Grievance support score
-
-Each visible comp gets a separate grievance support score.
-
-That score combines:
-
-- Raw assessed value advantage
-- Assessed value per square foot advantage
-- Equity ratio advantage
-- Recent arm's-length sale evidence
-- Penalties when normalized metrics are tied
-- Penalties for weak quality or weak confidence
-
-Support labels are:
-
-- Strong support
-- Moderate support
-- Weak support
-- Neutral
-- Weakens case
-
-## 8. Visible list versus default grievance package
-
-The app does not automatically include every visible comp in the grievance package.
-
-To make the default package, a comp must pass all three gates:
+To become a default grievance comp, a home still has to clear the package gates:
 
 - Quality score at least 50
 - Data confidence score at least 60
 - Grievance support score above 0
 
-The package is then sorted with the best grievance evidence first and assembled using these rules:
+The package is then sorted and trimmed so it stays focused on the best local evidence. The package builder still tries to:
 
-- Usually keep 3 to 5 homes
-- Prefer strong and moderate support first
-- Limit same-street concentration
+- Prefer strong and moderate support
+- Limit same-street overconcentration
 - Exclude low-end assessed outliers
-- Suppress weaker duplicates when a stronger nearby comp already makes the same point
-- Keep corroborating strong comps together when they independently strengthen the case
-- Try to preserve bracketing on living area and year built when possible
+- Avoid weaker duplicates when a better nearby comp makes the same point
+- Preserve useful bracketing when possible
 
-If visible comps exist but none clear those gates, the app now shows a `Research only` outcome instead of acting like the system failed.
+This layer answers:
 
-That means:
+"Which of the similar homes are worth carrying into the grievance packet?"
 
-- physically similar homes were found
-- they remain visible for research and manual review
-- they are not treated as default grievance evidence
+## 5. Lower assessed value alone is still not enough
 
-The app also explains why no package was built:
+A comp with a lower assessed value is not automatically good grievance evidence.
 
-- No physical matches
-- Neutral after normalization
-- Favorable direction, but quality or confidence was too weak
-- Mixed research-only result
+The app still checks whether that lower assessment is backed up by normalized comparisons, especially:
 
-## 9. Suggested requested assessed value
+- Assessed value per square foot
+- Equity ratio
+- Recent sale evidence when available
 
-The app uses stricter rules for the suggested filing value than it uses for package inclusion.
+That matters because a lower assessed value may simply reflect a smaller, older, or lower-value home, not more favorable assessor treatment.
 
-A comp must clear stronger thresholds before it can influence the suggested value.
+## 6. Automatic claim guidance now depends on sale-backed evidence
 
-The engine then calculates:
+This is the biggest behavior change.
 
-- Comp-based value estimate: asks, "If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?" The app calculates this from the assessed values of the strongest qualifying comps, using a weighted median or a two-comp fallback.
-- Equity-ratio value estimate: asks, "If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?" The app calculates this by multiplying your FMV by the median qualifying comp equity ratio.
+The app now separates:
 
-The final suggested requested assessed value is the lower of those two methods.
+- the comp package used for research and packet support, and
+- the sale-backed evidence required before the app may recommend a claim type or a filing value
 
-If the data are too thin, too spread out, or too tied on equity ratio, the app does not force a number and instead flags the result for manual review.
+The sale-backed evidence status can be:
 
-## 10. Independent models outside the comp package
+- `Sale-backed evidence is sufficient`
+- `Sale-backed evidence is insufficient`
+- `Additional homeowner evidence is needed`
 
-The app also runs additional models that do not depend only on the selected comps:
+If the sale-backed evidence is insufficient, the app does **not** automatically recommend:
 
-- Separate overassessment check: asks, "Even aside from the comps, does your assessment look too high compared with your FMV and the municipality's equalization rate?" The app compares your assessed value to FMV times the municipal equalization rate.
-- Market value estimate from recent neighborhood arm's-length sales
-- Neighborhood equity distribution panel, including percentile, COD (Coefficient of Dispersion), and the IAAO residential COD benchmark of 15.0 or below
-- Subject sale logic for the subject's own recent arm's-length sale
+- `Unequal assessment`
+- `Excessive assessment`
+- a requested assessed value
 
-These models can support or weaken the overall grievance even when the selected comp package is mixed.
+Instead, it tells the homeowner to review RP-524 manually.
 
-They also matter when nearby homes are very uniform.
+When the leading theory is `Excessive assessment`, the packet may also show up to 3 separate `Supplemental market-evidence` properties. These are not replacements for the main grievance comps. They are a separate sale-backed support layer for the market-value argument.
 
-If visible comps have tightly clustered equity ratios, the app treats that as weaker unequal-assessment evidence and may shift the explanation toward excessive assessment instead, using:
+## 7. The sale-backed market model is tied to the valuation date
 
-- Equalization-based overvaluation
-- Recent arm's-length sale evidence
-- Neighborhood equity percentile
+The market-value model no longer uses a loose "recent sales" concept based on today.
 
-## 11. ORPTS sales data and arm's-length sales
+It now anchors itself to the roll valuation date and looks for verified sales in this order:
 
-The app uses ORPTS sales data as market evidence, not as a blind ranking shortcut.
+1. Within 24 months of valuation date
+2. If still thin, within 36 months
+3. If still thin, within 60 months
 
-Arm's-length sales are used to:
+The geography also widens in steps:
 
-- Add or reduce support for individual comps
-- Estimate neighborhood sale price per square foot
-- Build the market value estimate panel
-- Build the neighborhood equity distribution panel
-- Evaluate the subject's own recent sale against the current FMV
+1. Tier 1: same neighborhood
+2. Tier 2: same neighborhood association, or same ZIP within 1 mile if association data is missing
+3. Tier 3: citywide within 2 miles
+4. Tier 4: research-only within 4 miles
 
-Non-arm's-length transfers are shown in sale history for context, but they are not treated as normal market-value evidence.
+Every widening step is recorded in the output so the packet can explain what happened.
 
-## 12. Broadened search
+## 8. Older verified sales may be time-adjusted
 
-Broadened search is a research-only expansion beyond the main visible list.
+If the app has enough usable local sales, it builds a simple local price-trend model using sale price per square foot over time for the same residential family.
 
-It can show additional comps from:
+That trend model is used only when older sales are needed. If the app cannot build a local trend model, it does not fake one.
 
-- Same-neighborhood overflow or same street
-- Same ZIP and nearby streets
-- Within 2 miles
-- Within the outer city-strict radius
+So:
 
-These broadened comps are ordered by:
+- older sales may be adjusted forward to the valuation date
+- but only when the local data support that adjustment
 
-- Best grievance support first
-- Then quality score
-- Then tier
-- Then distance
-- Then FMV closeness
+## 9. The requested assessed value is now sale-backed
 
-They are shown separately so the default package stays focused on the strongest local evidence.
+The app no longer uses the old "Method A / Method B / choose the lower one" requested-value logic.
 
-## 13. If you want to change the logic
+If sale-backed evidence is sufficient, the app:
+
+1. Estimates subject market value from the sale-backed model.
+2. Converts that market value to a requested assessed value using the municipality's uniform percent of value (LOA / equalization ratio loaded from the roll metadata).
+
+If sale-backed evidence is not sufficient, the app suppresses the requested assessed value and tells the user to review manually.
+
+## 10. The ratio panel is now a verified sale-ratio study
+
+The old neighborhood equity percentile panel has been replaced for grievance purposes.
+
+The app now runs a verified sale-ratio study built from:
+
+- assessment / verified sale price
+- ORPTS sale usability flags
+- trimmed samples that drop the top and bottom 5% when the sample is large enough
+
+The ratio study reports:
+
+- Median ratio
+- COD
+- PRD when the trimmed sample is at least 20
+- PRB when the trimmed sample is at least 20
+- A reliability label
+
+If the sample is too small, the app may still show COD with a low-reliability warning, but it suppresses PRD and PRB until the sample is large enough to support them.
+
+The packet treats this ratio study carefully:
+
+- If the subject has its own recent arm's-length sale inside the accepted window, the packet may compare the subject's verified sale ratio to the neighborhood verified-sale median.
+- If the subject does not have that like-to-like verified sale ratio, the ratio study is shown as neighborhood context only.
+
+That means the packet should not compare the subject's roll equity percentage to the neighborhood verified-sale median as though they are the same statistic.
+
+## 11. Included and excluded sales are explained
+
+The grievance packet now distinguishes between:
+
+- included market-evidence sales
+- excluded market-evidence sales
+- included ratio-study sales
+- excluded ratio-study sales
+
+Excluded sales are not hidden. The app records why they were not used, such as:
+
+- not marked arm's-length
+- unusable for COD/RAR work
+- condition flags that suggest a non-standard transfer
+- too old for the selected valuation window
+- outside the needed geography tier
+- poor physical fit for the tighter evidence pool
+
+In the printable packet, the app shows the included sales in full, then summarizes exclusions by reason and lists only the most relevant excluded sales instead of dumping every screened-out record.
+
+## 12. The packet explains the method, not just the result
+
+The final grievance packet is meant to be understandable to an assessor and the homeowner.
+
+It now explains:
+
+- what data were used
+- what was filtered out
+- whether older sales were time-adjusted
+- whether the geography had to broaden
+- how the requested assessed value was derived when one is shown
+- what limitations remain in the evidence
+
+The comparable map also shows the distance from the subject parcel to each included comp.
+
+The packet map keeps the north arrow and includes a short distance reference so the exhibit reads as a filing map rather than an abstract diagram.
+
+## 13. What did not change
+
+Some important parts of the comp engine are still the same:
+
+- the visible list is still primarily a physical-similarity list
+- lower assessed value alone is still not enough
+- the default grievance package is still narrower than the visible list
+- broadened search is still available for research
+
+What changed is that the app is now much stricter about when it is willing to turn those comps and sales into an automatic claim recommendation or requested value.
+
+Neighborhood benchmark numbers may still appear, but only as secondary context. They are not supposed to outrank stronger direct sale-backed evidence.
+
+## 14. Admin explainability
+
+The app now also exposes an internal explainability view for the visible comparable list.
+
+That admin-facing view shows, for each visible comp:
+
+- why it made the visible list
+- whether it passed the default package gates
+- why it was included or excluded by the default package rules
+- whether the current live package reflects a manual override
+
+This explainability layer is meant to help a reviewer explain the engine's decisions to users without changing the filing packet into a developer dump.
+
+## 14. If you want to change the logic
 
 Do not edit this summary file as if it were the engine.
 
-Edit [GRIEVANCE_APP_COMPLETE_SPEC.md](/C:/Users/steph/OneDrive/Documents/claude/albany_real_estate/GRIEVANCE_APP_COMPLETE_SPEC.md) if you want to redefine the logic in a way that can be implemented exactly.
-
-That full spec is written to be detailed enough to reproduce:
-
-- Inputs
-- Hard exclusions
-- Score weights
-- Gates
-- Sorting
-- Package assembly rules
-- Value recommendation rules
-- Market-sale logic
-- Neighborhood equity logic
-- Edge-case handling
+Edit [GRIEVANCE_APP_COMPLETE_SPEC.md](/C:/Users/steph/OneDrive/Documents/claude/albany_real_estate/GRIEVANCE_APP_COMPLETE_SPEC.md) if you want to redefine the behavior in a way that can be implemented exactly.

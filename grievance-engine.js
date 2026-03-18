@@ -215,6 +215,21 @@ function parseSalesDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function inventoryValue(parcel, key) {
+  return parcel?.inventory && Object.prototype.hasOwnProperty.call(parcel.inventory, key)
+    ? parcel.inventory[key]
+    : null;
+}
+
+function flagIsYes(value) {
+  return (value || "").toString().trim().toUpperCase() === "Y";
+}
+
+function conditionFlagIsActive(value) {
+  const normalized = (value || "").toString().trim().toUpperCase();
+  return normalized === "1" || normalized === "Y";
+}
+
 function isArmLengthSale(sale) {
   return (sale?.arms_length_flag || "").toString().trim().toUpperCase() === "Y";
 }
@@ -330,11 +345,40 @@ function candidateAssessedValue(comp) {
 }
 
 function candidateLivingArea(comp) {
-  return asNumber(comp?.livingAreaSqft ?? comp?._compProfile?.livingArea);
+  return asNumber(comp?.livingAreaSqft ?? comp?._compProfile?.livingArea ?? inventoryValue(comp, "sqftLivingArea"));
 }
 
 function candidateYearBuilt(comp) {
-  return asNumber(comp?.yearBuilt ?? comp?._compProfile?.yearBuilt);
+  return asNumber(comp?.yearBuilt ?? comp?._compProfile?.yearBuilt ?? inventoryValue(comp, "yearBuilt"));
+}
+
+function candidateBedrooms(comp) {
+  return asNumber(comp?.bedrooms ?? comp?._compProfile?.bedrooms ?? inventoryValue(comp, "bedrooms"));
+}
+
+function candidateFullBaths(comp) {
+  return asNumber(comp?.fullBaths ?? comp?._compProfile?.fullBaths ?? inventoryValue(comp, "fullBaths"));
+}
+
+function candidateHalfBaths(comp) {
+  return asNumber(comp?.halfBaths ?? comp?._compProfile?.halfBaths ?? inventoryValue(comp, "halfBaths"));
+}
+
+function candidateBathCount(comp) {
+  const direct = asNumber(comp?.bathCount ?? comp?.baths ?? comp?._compProfile?.bathCount);
+  if (Number.isFinite(direct)) return direct;
+  const fullBaths = candidateFullBaths(comp);
+  const halfBaths = candidateHalfBaths(comp);
+  if (fullBaths == null && halfBaths == null) return null;
+  return Number(fullBaths || 0) + (Number(halfBaths || 0) * 0.5);
+}
+
+function candidateZipCode(comp) {
+  return (comp?.zip || comp?._compProfile?.zipCode || "").toString().trim();
+}
+
+function candidateNeighborhoodAssociation(comp) {
+  return (comp?.neighborhoodAssociation || comp?._compProfile?.neighborhoodAssociation || "").toString().trim();
 }
 
 function candidateEquityRatio(comp) {
@@ -510,23 +554,25 @@ function visibleEquityVariance(visibleComps = []) {
   return (Math.max(...ratios) - Math.min(...ratios)) * 100;
 }
 
-function summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel) {
+function summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, ratioStudyModel) {
   const reasons = [];
-  if (overvaluationFlag?.active) reasons.push("the equalization-rate benchmark still points to overvaluation");
+  if (overvaluationFlag?.active && Number.isFinite(asNumber(overvaluationFlag?.overvaluationExcess)) && asNumber(overvaluationFlag.overvaluationExcess) > 0) {
+    reasons.push("the roll-context benchmark still points to overvaluation");
+  }
   if (Number.isFinite(asNumber(marketSaleModel?.impliedDifference)) && asNumber(marketSaleModel?.impliedDifference) > 0) {
     reasons.push("recent arm's-length sales imply a lower market value than the current assessment");
   }
-  if (Number.isFinite(asNumber(neighborhoodEquityModel?.subjectPercentile)) && asNumber(neighborhoodEquityModel?.subjectPercentile) >= 75) {
-    reasons.push("your neighborhood equity percentile still runs high");
+  if (Number.isFinite(asNumber(ratioStudyModel?.cod)) && asNumber(ratioStudyModel?.cod) > 15) {
+    reasons.push("the local sale-ratio study also shows uneven assessment uniformity");
   }
   if (!reasons.length) return "";
   if (reasons.length === 1) return reasons[0];
   return `${reasons.slice(0, -1).join(", ")}, and ${reasons[reasons.length - 1]}`;
 }
 
-function buildExcessivePivotSentence(visibleComps = [], overvaluationFlag = null, marketSaleModel = null, neighborhoodEquityModel = null) {
+function buildExcessivePivotSentence(visibleComps = [], overvaluationFlag = null, marketSaleModel = null, ratioStudyModel = null) {
   const variance = visibleEquityVariance(visibleComps);
-  const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+  const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, ratioStudyModel);
   if (!Number.isFinite(variance) || variance >= 1 || !signalSummary) return "";
   return ` Nearby visible comps also show tightly clustered equity ratios (variance ${variance.toFixed(1)} points), which weakens an unequal-assessment claim. The remaining support leans more toward excessive assessment because ${signalSummary}.`;
 }
@@ -542,8 +588,8 @@ function deriveNoPackageReasonCode(selectionOutcomeCounts = null) {
   return "mixed_research_only";
 }
 
-function buildNoPackageReasonText(reasonCode, visibleComps = [], overvaluationFlag = null, marketSaleModel = null, neighborhoodEquityModel = null) {
-  const excessivePivot = buildExcessivePivotSentence(visibleComps, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+function buildNoPackageReasonText(reasonCode, visibleComps = [], overvaluationFlag = null, marketSaleModel = null, ratioStudyModel = null) {
+  const excessivePivot = buildExcessivePivotSentence(visibleComps, overvaluationFlag, marketSaleModel, ratioStudyModel);
   if (reasonCode === "no_physical_matches") {
     return "No comparable homes were found within the current search parameters, so the app could not build a grievance package.";
   }
@@ -1159,13 +1205,15 @@ function computeOvervaluationFlag(subject, equalizationRate) {
   const fmv = asNumber(subject?.fullMarketValue);
   const rate = asNumber(equalizationRate);
   if (!Number.isFinite(av) || !Number.isFinite(fmv) || !Number.isFinite(rate) || rate <= 0) return null;
-  const expectedAssessedValue = fmv * rate;
+  const expectedAssessedValue = Math.round(fmv * rate);
+  const overvaluationExcess = Math.max(Math.round(av - expectedAssessedValue), 0);
+  const active = overvaluationExcess > 0;
   return {
-    active: av > expectedAssessedValue,
+    active,
     equalizationRate: rate,
-    expectedAssessedValue: Math.round(expectedAssessedValue),
-    overvaluationExcess: Math.max(Math.round(av - expectedAssessedValue), 0),
-    message: av > expectedAssessedValue
+    expectedAssessedValue,
+    overvaluationExcess,
+    message: active
       ? `The separate overassessment check is positive. Your assessed value is above the expected assessed value implied by the municipal equalization rate of ${(rate * 100).toFixed(1)}%.`
       : "The separate overassessment check does not show an overvaluation signal from the municipal equalization rate.",
   };
@@ -1221,24 +1269,15 @@ function computeClaimRecommendation(selectedComps, overvaluationFlag) {
   };
 }
 
-function computeResearchClaimRecommendation(visibleComps, overvaluationFlag, marketSaleModel, neighborhoodEquityModel) {
+function computeResearchClaimRecommendation(visibleComps, overvaluationFlag, marketSaleModel, ratioStudyModel) {
   const variance = visibleEquityVariance(visibleComps);
-  const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+  const signalSummary = summarizeExcessiveSignals(overvaluationFlag, marketSaleModel, ratioStudyModel);
   if (Number.isFinite(variance) && variance < 1.0 && signalSummary) {
     return {
       code: "EXCESSIVE",
       label: "Excessive Assessment",
       selectionLabel: 'Check "Excessive assessment"',
       reason: `Visible comps look physically similar, but their equity ratios are tightly clustered (variance ${variance.toFixed(1)} points), so unequal assessment is weak here. The remaining support leans more toward excessive assessment because ${signalSummary}.`,
-      variance,
-    };
-  }
-  if (overvaluationFlag?.active) {
-    return {
-      code: "EXCESSIVE",
-      label: "Excessive Assessment",
-      selectionLabel: 'Check "Excessive assessment"',
-      reason: "Comparable homes were found, but none supported a grievance after normalization. The clearest remaining signal is the independent overvaluation benchmark.",
       variance,
     };
   }
@@ -1276,206 +1315,732 @@ function computeSubjectSaleSignal(subject, salesByParcelId, currentDate) {
   return { status: "neutral", sale: armLengthSale, latestSale, ratio, note: "" };
 }
 
-function computeMarketSaleModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = new Date() }) {
-  if (!(salesByParcelId instanceof Map) || !subject) return null;
-  const subjectSqft = asNumber(subjectProfile?.livingArea);
-  const subjectYear = asNumber(subjectProfile?.yearBuilt);
-  const collectEligible = radius => {
-    const values = [];
-    for (const parcel of parcels || []) {
-      if (!parcel || candidateParcelId(parcel) === candidateParcelId(subject)) continue;
-      const distance = parcelDistanceMiles(subject, parcel);
-      if (!Number.isFinite(distance) || distance > radius) continue;
-      const livingArea = candidateLivingArea(parcel);
-      const yearBuilt = candidateYearBuilt(parcel);
-      if (Number.isFinite(subjectSqft) && Number.isFinite(livingArea)) {
-        const pctDiff = Math.abs(livingArea - subjectSqft) / subjectSqft;
-        if (pctDiff > 0.20) continue;
-      }
-      if (Number.isFinite(subjectYear) && Number.isFinite(yearBuilt) && Math.abs(yearBuilt - subjectYear) > 25) continue;
-      const sales = getParcelSales(parcel, salesByParcelId).filter(sale => isRecentArmsLengthSale(sale, currentDate, 3));
-      for (const sale of sales) {
-        const salePrice = asNumber(sale?.sale_price);
-        if (!Number.isFinite(salePrice) || salePrice <= 0 || !Number.isFinite(livingArea) || livingArea <= 0) continue;
-        values.push({ parcel, sale, distance, salePricePerSqft: salePrice / livingArea });
-      }
-    }
-    return values;
-  };
-  let eligibleSales = collectEligible(1.0);
-  let expanded = false;
-  if (eligibleSales.length < 3) {
-    eligibleSales = collectEligible(1.5);
-    expanded = true;
-  }
-  if (eligibleSales.length < 3 || !Number.isFinite(subjectSqft)) {
+function computeRatioStudyDirectComparison({ subject, subjectSaleModel = null, ratioStudyModel = null, rollContext = null, currentDate = new Date() }) {
+  const valuationDate = valuationDateFromContext(buildRollContext(subject, rollContext, null), currentDate);
+  const sale = subjectSaleModel?.sale || null;
+  const saleDate = parseSalesDate(sale?.sale_dte) || parseSalesDate(sale?.deed_dte);
+  const salePrice = asNumber(sale?.sale_price);
+  const assessedAtSale = asNumber(sale?.total_av) ?? asNumber(subject?.assessedValue);
+  const monthsFromValuation = saleDate ? monthsBetweenDates(valuationDate, saleDate) : null;
+  const subjectVerifiedSaleRatio = Number.isFinite(assessedAtSale) && Number.isFinite(salePrice) && salePrice > 0
+    ? assessedAtSale / salePrice
+    : null;
+  const withinAcceptedWindow = Number.isFinite(monthsFromValuation) && Number.isFinite(asNumber(ratioStudyModel?.windowMonths))
+    ? monthsFromValuation <= asNumber(ratioStudyModel.windowMonths)
+    : false;
+  const canCompareDirectly = !!(
+    ratioStudyModel?.available &&
+    sale &&
+    flagIsYes(sale?.arms_length_flag) &&
+    withinAcceptedWindow &&
+    Number.isFinite(subjectVerifiedSaleRatio)
+  );
+  const ratioGap = canCompareDirectly && Number.isFinite(asNumber(ratioStudyModel?.medianRatio))
+    ? subjectVerifiedSaleRatio - asNumber(ratioStudyModel.medianRatio)
+    : null;
+  if (canCompareDirectly) {
     return {
-      available: false,
-      saleCount: eligibleSales.length,
-      expandedRadius: expanded,
-      note: "Insufficient recent sales for market estimate.",
-      fallbackPricePerSqft: Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(subjectSqft) && subjectSqft > 0
-        ? asNumber(subject?.fullMarketValue) / subjectSqft
-        : null,
+      canCompareSubjectToRatioStudyDirectly: true,
+      subjectVerifiedSaleRatio,
+      monthsFromValuation,
+      ratioGap,
+      note: Number.isFinite(ratioGap) && ratioGap >= 0.05
+        ? "The subject's verified sale ratio is materially above the neighborhood verified-sale median, indicating the subject may be assessed at a higher share of market value than comparable sold properties."
+        : "The subject has a directly comparable verified sale ratio in the accepted valuation window, so the ratio study may be discussed as a like-to-like comparison rather than neighborhood context alone.",
     };
   }
-  const neighborhoodMedianPpsf = medianValue(eligibleSales.map(entry => entry.salePricePerSqft));
-  const estimatedSubjectFmv = Number.isFinite(neighborhoodMedianPpsf) ? Math.round(neighborhoodMedianPpsf * subjectSqft) : null;
+  return {
+    canCompareSubjectToRatioStudyDirectly: false,
+    subjectVerifiedSaleRatio,
+    monthsFromValuation,
+    ratioGap: null,
+    note: "The neighborhood verified sale-ratio study provides context on local assessment uniformity, but the subject does not have a directly comparable verified sale ratio in this packet. The ratio study is therefore presented as supporting context rather than direct proof.",
+  };
+}
+
+function percentileValue(values, percentile) {
+  const nums = (Array.isArray(values) ? values : []).map(asNumber).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!nums.length) return null;
+  if (nums.length === 1) return nums[0];
+  const clamped = clampNumber(percentile, 0, 1);
+  const index = (nums.length - 1) * clamped;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return nums[lower];
+  return nums[lower] + ((nums[upper] - nums[lower]) * (index - lower));
+}
+
+function buildRollContext(subject, rollContext = null, equalizationRate = null) {
+  const context = rollContext || {};
+  const uniformPercentOfValue = Number.isFinite(asNumber(context?.uniformPercentOfValue))
+    ? asNumber(context.uniformPercentOfValue)
+    : Number.isFinite(asNumber(equalizationRate))
+      ? asNumber(equalizationRate) * 100
+      : Number.isFinite(asNumber(subject?.uniformPercentOfValue))
+        ? asNumber(subject.uniformPercentOfValue)
+        : null;
+  return {
+    assessmentYear: parseInt(context?.assessmentYear, 10) || parseInt(subject?.assessmentYear, 10) || null,
+    rollType: context?.rollType || subject?.rollType || null,
+    valuationDate: context?.valuationDate || subject?.valuationDate || null,
+    taxableStatusDate: context?.taxableStatusDate || subject?.taxableStatusDate || null,
+    uniformPercentOfValue,
+    loaRatio: Number.isFinite(uniformPercentOfValue) ? uniformPercentOfValue / 100 : asNumber(equalizationRate),
+  };
+}
+
+function valuationDateFromContext(rollContext, currentDate) {
+  const parsed = parseSalesDate(rollContext?.valuationDate);
+  return parsed || currentDate;
+}
+
+function monthsBetweenDates(laterDate, earlierDate) {
+  if (!(laterDate instanceof Date) || !(earlierDate instanceof Date)) return null;
+  const diffMs = laterDate.getTime() - earlierDate.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return null;
+  return diffMs / (1000 * 60 * 60 * 24 * 30.4375);
+}
+
+function formatWindowMonthsLabel(months) {
+  if (months === 24) return "24 months";
+  if (months === 36) return "36 months";
+  if (months === 60) return "60 months";
+  return `${months} months`;
+}
+
+function conditionFlagsForSale(sale = {}) {
+  return Object.keys(sale).filter(key => /^cond_/.test(key) && key !== "cond_none" && key !== "cond_memo" && conditionFlagIsActive(sale[key]));
+}
+
+function usableOrptsSale(sale = {}) {
+  const hasCod = Object.prototype.hasOwnProperty.call(sale, "cod_usable");
+  const hasRar = Object.prototype.hasOwnProperty.call(sale, "rar_usable");
+  if (!hasCod && !hasRar) return flagIsYes(sale?.arms_length_flag);
+  return flagIsYes(sale?.cod_usable) || flagIsYes(sale?.rar_usable);
+}
+
+function candidateFamily(comp) {
+  return residentialFamilyForClass(comp?.propClass, comp?.propClassDesc || "");
+}
+
+function evidenceMatchDiagnostics(subject, subjectProfile, parcel) {
+  const subjectSqft = asNumber(subjectProfile?.livingArea ?? subject?.livingAreaSqft ?? inventoryValue(subject, "sqftLivingArea"));
+  const subjectYear = asNumber(subjectProfile?.yearBuilt ?? subject?.yearBuilt ?? inventoryValue(subject, "yearBuilt"));
+  const subjectBeds = asNumber(subjectProfile?.bedrooms ?? subject?.bedrooms ?? inventoryValue(subject, "bedrooms"));
+  const subjectBaths = asNumber(subjectProfile?.bathCount);
+  const compSqft = candidateLivingArea(parcel);
+  const compYear = candidateYearBuilt(parcel);
+  const compBeds = candidateBedrooms(parcel);
+  const compBaths = candidateBathCount(parcel);
+  const diagnostics = { matches: true, reasons: [] };
+  if (Number.isFinite(subjectSqft) && Number.isFinite(compSqft) && subjectSqft > 0 && (Math.abs(compSqft - subjectSqft) / subjectSqft) > 0.15) {
+    diagnostics.matches = false;
+    diagnostics.reasons.push("living area exceeds the evidence-pool threshold");
+  }
+  if (Number.isFinite(subjectYear) && Number.isFinite(compYear) && Math.abs(compYear - subjectYear) > 20) {
+    diagnostics.matches = false;
+    diagnostics.reasons.push("year built exceeds the evidence-pool threshold");
+  }
+  if (Number.isFinite(subjectBeds) && Number.isFinite(compBeds) && Math.abs(compBeds - subjectBeds) > 1) {
+    diagnostics.matches = false;
+    diagnostics.reasons.push("bedroom count exceeds the evidence-pool threshold");
+  }
+  if (Number.isFinite(subjectBaths) && Number.isFinite(compBaths) && Math.abs(compBaths - subjectBaths) > 1.0) {
+    diagnostics.matches = false;
+    diagnostics.reasons.push("bath count exceeds the evidence-pool threshold");
+  }
+  return diagnostics;
+}
+
+function comparableTierContext(subject, subjectProfile, parcel) {
+  const distanceMiles = parcelDistanceMiles(subject, parcel);
+  const subjectNeighborhood = parcelNeighborhoodName(subject, subjectProfile);
+  const subjectAssoc = candidateNeighborhoodAssociation(subject);
+  const subjectZip = candidateZipCode(subject) || (subjectProfile?.zipCode || "").toString().trim();
+  const parcelNeighborhood = candidateNeighborhood(parcel);
+  const parcelAssoc = candidateNeighborhoodAssociation(parcel);
+  const parcelZip = candidateZipCode(parcel);
+  if (subjectNeighborhood && parcelNeighborhood && subjectNeighborhood === parcelNeighborhood) {
+    return { tier: 1, label: "Tier 1 same neighborhood", reason: "same neighborhood", distanceMiles };
+  }
+  if (subjectAssoc && parcelAssoc && subjectAssoc === parcelAssoc) {
+    return { tier: 2, label: "Tier 2 same neighborhood association", reason: "same neighborhood association", distanceMiles };
+  }
+  if (!subjectAssoc && subjectZip && parcelZip && subjectZip === parcelZip && Number.isFinite(distanceMiles) && distanceMiles <= 1) {
+    return { tier: 2, label: "Tier 2 same ZIP within 1 mile", reason: "same ZIP within 1 mile", distanceMiles };
+  }
+  if (Number.isFinite(distanceMiles) && distanceMiles <= 2) {
+    return { tier: 3, label: "Tier 3 citywide within 2 miles", reason: "within 2 miles", distanceMiles };
+  }
+  if (Number.isFinite(distanceMiles) && distanceMiles <= 4) {
+    return { tier: 4, label: "Tier 4 research-only within 4 miles", reason: "within 4 miles research-only", distanceMiles };
+  }
+  return { tier: 99, label: "Outside search area", reason: "outside 4 miles", distanceMiles };
+}
+
+function buildSaleAppendixEntry(record, extra = {}) {
+  const ratio = Number.isFinite(asNumber(record.assessedValueAtSale)) && Number.isFinite(asNumber(record.salePrice)) && asNumber(record.salePrice) > 0
+    ? asNumber(record.assessedValueAtSale) / asNumber(record.salePrice)
+    : null;
+  return {
+    parcelId: record.parcelId,
+    address: record.address,
+    saleDate: record.saleDate,
+    salePrice: record.salePrice,
+    assessedValueAtSale: record.assessedValueAtSale,
+    ratio,
+    salePricePerSqft: record.salePricePerSqft,
+    adjustedSalePricePerSqft: record.adjustedSalePricePerSqft ?? null,
+    adjustedSalePrice: record.adjustedSalePrice ?? null,
+    distanceMiles: record.distanceMiles,
+    tier: record.tier,
+    tierLabel: record.tierLabel,
+    monthsFromValuation: record.monthsFromValuation,
+    orptsFlags: {
+      armsLength: record.armsLength,
+      codUsable: record.codUsable,
+      rarUsable: record.rarUsable,
+    },
+    reasons: record.reasons || [],
+    conditionMemo: record.conditionMemo || "",
+    ...extra,
+  };
+}
+
+function collectCandidateSales({ subject, subjectProfile, parcels = [], salesByParcelId = null, valuationDate, maxWindowMonths = 60 }) {
+  const subjectId = candidateParcelId(subject);
+  const subjectFamily = candidateFamily(subject);
+  const records = [];
+  for (const parcel of parcels || []) {
+    if (!parcel || candidateParcelId(parcel) === subjectId || candidateFamily(parcel) !== subjectFamily) continue;
+    const tierContext = comparableTierContext(subject, subjectProfile, parcel);
+    if (tierContext.tier > 4) continue;
+    const matchDiagnostics = evidenceMatchDiagnostics(subject, subjectProfile, parcel);
+    const livingArea = candidateLivingArea(parcel);
+    for (const sale of getParcelSales(parcel, salesByParcelId)) {
+      const saleDate = parseSalesDate(sale?.sale_dte) || parseSalesDate(sale?.deed_dte);
+      const salePrice = asNumber(sale?.sale_price);
+      const monthsFromValuation = saleDate ? monthsBetweenDates(valuationDate, saleDate) : null;
+      const reasons = [];
+      const usableForStudy = usableOrptsSale(sale);
+      if (!flagIsYes(sale?.arms_length_flag)) reasons.push("not marked arm's-length by ORPTS");
+      if (!Number.isFinite(salePrice) || salePrice <= 0) reasons.push("sale price is missing or zero");
+      if (!(saleDate instanceof Date)) reasons.push("sale date is missing");
+      if (Number.isFinite(monthsFromValuation) && monthsFromValuation > maxWindowMonths) reasons.push(`sale is older than ${formatWindowMonthsLabel(maxWindowMonths)}`);
+      if (tierContext.tier === 4) reasons.push("sale falls in Tier 4 research-only geography");
+      if (!matchDiagnostics.matches) reasons.push(...matchDiagnostics.reasons);
+      if (!usableForStudy) reasons.push("ORPTS did not mark the sale usable for COD/RAR work");
+      const activeFlags = conditionFlagsForSale(sale);
+      if (activeFlags.length) reasons.push("ORPTS condition flags suggest a non-standard transfer");
+      records.push({
+        parcelId: candidateParcelId(parcel),
+        address: parcel?.address || parcel?.parcelId || "",
+        saleDate: saleDate ? saleDate.toISOString().slice(0, 10) : null,
+        saleDateObj: saleDate,
+        salePrice,
+        assessedValueAtSale: asNumber(sale?.total_av) ?? asNumber(parcel?.assessedValue),
+        salePricePerSqft: Number.isFinite(livingArea) && livingArea > 0 && Number.isFinite(salePrice) ? salePrice / livingArea : null,
+        distanceMiles: tierContext.distanceMiles,
+        tier: tierContext.tier,
+        tierLabel: tierContext.label,
+        tierReason: tierContext.reason,
+        monthsFromValuation,
+        armsLength: flagIsYes(sale?.arms_length_flag),
+        usableForStudy,
+        codUsable: flagIsYes(sale?.cod_usable),
+        rarUsable: flagIsYes(sale?.rar_usable),
+        conditionMemo: sale?.cond_memo || "",
+        conditionFlags: activeFlags,
+        matchDiagnostics,
+        reasons,
+      });
+    }
+  }
+  return records;
+}
+
+function computeTrendModel(records = []) {
+  const usable = (Array.isArray(records) ? records : []).filter(record =>
+    record.armsLength &&
+    record.usableForStudy &&
+    !record.conditionFlags?.length &&
+    Number.isFinite(record.salePricePerSqft) &&
+    Number.isFinite(record.monthsFromValuation)
+  );
+  for (const maxTier of [1, 2, 3, 4]) {
+    const scoped = usable.filter(record => record.tier <= maxTier && record.monthsFromValuation <= 60);
+    const recent = scoped.filter(record => record.monthsFromValuation <= 24);
+    const older = scoped.filter(record => record.monthsFromValuation > 24 && record.monthsFromValuation <= 60);
+    if (recent.length < 3 || older.length < 3) continue;
+    const recentMedian = medianValue(recent.map(record => record.salePricePerSqft));
+    const olderMedian = medianValue(older.map(record => record.salePricePerSqft));
+    const recentMonths = meanValue(recent.map(record => record.monthsFromValuation));
+    const olderMonths = meanValue(older.map(record => record.monthsFromValuation));
+    if (!Number.isFinite(recentMedian) || !Number.isFinite(olderMedian) || recentMedian <= 0 || olderMedian <= 0 || !Number.isFinite(recentMonths) || !Number.isFinite(olderMonths) || olderMonths <= recentMonths) continue;
+    const monthlyRate = Math.pow(recentMedian / olderMedian, 1 / (olderMonths - recentMonths)) - 1;
+    if (!Number.isFinite(monthlyRate)) continue;
+    return {
+      available: true,
+      tierUsed: maxTier,
+      monthlyRate,
+      annualRatePct: (Math.pow(1 + monthlyRate, 12) - 1) * 100,
+      note: `Older sales were time-adjusted using a local $/sq ft trend model through ${maxTier === 1 ? "same-neighborhood" : maxTier === 2 ? "Tier 2" : maxTier === 3 ? "Tier 3" : "Tier 4"} sales.`,
+    };
+  }
+  return {
+    available: false,
+    tierUsed: null,
+    monthlyRate: null,
+    annualRatePct: null,
+    note: "A local time-adjustment trend model could not be built from the available usable sales.",
+  };
+}
+
+function computeAdjustedSaleMeasures(record, trendModel) {
+  if (!Number.isFinite(record?.salePricePerSqft) || !Number.isFinite(record?.salePrice) || !Number.isFinite(record?.monthsFromValuation)) {
+    return { adjustedSalePricePerSqft: null, adjustedSalePrice: null };
+  }
+  if (record.monthsFromValuation <= 24) {
+    return {
+      adjustedSalePricePerSqft: record.salePricePerSqft,
+      adjustedSalePrice: record.salePrice,
+    };
+  }
+  if (!trendModel?.available || !Number.isFinite(trendModel?.monthlyRate)) {
+    return { adjustedSalePricePerSqft: null, adjustedSalePrice: null };
+  }
+  const factor = Math.pow(1 + trendModel.monthlyRate, record.monthsFromValuation);
+  return {
+    adjustedSalePricePerSqft: record.salePricePerSqft * factor,
+    adjustedSalePrice: record.salePrice * factor,
+  };
+}
+
+function computePriceRelatedBias(trimmedEntries = []) {
+  if (!Array.isArray(trimmedEntries) || trimmedEntries.length < 20) return null;
+  const usable = trimmedEntries
+    .filter(entry => Number.isFinite(asNumber(entry.salePrice)) && asNumber(entry.salePrice) > 0 && Number.isFinite(asNumber(entry.ratio)))
+    .map(entry => ({
+      x: Math.log(asNumber(entry.salePrice)),
+      y: asNumber(entry.ratio),
+    }));
+  if (usable.length < 20) return null;
+  const meanX = meanValue(usable.map(entry => entry.x));
+  const meanY = meanValue(usable.map(entry => entry.y));
+  const numerator = usable.reduce((sum, entry) => sum + ((entry.x - meanX) * (entry.y - meanY)), 0);
+  const denominator = usable.reduce((sum, entry) => sum + ((entry.x - meanX) ** 2), 0);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return null;
+  return (numerator / denominator) * 100;
+}
+
+function computeEvidenceSufficiency({ analysisState, selectedComps = [], marketSaleModel = null }) {
+  if (marketSaleModel?.available && marketSaleModel?.sufficientForClaim) {
+    return {
+      status: "sale_backed_sufficient",
+      label: "Sale-backed evidence is sufficient",
+      canRecommendClaim: true,
+      canRecommendValue: true,
+      reason: `The package has ${marketSaleModel.saleCount} usable sale-backed evidence records in the ${marketSaleModel.windowLabel} ${marketSaleModel.tierLabel.toLowerCase()} pool.`,
+    };
+  }
+  if ((Array.isArray(selectedComps) && selectedComps.length) || analysisState === "research_only") {
+    return {
+      status: "sale_backed_insufficient",
+      label: "Sale-backed evidence is insufficient",
+      canRecommendClaim: false,
+      canRecommendValue: false,
+      reason: marketSaleModel?.insufficiencyReason || "Comparable homes were found, but the sale-backed evidence pool is not strong enough for an automatic claim recommendation or requested value.",
+    };
+  }
+  return {
+    status: "needs_homeowner_evidence",
+    label: "Additional homeowner evidence is needed",
+    canRecommendClaim: false,
+    canRecommendValue: false,
+    reason: "No grievance package could be built from the current comparable evidence. Additional homeowner-supplied evidence would be needed before recommending a claim or value.",
+  };
+}
+
+function computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison = null }) {
+  if (!evidenceSufficiency?.canRecommendClaim) {
+    return {
+      allowRecommendation: false,
+      recommendationCode: null,
+      recommendedReason: null,
+      selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+      reason: evidenceSufficiency?.reason || "Sale-backed evidence is not sufficient for an automatic claim recommendation.",
+    };
+  }
+  const directComparisonGap = asNumber(ratioStudyDirectComparison?.ratioGap);
+  if (
+    ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly &&
+    Number.isFinite(directComparisonGap) &&
+    directComparisonGap >= 0.05 &&
+    ratioStudyModel?.reliabilityLabel !== "low"
+  ) {
+    return {
+      allowRecommendation: true,
+      recommendationCode: "UNEQUAL",
+      recommendedReason: "Unequal Assessment",
+      selectionLabel: 'Check "Unequal assessment"',
+      reason: `The subject's verified sale ratio is materially above the local verified-sale median ratio (${(directComparisonGap * 100).toFixed(1)} points above the trimmed median).`,
+    };
+  }
+  if (Number.isFinite(asNumber(marketSaleModel?.impliedDifferencePct)) && asNumber(marketSaleModel.impliedDifferencePct) > 0.03) {
+    return {
+      allowRecommendation: true,
+      recommendationCode: "EXCESSIVE",
+      recommendedReason: "Excessive Assessment",
+      selectionLabel: 'Check "Excessive assessment"',
+      reason: `The sale-backed market model implies a lower market value than the current assessment by ${((marketSaleModel.impliedDifferencePct || 0) * 100).toFixed(1)}%.`,
+    };
+  }
+  return {
+    allowRecommendation: false,
+    recommendationCode: null,
+    recommendedReason: null,
+    selectionLabel: "Review RP-524 Part Three manually before choosing a complaint reason",
+    reason: "The sale-backed models are directionally useful, but they do not separate unequal from excessive assessment strongly enough for an automatic claim recommendation.",
+  };
+}
+
+function computeMarketSaleModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = new Date(), rollContext = null }) {
+  if (!(salesByParcelId instanceof Map) || !subject) return null;
+  const roll = buildRollContext(subject, rollContext, null);
+  const valuationDate = valuationDateFromContext(roll, currentDate);
+  const subjectSqft = asNumber(subjectProfile?.livingArea ?? subject?.livingAreaSqft ?? inventoryValue(subject, "sqftLivingArea"));
+  const fallbackPricePerSqft = Number.isFinite(asNumber(subject?.fullMarketValue)) && Number.isFinite(subjectSqft) && subjectSqft > 0
+    ? asNumber(subject.fullMarketValue) / subjectSqft
+    : null;
+  const candidateSales = collectCandidateSales({ subject, subjectProfile, parcels, salesByParcelId, valuationDate, maxWindowMonths: 60 });
+  const trendModel = computeTrendModel(candidateSales);
+  const attempts = [];
+  let chosen = null;
+  for (const windowMonths of [24, 36, 60]) {
+    for (const tier of [1, 2, 3, 4]) {
+      const included = candidateSales
+        .filter(record =>
+          record.tier <= tier &&
+          record.tier < 99 &&
+          record.armsLength &&
+          record.usableForStudy &&
+          !record.conditionFlags?.length &&
+          record.matchDiagnostics?.matches &&
+          Number.isFinite(record.salePricePerSqft) &&
+          Number.isFinite(record.monthsFromValuation) &&
+          record.monthsFromValuation <= windowMonths
+        )
+        .map(record => ({ ...record, ...computeAdjustedSaleMeasures(record, trendModel) }))
+        .filter(record => record.monthsFromValuation <= 24 || Number.isFinite(record.adjustedSalePricePerSqft));
+      attempts.push({ windowMonths, tier, count: included.length });
+      if (!chosen && Number.isFinite(subjectSqft) && subjectSqft > 0 && included.length >= 3) {
+        chosen = { windowMonths, tier, included };
+      }
+      if (chosen) break;
+    }
+    if (chosen) break;
+  }
+  if (!chosen) {
+    const bestAttempt = attempts.sort((a, b) => b.count - a.count)[0] || { count: 0, windowMonths: 24, tier: 1 };
+    return {
+      available: false,
+      saleCount: bestAttempt.count,
+      expandedRadius: bestAttempt.tier > 1,
+      sufficientForClaim: false,
+      reliabilityLabel: "insufficient",
+      valuationDate: valuationDate.toISOString().slice(0, 10),
+      windowMonths: bestAttempt.windowMonths,
+      windowLabel: formatWindowMonthsLabel(bestAttempt.windowMonths),
+      tierUsed: bestAttempt.tier,
+      tierLabel: bestAttempt.tier === 1 ? "Tier 1 same neighborhood" : bestAttempt.tier === 2 ? "Tier 2" : bestAttempt.tier === 3 ? "Tier 3" : "Tier 4",
+      timeAdjustmentMethod: trendModel.available ? trendModel.note : "No local time adjustment could be applied.",
+      includedSales: [],
+      excludedSales: candidateSales.map(record => buildSaleAppendixEntry(record, { included: false })),
+      estimatedSubjectFmv: null,
+      estimatedValueLow: null,
+      estimatedValueHigh: null,
+      impliedDifference: null,
+      impliedDifferencePct: null,
+      insufficiencyReason: !Number.isFinite(subjectSqft) || subjectSqft <= 0
+        ? "Living area is unavailable for the subject parcel, so the sale-backed market model cannot be calculated."
+        : `Only ${bestAttempt.count} usable sale${bestAttempt.count === 1 ? "" : "s"} were found within the current evidence pool.`,
+      note: !Number.isFinite(subjectSqft) || subjectSqft <= 0
+        ? "Living area is unavailable for the subject parcel, so the sale-backed market model cannot be calculated."
+        : "Insufficient usable sale-backed evidence for a defensible market estimate.",
+      fallbackPricePerSqft,
+    };
+  }
+  const adjustedPpsfValues = chosen.included.map(record => record.adjustedSalePricePerSqft).filter(Number.isFinite);
+  const neighborhoodMedianPpsf = roundNumber(medianValue(adjustedPpsfValues) || 0, 2);
+  const estimatedSubjectFmv = Math.round((medianValue(adjustedPpsfValues) || 0) * subjectSqft);
+  const estimatedValueLow = Math.round((percentileValue(adjustedPpsfValues, 0.25) || medianValue(adjustedPpsfValues) || 0) * subjectSqft);
+  const estimatedValueHigh = Math.round((percentileValue(adjustedPpsfValues, 0.75) || medianValue(adjustedPpsfValues) || 0) * subjectSqft);
   const impliedDifference = Number.isFinite(asNumber(subject?.assessedValue)) && Number.isFinite(estimatedSubjectFmv)
     ? Math.round(asNumber(subject.assessedValue) - estimatedSubjectFmv)
     : null;
   const impliedDifferencePct = Number.isFinite(impliedDifference) && Number.isFinite(estimatedSubjectFmv) && estimatedSubjectFmv > 0
     ? impliedDifference / estimatedSubjectFmv
     : null;
+  const tierLabel = chosen.tier === 1
+    ? "Tier 1 same neighborhood"
+    : chosen.tier === 2
+      ? "Tier 2 same neighborhood association / ZIP fallback"
+      : chosen.tier === 3
+        ? "Tier 3 citywide within 2 miles"
+        : "Tier 4 research-only within 4 miles";
+  const sufficientForClaim = chosen.included.length >= 3 && chosen.tier <= 3 && chosen.windowMonths <= 36;
   return {
     available: true,
-    saleCount: eligibleSales.length,
-    expandedRadius: expanded,
+    saleCount: chosen.included.length,
+    expandedRadius: chosen.tier > 1 || chosen.included.some(record => Number.isFinite(record.distanceMiles) && record.distanceMiles > 1),
+    sufficientForClaim,
+    reliabilityLabel: sufficientForClaim ? "sufficient" : chosen.windowMonths === 60 || chosen.tier === 4 ? "strong_caveat" : "caution",
+    valuationDate: valuationDate.toISOString().slice(0, 10),
+    windowMonths: chosen.windowMonths,
+    windowLabel: formatWindowMonthsLabel(chosen.windowMonths),
+    tierUsed: chosen.tier,
+    tierLabel,
     neighborhoodMedianPpsf,
     estimatedSubjectFmv,
+    estimatedValueLow,
+    estimatedValueHigh,
     impliedDifference,
     impliedDifferencePct,
-    eligibleSales,
-    note: expanded ? "Radius expanded to 1.5 miles to reach the minimum sale sample." : "",
+    eligibleSales: chosen.included,
+    includedSales: chosen.included.map(record => buildSaleAppendixEntry(record, { included: true })),
+    excludedSales: candidateSales
+      .filter(record => !(chosen.included.some(included => included.parcelId === record.parcelId && included.saleDate === record.saleDate && included.salePrice === record.salePrice)))
+      .map(record => buildSaleAppendixEntry(record, { included: false })),
+    timeAdjustmentMethod: chosen.windowMonths > 24
+      ? trendModel.note
+      : "No time adjustment was needed because the evidence comes from the primary 24-month window.",
+    insufficiencyReason: sufficientForClaim ? null : "The sale-backed value estimate exists, but it relies on a broader fallback window or research-only geography and should not drive an automatic claim recommendation.",
+    note: chosen.windowMonths > 24 || chosen.tier > 1
+      ? `The market estimate uses a ${formatWindowMonthsLabel(chosen.windowMonths)} window and ${tierLabel.toLowerCase()} to reach a usable sample.`
+      : "The market estimate uses the primary 24-month sale window in the subject neighborhood.",
+    fallbackPricePerSqft,
   };
 }
 
-function computeNeighborhoodEquityModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = new Date() }) {
+function computeNeighborhoodEquityModel({ subject, subjectProfile, parcels = [], salesByParcelId = null, currentDate = new Date(), rollContext = null }) {
   if (!(salesByParcelId instanceof Map) || !subject) return null;
-  const subjectNeighborhood = parcelNeighborhoodName(subject, subjectProfile);
-  const subjectZip = subjectProfile?.zipCode || subject?.zip || "";
-  const subjectFamily = residentialFamilyForClass(subject?.propClass, subject?.propClassDesc || "");
-  const collectRatios = mode => {
-    const ratios = [];
-    for (const parcel of parcels || []) {
-      if (!parcel || !isResidentialPropClass(parcel?.propClass)) continue;
-      const sameArea = mode === "neighborhood"
-        ? parcelNeighborhoodName(parcel, parcel?._compProfile) === subjectNeighborhood
-        : (parcel?.zip || "") === subjectZip;
-      if (!sameArea) continue;
-      if (residentialFamilyForClass(parcel?.propClass, parcel?.propClassDesc || "") !== subjectFamily) continue;
-      const sales = getParcelSales(parcel, salesByParcelId).filter(sale => isRecentArmsLengthSale(sale, currentDate, 3));
-      const av = asNumber(parcel?.assessedValue);
-      for (const sale of sales) {
-        const salePrice = asNumber(sale?.sale_price);
-        if (!Number.isFinite(av) || !Number.isFinite(salePrice) || salePrice <= 0) continue;
-        ratios.push(av / salePrice);
+  const roll = buildRollContext(subject, rollContext, null);
+  const valuationDate = valuationDateFromContext(roll, currentDate);
+  const candidateSales = collectCandidateSales({ subject, subjectProfile, parcels, salesByParcelId, valuationDate, maxWindowMonths: 60 });
+  let chosen = null;
+  for (const windowMonths of [24, 36, 60]) {
+    for (const tier of [1, 2, 3]) {
+      const included = candidateSales.filter(record =>
+        record.tier <= tier &&
+        record.armsLength &&
+        record.usableForStudy &&
+        !record.conditionFlags?.length &&
+        Number.isFinite(record.assessedValueAtSale) &&
+        Number.isFinite(record.salePrice) &&
+        record.salePrice > 0 &&
+        Number.isFinite(record.monthsFromValuation) &&
+        record.monthsFromValuation <= windowMonths
+      );
+      if (included.length >= 5) {
+        chosen = { windowMonths, tier, included };
+        break;
       }
     }
-    return ratios;
-  };
-  let scope = "neighborhood";
-  let ratios = collectRatios("neighborhood");
-  if (ratios.length < 5) {
-    scope = "zip";
-    ratios = collectRatios("zip");
+    if (chosen) break;
   }
-  if (ratios.length < 5) {
-    return { available: false, sampleSize: ratios.length, scope, note: "Insufficient sales data for neighborhood equity analysis." };
+  if (!chosen) {
+    return {
+      available: false,
+      sampleSize: 0,
+      rawSampleSize: 0,
+      trimmedSampleSize: 0,
+      scope: "insufficient",
+      note: "Insufficient verified sale-ratio evidence for the ratio study.",
+      includedSales: [],
+      excludedSales: candidateSales.map(record => buildSaleAppendixEntry(record, { included: false })),
+      cod: null,
+      prd: null,
+      prb: null,
+      reliabilityLabel: "low",
+      iaaoStandard: 15,
+      medianRatio: null,
+      subjectRatio: null,
+      subjectPercentile: null,
+    };
   }
-  const medianRatio = medianValue(ratios);
-  const absoluteDeviations = ratios.map(value => Math.abs(value - medianRatio));
+  const ratios = chosen.included.map(record => ({
+    ...record,
+    ratio: record.assessedValueAtSale / record.salePrice,
+  })).sort((a, b) => a.ratio - b.ratio);
+  const trimCount = ratios.length >= 20 ? Math.floor(ratios.length * 0.05) : 0;
+  const trimmed = ratios.slice(trimCount, ratios.length - trimCount);
+  const trimmedRatios = trimmed.map(entry => entry.ratio);
+  const medianRatio = medianValue(trimmedRatios);
+  const absoluteDeviations = trimmedRatios.map(value => Math.abs(value - medianRatio));
   const cod = Number.isFinite(medianRatio) && medianRatio !== 0 ? (medianValue(absoluteDeviations) / medianRatio) * 100 : null;
-  const subjectRatio = safeDivide(asNumber(subject?.assessedValue), asNumber(subject?.fullMarketValue));
-  const subjectPercentile = percentileRankValue(subjectRatio, ratios);
+  const meanRatio = meanValue(trimmedRatios);
+  const weightedMeanRatio = safeDivide(
+    trimmed.reduce((sum, entry) => sum + entry.assessedValueAtSale, 0),
+    trimmed.reduce((sum, entry) => sum + entry.salePrice, 0)
+  );
+  const prd = trimmed.length >= 20 && Number.isFinite(meanRatio) && Number.isFinite(weightedMeanRatio) && weightedMeanRatio > 0
+    ? meanRatio / weightedMeanRatio
+    : null;
+  const prb = trimmed.length >= 20 ? computePriceRelatedBias(trimmed) : null;
   return {
     available: true,
-    sampleSize: ratios.length,
-    scope,
+    sampleSize: trimmed.length,
+    rawSampleSize: ratios.length,
+    trimmedSampleSize: trimmed.length,
+    trimRule: trimCount > 0 ? "top and bottom 5% trimmed" : "no trim applied because the sample is smaller than 20",
+    scope: chosen.tier === 1 ? "neighborhood" : chosen.tier === 2 ? ((candidateNeighborhoodAssociation(subject) || "") ? "tier_2" : "zip") : "tier_3",
+    windowMonths: chosen.windowMonths,
+    windowLabel: formatWindowMonthsLabel(chosen.windowMonths),
+    tierUsed: chosen.tier,
     medianRatio,
-    subjectRatio,
-    subjectPercentile,
     cod,
-    codWarning: Number.isFinite(cod) && cod > 15 ? `Systemic assessment inconsistency detected. COD ${cod.toFixed(1)} exceeds the IAAO single-family standard of 15.0.` : "",
+    prd,
+    prb,
+    reliabilityLabel: trimmed.length >= 20 ? "standard" : "low",
     iaaoStandard: 15,
+    codWarning: Number.isFinite(cod) && cod > 15 ? `The trimmed COD is ${cod.toFixed(1)}, which is above the IAAO single-family guideline of 15.0.` : "",
+    note: trimmed.length >= 20
+      ? "The ratio study uses verified sale ratios after trimming the top and bottom 5% of ratios."
+      : "The ratio study is low reliability because the trimmed sample is under 20 sales, so PRD and PRB are suppressed.",
+    includedSales: trimmed.map(entry => buildSaleAppendixEntry(entry, { included: true, ratio: entry.ratio })),
+    excludedSales: candidateSales
+      .filter(record => !trimmed.some(included => included.parcelId === record.parcelId && included.saleDate === record.saleDate && included.salePrice === record.salePrice))
+      .map(record => buildSaleAppendixEntry(record, { included: false })),
+    subjectRatio: null,
+    subjectPercentile: null,
   };
 }
 
-function computeSuggestedRequestedValue({ subject, selectedComps = [] }) {
-  const eligible = (Array.isArray(selectedComps) ? selectedComps : []).filter(comp =>
-    (candidateQualityValue(comp) || 0) >= 60 &&
-    (candidateConfidenceValue(comp) || 0) >= 70 &&
-    (candidateSupportValue(comp) || 0) >= 12 &&
-    Number.isFinite(candidateAssessedValue(comp)) &&
-    !comp?._marginalSupport && !comp?.marginalSupport
-  );
-  if (eligible.length < 2) {
+function computeSuggestedRequestedValue({ subject, selectedComps = [], marketSaleModel = null, equalizationRate = null, evidenceSufficiency = null }) {
+  if (!marketSaleModel && !evidenceSufficiency) {
+    const eligible = (Array.isArray(selectedComps) ? selectedComps : []).filter(comp =>
+      (candidateQualityValue(comp) || 0) >= 60 &&
+      (candidateConfidenceValue(comp) || 0) >= 70 &&
+      (candidateSupportValue(comp) || 0) >= 12 &&
+      Number.isFinite(candidateAssessedValue(comp)) &&
+      !comp?._marginalSupport && !comp?.marginalSupport
+    );
+    if (eligible.length < 2) {
+      return {
+        value: null,
+        method: "manual_review",
+        reviewManually: true,
+        note: eligible.length === 1
+          ? "Only one comp qualifies for the suggested value calculation, so manual review is required."
+          : "Fewer than two comps qualify for the suggested value calculation, so manual review is required.",
+        eligibleCount: eligible.length,
+        methodA: null,
+        methodB: null,
+        scarWarning: null,
+      };
+    }
+    const assessedValues = eligible.map(candidateAssessedValue).filter(Number.isFinite);
+    const medianAssessed = medianValue(assessedValues);
+    const spread = Number.isFinite(medianAssessed) && medianAssessed > 0
+      ? (Math.max(...assessedValues) - Math.min(...assessedValues)) / medianAssessed
+      : 0;
+    const allEquityTied = eligible.every(comp => Math.abs(asNumber(candidateNormalizedSummary(comp).equityRatioDeltaPoints) || 0) < 1.0);
+    if (spread > 0.20 || allEquityTied) {
+      return {
+        value: null,
+        method: "manual_review",
+        reviewManually: true,
+        note: spread > 0.20
+          ? "Qualifying comp assessed values are spread more than 20%, so manual review is required."
+          : "All qualifying comps have equity ratios within 1 point of the subject, so manual review is required.",
+        eligibleCount: eligible.length,
+        methodA: null,
+        methodB: null,
+        scarWarning: null,
+      };
+    }
+    const weightedEntries = eligible.map(comp => ({
+      value: candidateAssessedValue(comp),
+      weight: ((candidateQualityValue(comp) || 0) * 0.35) + ((candidateSupportValue(comp) || 0) * 0.40) + ((candidateConfidenceValue(comp) || 0) * 0.25),
+    }));
+    const methodA = eligible.length === 2
+      ? Math.round(Math.min(
+        safeDivide(weightedEntries.reduce((sum, entry) => sum + (entry.value * entry.weight), 0), weightedEntries.reduce((sum, entry) => sum + entry.weight, 0)) || meanValue(weightedEntries.map(entry => entry.value)),
+        (weightedEntries[0].value + weightedEntries[1].value) / 2
+      ))
+      : weightedMedian(weightedEntries);
+    const subjectFmv = asNumber(subject?.fullMarketValue);
+    const medianCompEquityRatio = medianValue(eligible.map(candidateEquityRatio).filter(Number.isFinite));
+    const methodB = Number.isFinite(subjectFmv) && Number.isFinite(medianCompEquityRatio)
+      ? Math.round(subjectFmv * medianCompEquityRatio)
+      : null;
+    let value = null;
+    let method = "manual_review";
+    if (Number.isFinite(methodA) && Number.isFinite(methodB)) {
+      value = Math.min(methodA, methodB);
+      method = value === methodA ? "method_a" : "method_b";
+    } else if (Number.isFinite(methodA)) {
+      value = methodA;
+      method = "method_a";
+    } else if (Number.isFinite(methodB)) {
+      value = methodB;
+      method = "method_b";
+    }
+    const subjectAv = asNumber(subject?.assessedValue);
+    if (Number.isFinite(subjectAv) && Number.isFinite(value) && value > subjectAv) {
+      return {
+        value: null,
+        method: "manual_review",
+        reviewManually: true,
+        note: "The suggested value is above the current assessed value, so manual review is required.",
+        eligibleCount: eligible.length,
+        methodA,
+        methodB,
+        scarWarning: null,
+      };
+    }
+    let scarWarning = null;
+    if (Number.isFinite(subjectAv) && Number.isFinite(value) && subjectAv > 0) {
+      const reductionPct = (subjectAv - value) / subjectAv;
+      if (reductionPct > 0.25) {
+        scarWarning = `SCAR limit exceeded: this reduction (${(reductionPct * 100).toFixed(1)}%) exceeds the 25% maximum typically allowed in SCAR proceedings.`;
+      }
+    }
     return {
-      value: null,
-      method: "manual_review",
-      reviewManually: true,
-      note: eligible.length === 1
-        ? "Only one comp qualifies for the suggested value calculation, so manual review is required."
-        : "Fewer than two comps qualify for the suggested value calculation, so manual review is required.",
-      eligibleCount: eligible.length,
-      methodA: null,
-      methodB: null,
-      scarWarning: null,
-    };
-  }
-  const assessedValues = eligible.map(candidateAssessedValue).filter(Number.isFinite);
-  const medianAssessed = medianValue(assessedValues);
-  const spread = Number.isFinite(medianAssessed) && medianAssessed > 0
-    ? (Math.max(...assessedValues) - Math.min(...assessedValues)) / medianAssessed
-    : 0;
-  const allEquityTied = eligible.every(comp => Math.abs(asNumber(candidateNormalizedSummary(comp).equityRatioDeltaPoints) || 0) < 1.0);
-  if (spread > 0.20 || allEquityTied) {
-    return {
-      value: null,
-      method: "manual_review",
-      reviewManually: true,
-      note: spread > 0.20
-        ? "Qualifying comp assessed values are spread more than 20%, so manual review is required."
-        : "All qualifying comps have equity ratios within 1 point of the subject, so manual review is required.",
-      eligibleCount: eligible.length,
-      methodA: null,
-      methodB: null,
-      scarWarning: null,
-    };
-  }
-  const weightedEntries = eligible.map(comp => ({
-    value: candidateAssessedValue(comp),
-    weight: ((candidateQualityValue(comp) || 0) * 0.35) + ((candidateSupportValue(comp) || 0) * 0.40) + ((candidateConfidenceValue(comp) || 0) * 0.25),
-  }));
-  let methodA = null;
-  if (eligible.length === 2) {
-    const totalWeight = weightedEntries.reduce((sum, entry) => sum + entry.weight, 0);
-    const weightedAverage = totalWeight > 0
-      ? weightedEntries.reduce((sum, entry) => sum + (entry.value * entry.weight), 0) / totalWeight
-      : meanValue(weightedEntries.map(entry => entry.value));
-    const simpleMidpoint = (weightedEntries[0].value + weightedEntries[1].value) / 2;
-    methodA = Math.round(Math.min(weightedAverage, simpleMidpoint));
-  } else {
-    methodA = weightedMedian(weightedEntries);
-  }
-  const subjectFmv = asNumber(subject?.fullMarketValue);
-  const equityRatios = eligible.map(candidateEquityRatio).filter(Number.isFinite);
-  const medianCompEquityRatio = medianValue(equityRatios);
-  const methodB = Number.isFinite(subjectFmv) && Number.isFinite(medianCompEquityRatio)
-    ? Math.round(subjectFmv * medianCompEquityRatio)
-    : null;
-  let value = null;
-  let method = "manual_review";
-  if (Number.isFinite(methodA) && Number.isFinite(methodB)) {
-    value = Math.min(methodA, methodB);
-    method = value === methodA ? "method_a" : "method_b";
-  } else if (Number.isFinite(methodA)) {
-    value = methodA;
-    method = "method_a";
-  } else if (Number.isFinite(methodB)) {
-    value = methodB;
-    method = "method_b";
-  }
-  const subjectAv = asNumber(subject?.assessedValue);
-  if (Number.isFinite(subjectAv) && Number.isFinite(value) && value > subjectAv) {
-    return {
-      value: null,
-      method: "manual_review",
-      reviewManually: true,
-      note: "The suggested value is above the current assessed value, so manual review is required.",
+      value: Number.isFinite(value) ? Math.round(value) : null,
+      method,
+      reviewManually: false,
+      note: method === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : "The comp-based value estimate produced the lower filing recommendation.",
       eligibleCount: eligible.length,
       methodA,
       methodB,
+      scarWarning,
+    };
+  }
+  const loaRatio = asNumber(equalizationRate);
+  if (!evidenceSufficiency?.canRecommendValue || !marketSaleModel?.available || !Number.isFinite(asNumber(marketSaleModel?.estimatedSubjectFmv)) || !Number.isFinite(loaRatio) || loaRatio <= 0) {
+    return {
+      value: null,
+      method: "manual_review",
+      reviewManually: true,
+      note: evidenceSufficiency?.reason || "Sale-backed evidence is not strong enough for an automatic requested assessed value.",
+      eligibleCount: marketSaleModel?.saleCount || 0,
+      methodA: null,
+      methodB: null,
+      scarWarning: null,
+    };
+  }
+  const value = Math.round(asNumber(marketSaleModel.estimatedSubjectFmv) * loaRatio);
+  const subjectAv = asNumber(subject?.assessedValue);
+  if (Number.isFinite(subjectAv) && Number.isFinite(value) && value >= subjectAv) {
+    return {
+      value: null,
+      method: "manual_review",
+      reviewManually: true,
+      note: "The LOA-converted requested value is not below the current assessed value, so the app will not auto-fill a filing value.",
+      eligibleCount: marketSaleModel.saleCount || 0,
+      methodA: null,
+      methodB: null,
       scarWarning: null,
     };
   }
@@ -1487,13 +2052,13 @@ function computeSuggestedRequestedValue({ subject, selectedComps = [] }) {
     }
   }
   return {
-    value: Number.isFinite(value) ? Math.round(value) : null,
-    method,
+    value,
+    method: "uniform_percent_of_value",
     reviewManually: false,
-    note: method === "method_b" ? "The equity-ratio value estimate produced the lower filing recommendation." : "The comp-based value estimate produced the lower filing recommendation.",
-    eligibleCount: eligible.length,
-    methodA,
-    methodB,
+    note: "The requested assessed value is the sale-backed market estimate converted by the loaded uniform percent of value / LOA ratio.",
+    eligibleCount: marketSaleModel.saleCount || 0,
+    methodA: Math.round(asNumber(marketSaleModel.estimatedSubjectFmv)),
+    methodB: value,
     scarWarning,
   };
 }
@@ -1553,12 +2118,14 @@ function summarizeGrievancePackage({
   parcels = [],
   salesByParcelId = null,
   equalizationRate = null,
+  rollContext = null,
   currentDate = new Date(),
 }) {
   const selected = (Array.isArray(selectedComps) ? selectedComps : []).filter(Boolean);
   const visible = (Array.isArray(visibleComps) ? visibleComps : []).filter(Boolean);
-  const marketSaleModel = computeMarketSaleModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate });
-  const neighborhoodEquityModel = computeNeighborhoodEquityModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate });
+  const normalizedRollContext = buildRollContext(subject, rollContext, equalizationRate);
+  const marketSaleModel = computeMarketSaleModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate, rollContext: normalizedRollContext });
+  const ratioStudyModel = computeNeighborhoodEquityModel({ subject, subjectProfile, parcels, salesByParcelId, currentDate, rollContext: normalizedRollContext });
   applyCompAdjustments({ subject, subjectProfile, comps: visible, marketSaleModel, equalizationRate });
   const grievanceAvgFMV = selected.length ? Math.round(meanValue(selected.map(comp => asNumber(comp?.fullMarketValue)).filter(Number.isFinite))) : null;
   const grievanceAvgAssessed = selected.length ? Math.round(meanValue(selected.map(candidateAssessedValue).filter(Number.isFinite))) : null;
@@ -1586,25 +2153,46 @@ function summarizeGrievancePackage({
   if (selected.length < 3) packageLimitations.push("fewer than 3 comps are currently selected");
   if (selected.some(comp => (candidateConfidenceValue(comp) || 0) < 70)) packageLimitations.push("at least one selected comp has weaker data confidence");
   if (selected.some(comp => comp?._marginalSupport || comp?.marginalSupport)) packageLimitations.push("at least one selected comp is only marginal support");
-  const suggestedRequestedValue = computeSuggestedRequestedValue({ subject, selectedComps: selected });
   const overvaluationFlag = computeOvervaluationFlag(subject, equalizationRate);
   const selectionOutcomeCounts = computeSelectionOutcomeCounts(visible, selected);
   const analysisState = selected.length > 0 ? "grievance_package" : visible.length > 0 ? "research_only" : "no_matches";
+  const evidenceSufficiency = computeEvidenceSufficiency({ analysisState, selectedComps: selected, marketSaleModel });
+  const subjectSaleModel = computeSubjectSaleSignal(subject, salesByParcelId, currentDate);
+  const ratioStudyDirectComparison = computeRatioStudyDirectComparison({ subject, subjectSaleModel, ratioStudyModel, rollContext: normalizedRollContext, currentDate });
+  const claimGuidance = computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison });
+  const suggestedRequestedValue = computeSuggestedRequestedValue({ subject, marketSaleModel, equalizationRate, evidenceSufficiency });
+  if (evidenceSufficiency?.status !== "sale_backed_sufficient") packageLimitations.push("sale-backed evidence is insufficient for an automatic claim recommendation or requested value");
+  if (marketSaleModel?.windowMonths > 24) packageLimitations.push(`market estimate uses a ${marketSaleModel.windowLabel} fallback window`);
+  if (marketSaleModel?.tierUsed > 1) packageLimitations.push(`market estimate broadened to ${marketSaleModel.tierLabel.toLowerCase()}`);
+  if (ratioStudyModel?.reliabilityLabel === "low") packageLimitations.push("sale-ratio diagnostics are low reliability because the trimmed ratio-study sample is under 20 sales");
   const noPackageReasonCode = analysisState === "grievance_package" ? null : deriveNoPackageReasonCode(selectionOutcomeCounts);
   const noPackageReasonText = analysisState === "grievance_package"
     ? ""
-    : buildNoPackageReasonText(noPackageReasonCode, visible, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
+    : buildNoPackageReasonText(noPackageReasonCode, visible, overvaluationFlag, marketSaleModel, ratioStudyModel);
   const caseStatusLabel = analysisState === "research_only"
     ? "Research only"
-    : grievanceModerateOrBetterCount >= 3 && grievanceAverageSupportScore >= 18 && grievanceAverageQualityScore >= 60 && grievanceAverageConfidenceScore >= 65
+    : evidenceSufficiency?.status === "sale_backed_sufficient" && grievanceModerateOrBetterCount >= 3 && grievanceAverageSupportScore >= 18 && grievanceAverageQualityScore >= 60 && grievanceAverageConfidenceScore >= 65
       ? "Strong evidence"
-      : grievanceModerateOrBetterCount >= 2 && grievanceAverageSupportScore >= 10 && grievanceAverageQualityScore >= 50 && grievanceAverageConfidenceScore >= 60
+      : evidenceSufficiency?.status === "sale_backed_sufficient" && grievanceModerateOrBetterCount >= 2 && grievanceAverageSupportScore >= 10 && grievanceAverageQualityScore >= 50 && grievanceAverageConfidenceScore >= 60
         ? "Moderate evidence"
+        : evidenceSufficiency?.status === "sale_backed_insufficient"
+          ? "Insufficient sale-backed evidence"
         : "Weak evidence";
-  const claimRecommendation = selected.length
-    ? computeClaimRecommendation(selected, overvaluationFlag)
-    : computeResearchClaimRecommendation(visible, overvaluationFlag, marketSaleModel, neighborhoodEquityModel);
-  const subjectSaleModel = computeSubjectSaleSignal(subject, salesByParcelId, currentDate);
+  const claimRecommendation = claimGuidance?.allowRecommendation
+    ? {
+      code: claimGuidance.recommendationCode,
+      label: claimGuidance.recommendedReason,
+      selectionLabel: claimGuidance.selectionLabel,
+      reason: claimGuidance.reason,
+      variance: selected.length ? visibleEquityVariance(selected) : visibleEquityVariance(visible),
+    }
+    : null;
+  const salesAppendix = {
+    marketIncludedSales: marketSaleModel?.includedSales || [],
+    marketExcludedSales: marketSaleModel?.excludedSales || [],
+    ratioIncludedSales: ratioStudyModel?.includedSales || [],
+    ratioExcludedSales: ratioStudyModel?.excludedSales || [],
+  };
   return {
     grievanceSupportPool: selected.filter(comp => (candidateSupportValue(comp) || 0) > 0),
     grievanceCandidatePool: selected.filter(comp => (candidateSupportValue(comp) || 0) > 0),
@@ -1640,9 +2228,16 @@ function summarizeGrievancePackage({
     suggestedValueMethodB: suggestedRequestedValue.methodB,
     scarWarning: suggestedRequestedValue.scarWarning,
     overvaluationFlag,
+    rollContext: normalizedRollContext,
+    evidenceSufficiency,
+    claimGuidance,
     claimRecommendation,
+    marketEvidenceModel: marketSaleModel,
     marketSaleModel,
-    neighborhoodEquityModel,
+    ratioStudyModel,
+    ratioStudyDirectComparison,
+    neighborhoodEquityModel: ratioStudyModel,
+    salesAppendix,
     subjectSaleModel,
     grievancePackageAllSupportive: selected.length > 0 && grievanceSupportCount === selected.length,
   };
