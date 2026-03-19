@@ -2,7 +2,6 @@ const crypto = require("crypto");
 const childProcess = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const esbuild = require("./__build_perf/node_modules/esbuild");
 
 const root = __dirname;
 const buildDir = path.join(root, "__build_perf");
@@ -21,6 +20,19 @@ const buildSourceFile = path.join(buildDir, "albany-full-dashboard.jsx");
 const entryFile = path.join(buildDir, "entry.jsx");
 const outfile = path.join(root, "bundle.js");
 const htmlFiles = [path.join(root, "index.html"), path.join(root, "albany-dashboard.html")];
+
+function loadEsbuild() {
+  const candidates = [
+    path.join(root, "node_modules", "esbuild"),
+    path.join(buildDir, "node_modules", "esbuild"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return require(candidate);
+    }
+  }
+  throw new Error("Unable to locate esbuild. Install dependencies in the repo root or __build_perf.");
+}
 
 function readJsonIfExists(filePath) {
   if (!fs.existsSync(filePath)) return null;
@@ -71,6 +83,7 @@ const envGrievanceSettings = {
 const mergedGrievanceSettings = mergeDeep(baseGrievanceSettings, envGrievanceSettings);
 fs.writeFileSync(buildGrievanceSettingsFile, JSON.stringify(mergedGrievanceSettings, null, 2) + "\n", "utf8");
 
+const esbuild = loadEsbuild();
 esbuild.buildSync({
   entryPoints: [entryFile],
   bundle: true,

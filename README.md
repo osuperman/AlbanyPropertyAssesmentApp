@@ -91,6 +91,7 @@ GitHub Actions deploy:
 - published artifact: `site/`
 - required repository secret: `ALBANY_GOOGLE_MAPS_KEY`
 - one-time repo setting: GitHub Pages source must be set to `GitHub Actions`
+- GitHub Actions installs the root `package.json` dependencies before building
 
 Important:
 
