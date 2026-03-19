@@ -52,6 +52,8 @@ function mergeDeep(base, override) {
   return result;
 }
 
+fs.mkdirSync(buildDir, { recursive: true });
+
 function rewriteHtmlBundleReference(filePath, bundleVersion) {
   if (!fs.existsSync(filePath)) return;
   const html = fs.readFileSync(filePath, "utf8");
