@@ -33,6 +33,12 @@ Use the local scripts from the repo root:
 - `npm run refresh:data` - reconverts the Albany roll text file and reapplies county and geometry enrichment
 - `npm run prepare:data` - reapplies county and geometry enrichment to the existing `albany-roll.json`
 
+Private Google Maps keys:
+
+- keep them out of `grievance-settings.json`
+- use an untracked `grievance-settings.local.json` for local builds, or set `ALBANY_GOOGLE_MAPS_EMBED_KEY` and `ALBANY_GOOGLE_MAPS_STATIC_KEY`
+- restrict the key in Google Cloud to the exact websites and APIs the app uses
+
 The current app auto-loads these local files when they are present in the repo root:
 
 - `albany-roll.json`

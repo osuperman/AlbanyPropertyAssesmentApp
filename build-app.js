@@ -22,6 +22,24 @@ const entryFile = path.join(buildDir, "entry.jsx");
 const outfile = path.join(root, "bundle.js");
 const htmlFiles = [path.join(root, "index.html"), path.join(root, "albany-dashboard.html")];
 
+function readJsonIfExists(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function mergeDeep(base, override) {
+  if (!override || typeof override !== "object" || Array.isArray(override)) return base;
+  const result = Array.isArray(base) ? base.slice() : { ...(base || {}) };
+  for (const [key, value] of Object.entries(override)) {
+    if (value && typeof value === "object" && !Array.isArray(value) && base && typeof base[key] === "object" && !Array.isArray(base[key])) {
+      result[key] = mergeDeep(base[key], value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 function rewriteHtmlBundleReference(filePath, bundleVersion) {
   if (!fs.existsSync(filePath)) return;
   const html = fs.readFileSync(filePath, "utf8");
@@ -41,8 +59,17 @@ fs.copyFileSync(leafletSourceFile, buildLeafletFile);
 fs.copyFileSync(autocompleteSourceFile, buildAutocompleteFile);
 fs.copyFileSync(grievanceEngineSourceFile, buildGrievanceEngineFile);
 fs.copyFileSync(propertyClassCodesSourceFile, buildPropertyClassCodesFile);
-fs.copyFileSync(grievanceSettingsSourceFile, buildGrievanceSettingsFile);
 fs.copyFileSync(sourceFile, buildSourceFile);
+
+const baseGrievanceSettings = readJsonIfExists(grievanceSettingsSourceFile) || {};
+const envGrievanceSettings = {
+  streetView: {
+    embedApiKey: process.env.ALBANY_GOOGLE_MAPS_EMBED_KEY || process.env.ALBANY_GOOGLE_MAPS_KEY || "",
+    staticApiKey: process.env.ALBANY_GOOGLE_MAPS_STATIC_KEY || process.env.ALBANY_GOOGLE_MAPS_KEY || "",
+  },
+};
+const mergedGrievanceSettings = mergeDeep(baseGrievanceSettings, envGrievanceSettings);
+fs.writeFileSync(buildGrievanceSettingsFile, JSON.stringify(mergedGrievanceSettings, null, 2) + "\n", "utf8");
 
 esbuild.buildSync({
   entryPoints: [entryFile],

@@ -6,7 +6,8 @@
     "exemptionFaqUrl": "https://www.albanyny.gov/m/faq?cat=18#question-93"
   },
   "streetView": {
-    "embedApiKey": "AIzaSyAxeNVO6bWSNJI7k2lf9O6h7sZDDi5TY2I",
+    "embedApiKey": "",
+    "staticApiKey": "",
     "buttonLabel": "Street View"
   }
 }

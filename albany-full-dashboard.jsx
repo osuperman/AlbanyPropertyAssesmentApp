@@ -7,6 +7,18 @@ import propertyTypeClassificationCodes from "./property-type-classification-code
 import grievanceSettings from "./grievance-settings.json";
 import grievanceEngine from "./grievance-engine.js";
 
+const mergeDashboardSettings = (base, override) => {
+  if(!override || typeof override !== "object" || Array.isArray(override)) return base;
+  const result = Array.isArray(base) ? base.slice() : {...(base || {})};
+  for(const [key, value] of Object.entries(override)){
+    if(value && typeof value === "object" && !Array.isArray(value) && base && typeof base[key] === "object" && !Array.isArray(base[key])) result[key] = mergeDashboardSettings(base[key], value);
+    else result[key] = value;
+  }
+  return result;
+};
+const runtimeGrievanceSettings = typeof window !== "undefined" ? window.__ALBANY_RUNTIME_SETTINGS__ : null;
+const resolvedGrievanceSettings = mergeDashboardSettings(grievanceSettings, runtimeGrievanceSettings);
+
 const {
   analyzeComparableCandidate: analyzeComparableCandidateWithSpec,
   annotateComparablePackageDecisions: annotateComparablePackageDecisionsWithSpec,
@@ -1580,9 +1592,9 @@ const googleMapsHref = (address, zip, neighborhood) => {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 };
 const streetViewSettings = {
-  embedApiKey: String(grievanceSettings?.streetView?.embedApiKey || "").trim(),
-  staticApiKey: String(grievanceSettings?.streetView?.staticApiKey || grievanceSettings?.streetView?.embedApiKey || "").trim(),
-  buttonLabel: grievanceSettings?.streetView?.buttonLabel || "Street View",
+  embedApiKey: String(resolvedGrievanceSettings?.streetView?.embedApiKey || "").trim(),
+  staticApiKey: String(resolvedGrievanceSettings?.streetView?.staticApiKey || resolvedGrievanceSettings?.streetView?.embedApiKey || "").trim(),
+  buttonLabel: resolvedGrievanceSettings?.streetView?.buttonLabel || "Street View",
 };
 const MAP_NATIVE_CRS = "EPSG:26918";
 const MAP_NATIVE_DEF = "+proj=utm +zone=18 +datum=NAD83 +units=m +no_defs";
@@ -2381,10 +2393,10 @@ const comparableDeltaTone = (value, betterWhenLower=false) => {
   return value > 0 ? "var(--green2)" : "var(--red2)";
 };
 const grievanceResourceUrls = {
-  rp524FormUrl: grievanceSettings?.resources?.rp524FormUrl || "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
-  grievanceBookletUrl: grievanceSettings?.resources?.grievanceBookletUrl || "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
-  exemptionFaqLabel: grievanceSettings?.resources?.exemptionFaqLabel || "Exemption: Frequently Asked Questions",
-  exemptionFaqUrl: grievanceSettings?.resources?.exemptionFaqUrl || "https://www.albanyny.gov/m/faq?cat=18#question-93",
+  rp524FormUrl: resolvedGrievanceSettings?.resources?.rp524FormUrl || "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
+  grievanceBookletUrl: resolvedGrievanceSettings?.resources?.grievanceBookletUrl || "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
+  exemptionFaqLabel: resolvedGrievanceSettings?.resources?.exemptionFaqLabel || "Exemption: Frequently Asked Questions",
+  exemptionFaqUrl: resolvedGrievanceSettings?.resources?.exemptionFaqUrl || "https://www.albanyny.gov/m/faq?cat=18#question-93",
 };
 const comparableSupportDisplayStatus = kind => kind==="strong_support" || kind==="moderate_support" ? "supports" : kind==="weak_support" || kind==="neutral" ? "neutral" : "weakens";
 const explanationStatusTone = status => status==="supports" ? { color: "var(--green2)", background: "rgba(22,163,74,.08)", border: "rgba(22,163,74,.20)" } : status==="weakens" ? { color: "var(--red2)", background: "rgba(220,38,38,.06)", border: "rgba(220,38,38,.18)" } : { color: "var(--gray2)", background: "rgba(148,163,184,.10)", border: "rgba(148,163,184,.18)" };

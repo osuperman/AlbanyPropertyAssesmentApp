@@ -21,6 +21,39 @@ const mime = {
   ".zip": "application/zip"
 };
 
+function readJsonIfExists(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function mergeDeep(base, override) {
+  if (!override || typeof override !== "object" || Array.isArray(override)) return base;
+  const result = Array.isArray(base) ? base.slice() : { ...(base || {}) };
+  for (const [key, value] of Object.entries(override)) {
+    if (value && typeof value === "object" && !Array.isArray(value) && base && typeof base[key] === "object" && !Array.isArray(base[key])) {
+      result[key] = mergeDeep(base[key], value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function loadRuntimeSettings() {
+  const localSettings = readJsonIfExists(path.join(root, "grievance-settings.local.json")) || {};
+  const envSettings = {
+    streetView: {
+      embedApiKey: process.env.ALBANY_GOOGLE_MAPS_EMBED_KEY || process.env.ALBANY_GOOGLE_MAPS_KEY || "",
+      staticApiKey: process.env.ALBANY_GOOGLE_MAPS_STATIC_KEY || process.env.ALBANY_GOOGLE_MAPS_KEY || "",
+    },
+  };
+  return mergeDeep(localSettings, envSettings);
+}
+
 function resolvePath(urlPath) {
   const cleanPath = decodeURIComponent((urlPath || "/").split("?")[0]);
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\//, "");
@@ -45,10 +78,22 @@ const server = http.createServer((req, res) => {
       res.end(err.code === "ENOENT" ? "Not found" : "Server error");
       return;
     }
-    res.setHeader("Content-Type", mime[path.extname(filePath).toLowerCase()] || "application/octet-stream");
+    const ext = path.extname(filePath).toLowerCase();
+    res.setHeader("Content-Type", mime[ext] || "application/octet-stream");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
+    if (ext === ".html") {
+      const runtimeSettings = loadRuntimeSettings();
+      if (runtimeSettings && Object.keys(runtimeSettings).length > 0) {
+        const injection = `<script>window.__ALBANY_RUNTIME_SETTINGS__ = ${JSON.stringify(runtimeSettings)};</script>`;
+        const html = data.toString("utf8");
+        const bundleScriptRe = /<script src="\.\/bundle\.js(?:\?v=[^"]+)?"><\/script>/;
+        const rewritten = bundleScriptRe.test(html) ? html.replace(bundleScriptRe, `${injection}\n$&`) : html;
+        res.end(rewritten);
+        return;
+      }
+    }
     res.end(data);
   });
 });

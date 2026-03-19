@@ -34,3 +34,4 @@ __check*.js
 site/
 __dump_live.html
 __live_index.html
+grievance-settings.local.json

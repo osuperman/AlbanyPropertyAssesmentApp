@@ -53178,13 +53178,25 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       exemptionFaqUrl: "https://www.albanyny.gov/m/faq?cat=18#question-93"
     },
     streetView: {
-      embedApiKey: "AIzaSyAxeNVO6bWSNJI7k2lf9O6h7sZDDi5TY2I",
+      embedApiKey: "",
+      staticApiKey: "",
       buttonLabel: "Street View"
     }
   };
 
   // albany-full-dashboard.jsx
   var import_grievance_engine = __toESM(require_grievance_engine());
+  var mergeDashboardSettings = (base, override) => {
+    if (!override || typeof override !== "object" || Array.isArray(override)) return base;
+    const result = Array.isArray(base) ? base.slice() : { ...base || {} };
+    for (const [key, value] of Object.entries(override)) {
+      if (value && typeof value === "object" && !Array.isArray(value) && base && typeof base[key] === "object" && !Array.isArray(base[key])) result[key] = mergeDashboardSettings(base[key], value);
+      else result[key] = value;
+    }
+    return result;
+  };
+  var runtimeGrievanceSettings = typeof window !== "undefined" ? window.__ALBANY_RUNTIME_SETTINGS__ : null;
+  var resolvedGrievanceSettings = mergeDashboardSettings(grievance_settings_default, runtimeGrievanceSettings);
   var {
     analyzeComparableCandidate: analyzeComparableCandidateWithSpec,
     annotateComparablePackageDecisions: annotateComparablePackageDecisionsWithSpec,
@@ -54562,9 +54574,9 @@ self.onmessage = function(ev){
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
   };
   var streetViewSettings = {
-    embedApiKey: String(grievance_settings_default?.streetView?.embedApiKey || "").trim(),
-    staticApiKey: String(grievance_settings_default?.streetView?.staticApiKey || grievance_settings_default?.streetView?.embedApiKey || "").trim(),
-    buttonLabel: grievance_settings_default?.streetView?.buttonLabel || "Street View"
+    embedApiKey: String(resolvedGrievanceSettings?.streetView?.embedApiKey || "").trim(),
+    staticApiKey: String(resolvedGrievanceSettings?.streetView?.staticApiKey || resolvedGrievanceSettings?.streetView?.embedApiKey || "").trim(),
+    buttonLabel: resolvedGrievanceSettings?.streetView?.buttonLabel || "Street View"
   };
   var MAP_NATIVE_CRS2 = "EPSG:26918";
   var MAP_NATIVE_DEF2 = "+proj=utm +zone=18 +datum=NAD83 +units=m +no_defs";
@@ -55282,10 +55294,10 @@ self.onmessage = function(ev){
     return value > 0 ? "var(--green2)" : "var(--red2)";
   };
   var grievanceResourceUrls = {
-    rp524FormUrl: grievance_settings_default?.resources?.rp524FormUrl || "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
-    grievanceBookletUrl: grievance_settings_default?.resources?.grievanceBookletUrl || "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
-    exemptionFaqLabel: grievance_settings_default?.resources?.exemptionFaqLabel || "Exemption: Frequently Asked Questions",
-    exemptionFaqUrl: grievance_settings_default?.resources?.exemptionFaqUrl || "https://www.albanyny.gov/m/faq?cat=18#question-93"
+    rp524FormUrl: resolvedGrievanceSettings?.resources?.rp524FormUrl || "https://www.tax.ny.gov/pdf/current_forms/orpts/rp524_fill_in.pdf",
+    grievanceBookletUrl: resolvedGrievanceSettings?.resources?.grievanceBookletUrl || "https://www.tax.ny.gov/pdf/publications/orpts/grievancebooklet.pdf",
+    exemptionFaqLabel: resolvedGrievanceSettings?.resources?.exemptionFaqLabel || "Exemption: Frequently Asked Questions",
+    exemptionFaqUrl: resolvedGrievanceSettings?.resources?.exemptionFaqUrl || "https://www.albanyny.gov/m/faq?cat=18#question-93"
   };
   var comparableSupportDisplayStatus = (kind) => kind === "strong_support" || kind === "moderate_support" ? "supports" : kind === "weak_support" || kind === "neutral" ? "neutral" : "weakens";
   var explanationStatusTone = (status) => status === "supports" ? { color: "var(--green2)", background: "rgba(22,163,74,.08)", border: "rgba(22,163,74,.20)" } : status === "weakens" ? { color: "var(--red2)", background: "rgba(220,38,38,.06)", border: "rgba(220,38,38,.18)" } : { color: "var(--gray2)", background: "rgba(148,163,184,.10)", border: "rgba(148,163,184,.18)" };
