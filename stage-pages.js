@@ -16,6 +16,8 @@ const optionalFiles = [
   "albany-parcel-geometry.json",
   "albany-sales.json",
   "albany_street_centerlines.geojson",
+  "albany.geojson",
+  "__na_query.json",
   "logo_transparent.png",
   "CNAME",
 ];
