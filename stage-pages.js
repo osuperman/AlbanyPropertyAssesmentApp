@@ -48,6 +48,18 @@ function writeTextFile(name, contents) {
   fs.writeFileSync(path.join(siteDir, name), contents, "utf8");
 }
 
+function readRuntimeSettingsFromEnv() {
+  const embedApiKey = process.env.ALBANY_GOOGLE_MAPS_EMBED_KEY || process.env.ALBANY_GOOGLE_MAPS_KEY || "";
+  const staticApiKey = process.env.ALBANY_GOOGLE_MAPS_STATIC_KEY || process.env.ALBANY_GOOGLE_MAPS_KEY || "";
+  if (!embedApiKey && !staticApiKey) return null;
+  return {
+    streetView: {
+      embedApiKey,
+      staticApiKey,
+    },
+  };
+}
+
 function versionedBundleName() {
   const bundlePath = path.join(root, "bundle.js");
   const hash = crypto.createHash("sha256").update(fs.readFileSync(bundlePath)).digest("hex").slice(0, 12);
@@ -68,6 +80,24 @@ function rewriteHtmlBundleReference(name, bundleName) {
     : html.replace("<title>Albany Property Tax Explorer</title>", `<title>Albany Property Tax Explorer</title>\n${cacheMeta}`);
   const rewritten = withMeta.replace('./bundle.js', `./${bundleName}`);
   fs.writeFileSync(target, rewritten, "utf8");
+}
+
+function injectRuntimeSettings(name, runtimeSettings) {
+  if (!runtimeSettings) return;
+  const target = path.join(siteDir, name);
+  if (!fs.existsSync(target)) return;
+  const html = fs.readFileSync(target, "utf8");
+  const injection = `<script>window.__ALBANY_RUNTIME_SETTINGS__ = ${JSON.stringify(runtimeSettings)};</script>`;
+  const bundleScriptRegex = /<script src="\.\/bundle[^"]*"><\/script>/;
+  if (html.includes("window.__ALBANY_RUNTIME_SETTINGS__")) {
+    const updated = html.replace(/<script>window\.__ALBANY_RUNTIME_SETTINGS__ = .*?;<\/script>\s*/s, `${injection}\n`);
+    fs.writeFileSync(target, updated, "utf8");
+    return;
+  }
+  if (bundleScriptRegex.test(html)) {
+    const updated = html.replace(bundleScriptRegex, `${injection}\n$&`);
+    fs.writeFileSync(target, updated, "utf8");
+  }
 }
 
 ensureCleanDir(siteDir);
@@ -91,6 +121,9 @@ copied.push({
 });
 rewriteHtmlBundleReference("index.html", hashedBundleName);
 rewriteHtmlBundleReference("albany-dashboard.html", hashedBundleName);
+const runtimeSettings = readRuntimeSettingsFromEnv();
+injectRuntimeSettings("index.html", runtimeSettings);
+injectRuntimeSettings("albany-dashboard.html", runtimeSettings);
 if (fs.existsSync(path.join(siteDir, "index.html"))) {
   fs.copyFileSync(path.join(siteDir, "index.html"), path.join(siteDir, "404.html"));
 }
