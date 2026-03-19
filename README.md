@@ -87,11 +87,14 @@ Local publish check:
 GitHub Actions deploy:
 
 - workflow file: `.github/workflows/deploy-pages.yml`
-- trigger: push to `main` or manual `workflow_dispatch`
+- trigger: push to `master` or manual `workflow_dispatch`
 - published artifact: `site/`
+- required repository secret: `ALBANY_GOOGLE_MAPS_KEY`
+- one-time repo setting: GitHub Pages source must be set to `GitHub Actions`
 
 Important:
 
 - GitHub Pages will only autoload data that is actually published in `site/` under the same filenames the app expects
 - this beta currently publishes `albany-roll.json` and, when present, `albany-parcel-geometry.json` and `albany_street_centerlines.geojson`
 - the app depends on Leaflet and `proj4` CDNs plus OpenStreetMap tiles, so the public site still requires internet access
+- the Google Maps key is injected at build time from the repository secret, not committed to source control
