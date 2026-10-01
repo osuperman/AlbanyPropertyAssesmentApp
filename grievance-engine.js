@@ -1669,7 +1669,49 @@ function computeEvidenceSufficiency({ analysisState, selectedComps = [], marketS
   };
 }
 
-function computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison = null }) {
+// Compares the assessment with the sale-backed market estimate at the roll's uniform percent of value.
+// (computeOvervaluationFlag compares the assessment with the roll's own full value, which is the assessment divided
+// by the same percent, so on Albany's roll it cannot flag anything.)
+//   above_market: assessed value exceeds the estimated market value by more than 3% (RP-524 "Excessive assessment")
+//   above_level:  assessed at a higher share of estimated value than the uniform percent, by more than 3%
+//                 (RP-524 "Unequal assessment")
+//   at_level / below_level: within 3% of the uniform percent, or below it
+function computeMarketLevelCheck({ subject, marketSaleModel, rollContext, evidenceSufficiency }) {
+  const assessedValue = asNumber(subject?.assessedValue);
+  const estimatedMarketValue = asNumber(marketSaleModel?.estimatedSubjectFmv);
+  const uniformRatio = asNumber(rollContext?.loaRatio);
+  if (!marketSaleModel?.available || !(assessedValue > 0) || !(estimatedMarketValue > 0) || !(uniformRatio > 0)) {
+    return { available: false };
+  }
+  const supportedAssessedValue = Math.round(estimatedMarketValue * uniformRatio);
+  const aboveLevelPct = assessedValue / supportedAssessedValue - 1;
+  const cityFullValue = asNumber(subject?.fullMarketValue) > 0 ? asNumber(subject.fullMarketValue) : assessedValue / uniformRatio;
+  const status = assessedValue > estimatedMarketValue * 1.03
+    ? "above_market"
+    : aboveLevelPct > 0.03
+      ? "above_level"
+      : aboveLevelPct < -0.03
+        ? "below_level"
+        : "at_level";
+  return {
+    available: true,
+    sufficient: evidenceSufficiency?.status === "sale_backed_sufficient",
+    assessedValue,
+    estimatedMarketValue,
+    uniformRatio,
+    assessmentRatio: assessedValue / estimatedMarketValue,
+    supportedAssessedValue,
+    aboveLevelPct,
+    cityFullValue: Math.round(cityFullValue),
+    cityAboveMarketPct: cityFullValue / estimatedMarketValue - 1,
+    status,
+  };
+}
+
+const wholeDollars = value => "$" + Math.round(value).toLocaleString("en-US");
+const percentLabel = ratio => (Math.round(ratio * 10000) / 100).toString() + "%";
+
+function computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison = null, marketLevelCheck = null }) {
   if (!evidenceSufficiency?.canRecommendClaim) {
     return {
       allowRecommendation: false,
@@ -1701,6 +1743,16 @@ function computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evide
       recommendedReason: "Excessive Assessment",
       selectionLabel: 'Check "Excessive assessment"',
       reason: `The sale-backed market model implies a lower market value than the current assessment by ${((marketSaleModel.impliedDifferencePct || 0) * 100).toFixed(1)}%.`,
+    };
+  }
+  if (marketLevelCheck?.available && marketLevelCheck.status === "above_level") {
+    return {
+      allowRecommendation: true,
+      recommendationCode: "UNEQUAL",
+      basis: "sales_level",
+      recommendedReason: "Unequal Assessment",
+      selectionLabel: 'Check "Unequal assessment"',
+      reason: "Recent sales suggest a market value of about " + wholeDollars(marketLevelCheck.estimatedMarketValue) + ". The assessment is " + percentLabel(marketLevelCheck.assessmentRatio) + " of that, while the roll's uniform percentage of value is " + percentLabel(marketLevelCheck.uniformRatio) + ".",
     };
   }
   return {
@@ -2170,7 +2222,8 @@ function summarizeGrievancePackage({
   const evidenceSufficiency = computeEvidenceSufficiency({ analysisState, selectedComps: selected, marketSaleModel });
   const subjectSaleModel = computeSubjectSaleSignal(subject, salesByParcelId, currentDate);
   const ratioStudyDirectComparison = computeRatioStudyDirectComparison({ subject, subjectSaleModel, ratioStudyModel, rollContext: normalizedRollContext, currentDate });
-  const claimGuidance = computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison });
+  const marketLevelCheck = computeMarketLevelCheck({ subject, marketSaleModel, rollContext: normalizedRollContext, evidenceSufficiency });
+  const claimGuidance = computeClaimGuidance({ subject, marketSaleModel, ratioStudyModel, evidenceSufficiency, ratioStudyDirectComparison, marketLevelCheck });
   const suggestedRequestedValue = computeSuggestedRequestedValue({ subject, marketSaleModel, equalizationRate, evidenceSufficiency });
   if (evidenceSufficiency?.status !== "sale_backed_sufficient") packageLimitations.push("sale-backed evidence is insufficient for an automatic claim recommendation or requested value");
   if (marketSaleModel?.windowMonths > 24) packageLimitations.push(`market estimate uses a ${marketSaleModel.windowLabel} fallback window`);
@@ -2195,6 +2248,7 @@ function summarizeGrievancePackage({
       label: claimGuidance.recommendedReason,
       selectionLabel: claimGuidance.selectionLabel,
       reason: claimGuidance.reason,
+      basis: claimGuidance.basis || null,
       variance: selected.length ? visibleEquityVariance(selected) : visibleEquityVariance(visible),
     }
     : null;
@@ -2239,6 +2293,7 @@ function summarizeGrievancePackage({
     suggestedValueMethodB: suggestedRequestedValue.methodB,
     scarWarning: suggestedRequestedValue.scarWarning,
     overvaluationFlag,
+    marketLevelCheck,
     rollContext: normalizedRollContext,
     evidenceSufficiency,
     claimGuidance,

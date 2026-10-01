@@ -1123,12 +1123,22 @@ const formatIsoDate = iso => {
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric",timeZone:"UTC"});
 };
 const describeChangeShort = p => { const c=assessedChangePct(p); const prior=priorOf(p); if(c==null||!prior) return null; return c===0 ? `Same as ${prior.assessmentYear}` : `${formatChangePct(c)} from ${prior.assessmentYear}`; };
-// How a change in the City's uniform percentage alone moves the full-value estimate of an unchanged assessment.
-const levelShiftNote = (priorLevel, currentLevel) => {
+// Plain-language explanation of a change in the City's uniform percentage of value: the share of a property's
+// estimated value that Albany uses as its assessment. options: assessedValue, priorFullValue, currentFullValue (to
+// show the effect on one unchanged assessment), mostUnchanged (most assessments kept their value), compareAdvice.
+const levelShiftNote = (priorLevel, currentLevel, options={}) => {
   const a=Number(priorLevel), b=Number(currentLevel);
   if(!(a>0) || !(b>0) || a===b) return null;
   const pct=(a/b-1)*100;
-  return `The City's uniform percentage went from ${a}% to ${b}%, so the same assessed value now stands for a ${pct>0?"higher":"lower"} full-value estimate (about ${pct>0?"+":""}${pct.toFixed(1)}%). Compare assessed values, not full-value estimates, from year to year.`;
+  const valuesMoved = `${pct>0?"rose":"fell"} about ${Math.abs(pct).toFixed(1)}%`;
+  let text = `Albany sets every assessment at the same share of what the City estimates a property is worth; that share is called the uniform percentage. For this roll the City ${b<a?"lowered":"raised"} it from ${a}% to ${b}%, which means its figures assume property values ${valuesMoved}${options.mostUnchanged ? " while most assessments stayed the same" : ""}.`;
+  if(Number(options.assessedValue)>0 && Number(options.priorFullValue)>0 && Number(options.currentFullValue)>0){
+    text += ` That is why the same ${$f(options.assessedValue)} assessment now stands for an estimated value of ${$f(options.currentFullValue)}, ${options.currentFullValue>=options.priorFullValue?"up":"down"} from ${$f(options.priorFullValue)}.`;
+  }else{
+    text += ` So the same assessed value now stands for a ${pct>0?"higher":"lower"} estimated value.`;
+  }
+  if(options.compareAdvice !== false) text += " Compare assessed values, not value estimates, from year to year.";
+  return text;
 };
 const changeTone = pct => pct > 0
   ? { color:"#991b1b", strong:"#b91c1c", background:"#fee2e2", soft:"rgba(254,226,226,.55)", border:"#fca5a5", arrow:"▲", word:"Up" }
@@ -3322,7 +3332,9 @@ const buildComplaintReasonGuidance = (subject, subjectProfile, neighborResult, n
       selectionLabel: claimRecommendation.selectionLabel,
       why,
       shortWhy: claimRecommendation.reason,
-      narrativeSentence: ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly
+      narrativeSentence: claimRecommendation.basis==="sales_level"
+        ? "The stronger RP-524 basis appears to be unequal assessment because recent sales put the property's assessment at a higher share of market value than the roll's uniform percentage."
+        : ratioStudyDirectComparison?.canCompareSubjectToRatioStudyDirectly
         ? "The stronger RP-524 basis appears to be unequal assessment because the subject's verified sale ratio is higher than the neighborhood verified-sale median inside the accepted valuation window."
         : `The stronger RP-524 basis appears to be unequal assessment because the ${comparisonSetLabel} still support a higher assessment share of market value, but the ratio study should be treated as context rather than direct proof.`,
       unsupportedGroundsNote: `${unlawfulNotSupportedNote} ${misclassificationNotSupportedNote}`,
@@ -3669,7 +3681,8 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
     overvaluationFlag?.active ||
     (marketSaleModel?.available && Number(marketSaleModel?.impliedDifference) > 0) ||
     (neighborhoodEquityModel?.available && Number(neighborhoodEquityModel?.cod) > 15) ||
-    subjectSaleModel?.status==="supports"
+    subjectSaleModel?.status==="supports" ||
+    ["above_market", "above_level"].includes(neighborResult?.marketLevelCheck?.status)
   );
   if(analysisState==="research_only") caseStrengthLabel = "research_only";
   if(analysisState==="no_matches" && !selectedComps.length) caseStrengthLabel = "do_not_recommend";
@@ -3686,7 +3699,7 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
   if(analysisState==="research_only" || analysisState==="no_matches"){
     if(noPackageReasonText) scoreReasons.push(noPackageReasonText);
   }else if(moderateOrBetterSelected.length){
-    scoreReasons.push(`${moderateOrBetterSelected.length} selected comps are moderate support or better.`);
+    scoreReasons.push(`${moderateOrBetterSelected.length} selected comp${moderateOrBetterSelected.length===1?" is":"s are"} moderate support or better.`);
   }else if(supportingSelected.length){
     scoreReasons.push(`${supportingSelected.length} selected comps still show some positive grievance support.`);
   }else{
@@ -3717,6 +3730,8 @@ const buildAppealReadiness = ({subject, subjectProfile, neighborResult, neighbor
   const caseStrengthDisplay = `${humanCaseStrengthLabel(caseStrengthLabel)} (${complaintReasonGuidance.displayLabel})`;
   return {
     score,
+    scoredHomeCount: selectedComps.length,
+    scoreReliable: selectedComps.length >= 3,
     caseBand: caseStrengthLabel==="strong" ? "strong case" : caseStrengthLabel==="moderate" ? "possible case" : caseStrengthLabel==="weak" ? "weak case" : caseStrengthLabel==="research_only" ? "research only" : "do not recommend",
     supportingSelectedCount: supportingSelected.length,
     moderateOrBetterCount: moderateOrBetterSelected.length,
@@ -3782,6 +3797,125 @@ const buildAppealRecommendation = ({subject, neighborResult, readiness}) => {
     supportingComparableHomes: supportCount,
     keyReason,
     why: readiness.why.slice(0, 4),
+  };
+};
+// Plain-language version of the Check My Assessment summary: one overall read, what the evidence shows, and what to
+// put on the form if the owner files. The technical scores and model notes stay available under "Details".
+const plainDowngradeReason = reason => {
+  const text = String(reason || "");
+  if(/equity ratios within 1 point/i.test(text)) return "The selected homes are assessed at about the same share of their value as yours.";
+  if(/raw assessed-value differences/i.test(text)) return "The selected homes are assessed lower mainly because they are smaller or different, not because they are assessed at a lower rate.";
+  if(/More than 25% of the visible comps weaken/i.test(text)) return "More than a quarter of the similar homes point the other way.";
+  if(/Fewer than 3 selected comps/i.test(text)) return "Fewer than 3 similar homes give solid support.";
+  if(/neighborhood benchmark is neutral/i.test(text)) return "Assessments in the neighborhood look even, so the case cannot be rated strong.";
+  if(/Only 1 comparable is selected/i.test(text)) return "Only 1 similar home supports the case, and one home is not enough on its own.";
+  if(/Sale-backed evidence is insufficient/i.test(text)) return "There are not enough recent sales to back a stronger recommendation.";
+  return text;
+};
+const salesAreaLabel = (tier, neighborhood) => tier===1
+  ? (neighborhood ? `in ${neighborhood}` : "in your neighborhood")
+  : tier===2 ? "in the surrounding area" : tier===3 ? "within 2 miles" : "within 4 miles";
+const roundToHundred = value => Math.round(Number(value) / 100) * 100;
+const buildPlainAppealSummary = ({subject, neighborResult, visibleComps=[], appealSummary, readiness, meta={}, mostAssessmentsUnchanged=false}) => {
+  const market = neighborResult?.marketSaleModel?.available ? neighborResult.marketSaleModel : null;
+  const level = neighborResult?.marketLevelCheck?.available ? neighborResult.marketLevelCheck : null;
+  const salesSufficient = neighborResult?.evidenceSufficiency?.status==="sale_backed_sufficient";
+  const uniformPct = Number(meta?.uniformPercentOfValue) > 0 ? Number(meta.uniformPercentOfValue) : (level ? Math.round(level.uniformRatio * 10000) / 100 : null);
+  const salesSaysHigh = !!(level && salesSufficient && (level.status==="above_market" || level.status==="above_level"));
+  const action = readiness?.recommendedAction;
+  const supportCount = Number(appealSummary?.supportingComparableHomes) || 0;
+  const visibleCount = visibleComps.length;
+  const weakensCount = visibleComps.filter(parcel=>parcel?._grievanceRelevance?.kind==="weakens_case").length;
+
+  let headline;
+  if(action==="recommend_filing") headline = "Filing looks supportable.";
+  else if(action==="recommend_filing_with_caution") headline = "Filing may be worth it, but go carefully.";
+  else if(level?.status==="above_market" && salesSufficient) headline = "Recent sales suggest you may be assessed above your home's value, but similar homes don't back it up strongly. Look closer before filing.";
+  else if(action==="review_manually") headline = salesSaysHigh ? "You may be assessed a little high, but the evidence is thin. Look closer before filing." : "The evidence is mixed. Look closer before deciding whether to file.";
+  else headline = salesSaysHigh ? "Similar homes don't support a lower assessment, but recent sales suggest yours may be high. Look closer before deciding." : "This comparison doesn't support filing a grievance.";
+
+  const salesPart = !market ? "there weren't enough recent sales to estimate your home's value"
+    : salesSaysHigh ? "recent sales suggest your assessment is high"
+    : level && (level.status==="at_level" || level.status==="below_level") ? "recent sales don't show your home is assessed above the City's standard"
+    : "recent sales are too few to rely on";
+  const homesPart = supportCount===0 ? "none of the similar homes nearby are assessed lower than yours"
+    : supportCount<3 ? `only ${supportCount} of the ${visibleCount} similar homes nearby ${supportCount===1?"backs":"back"} it up`
+    : `${supportCount} similar homes nearby are assessed lower than yours`;
+  const explanation = salesSaysHigh && supportCount<3
+    ? `Recent sales are the main evidence; ${homesPart}.`
+    : `${salesPart.charAt(0).toUpperCase()}${salesPart.slice(1)}, and ${homesPart}.`;
+
+  const findings = [];
+  if(market && Number.isFinite(Number(market.estimatedSubjectFmv))){
+    let text = `${market.saleCount} recent sales of similar homes ${salesAreaLabel(market.tierUsed, subject?.neighborhood)} (last ${market.windowMonths} months) suggest your home would sell for about ${$f(roundToHundred(market.estimatedSubjectFmv))}.`;
+    if(level){
+      const diff = level.cityAboveMarketPct * 100;
+      text += ` The City's estimate of its value is ${$f(level.cityFullValue)}${Math.abs(diff) < 1 ? ", about the same" : `, about ${Math.round(Math.abs(diff))}% ${diff>0?"higher":"lower"}`}.`;
+      if(level.status==="above_market") text += ` Your assessment (${$f(level.assessedValue)}) is higher than that sales estimate, even before applying the City's ${uniformPct}% standard.`;
+      else if(level.status==="above_level") text += ` Put another way, your assessment is ${Math.round(level.assessmentRatio*1000)/10}% of the sales estimate, while the City assesses property at ${uniformPct}% of value.`;
+    }
+    if(!salesSufficient) text += " There are only a few comparable sales, so treat this as a rough estimate.";
+    findings.push({ key:"sales", title:"Recent sales", text, status: salesSaysHigh ? "supports" : salesSufficient ? "against" : "limited" });
+  }else{
+    findings.push({ key:"sales", title:"Recent sales", text:"There weren't enough recent sales of similar homes nearby to estimate your home's value.", status:"limited" });
+  }
+  if(visibleCount){
+    let text = `Of ${visibleCount} similar homes nearby, ${supportCount===0 ? "none are" : `${supportCount} ${supportCount===1?"is":"are"}`} assessed lower than yours once size and features are taken into account`;
+    text += weakensCount ? `, and ${weakensCount} ${weakensCount===1?"points":"point"} the other way.` : ".";
+    text += supportCount>=3 ? " That supports a \"similar homes are assessed lower\" argument."
+      : supportCount>0 ? ` ${supportCount===1?"One home is not enough to rely on by itself.":"Two homes are not enough to rely on by themselves."}`
+      : " That doesn't support a \"similar homes are assessed lower\" argument.";
+    findings.push({ key:"homes", title:"Similar homes' assessments", text, status: supportCount>=3 ? "supports" : supportCount>0 ? "limited" : "against" });
+  }
+  const prior = priorOf(subject);
+  if(prior){
+    const change = assessedChangePct(subject);
+    let text = change===0 || change==null
+      ? `Your assessment stayed at ${$f(subject.assessedValue)} from ${prior.assessmentYear} to ${meta?.assessmentYear || "this year"}.`
+      : `Your assessment went from ${$f(prior.assessedValue)} to ${$f(subject.assessedValue)} (${change>0?"up":"down"} ${Math.abs(change).toFixed(1)}%).`;
+    const note = levelShiftNote(prior.uniformPercentOfValue, meta?.uniformPercentOfValue, {
+      assessedValue: change===0 ? subject.assessedValue : null,
+      priorFullValue: prior.fullMarketValue,
+      currentFullValue: subject.fullMarketValue,
+      mostUnchanged: mostAssessmentsUnchanged,
+      compareAdvice: false,
+    });
+    if(note) text += ` ${note}`;
+    findings.push({ key:"change", title:`Since ${prior.assessmentYear}`, text, status:"info" });
+  }
+
+  const requested = Number(neighborResult?.suggestedRequestedAssessedValue);
+  const reduction = Number(appealSummary?.potentialReduction);
+  const requestedFromSales = !!(level && Number.isFinite(requested) && Math.abs(requested - level.supportedAssessedValue) <= 2);
+  const ask = Number.isFinite(requested) && reduction > 0
+    ? `an assessed value of ${$f(requested)}, a ${$f(reduction)} reduction.${requestedFromSales ? ` That is the sales estimate (${$f(level.estimatedMarketValue)}) times the City's ${uniformPct}%.` : ""}`
+    : null;
+  const guidance = readiness?.complaintReasonGuidance || {};
+  const claim = neighborResult?.claimRecommendation || null;
+  let reasonTitle = null;
+  let reasonText;
+  if(guidance.primaryCode==="unequal"){
+    reasonTitle = "Unequal assessment";
+    reasonText = claim?.basis==="sales_level" && level
+      ? `Your home appears to be assessed at a higher share of its value (${Math.round(level.assessmentRatio*1000)/10}%) than the City's standard (${uniformPct}%). On form RP-524, Part Three, check "Unequal assessment". The form asks what share of market value your property should be assessed at: give ${uniformPct}%, the City's uniform percentage, along with your estimate of market value.`
+      : `Your home appears to be assessed at a higher share of its value than similar properties. On form RP-524, Part Three, check "Unequal assessment".`;
+  }else if(guidance.primaryCode==="excessive"){
+    reasonTitle = "Excessive assessment";
+    reasonText = level
+      ? `Recent sales suggest your home is worth less (about ${$f(roundToHundred(level.estimatedMarketValue))}) than its assessed value (${$f(level.assessedValue)}). On form RP-524, Part Three, check "Excessive assessment" and give your estimate of market value.`
+      : `On form RP-524, Part Three, check "Excessive assessment" and give your estimate of market value.`;
+  }else{
+    reasonText = `The evidence doesn't point clearly to one complaint reason. Read RP-524 Part Three before choosing; most homeowners use "Unequal assessment" or "Excessive assessment".`;
+  }
+  const cityValueSentence = Number(subject?.fullMarketValue) > 0
+    ? `A grievance asks whether your home would have sold for less than the City's estimate of ${$f(subject.fullMarketValue)}${formatIsoDate(meta?.valuationDate) ? ` on ${formatIsoDate(meta.valuationDate)}` : ""}, the date the roll values homes.`
+    : null;
+  return {
+    headline,
+    explanation,
+    findings,
+    file: { intro: cityValueSentence, ask, reasonTitle, reasonText },
+    cautions: (readiness?.downgradeReasons || []).map(plainDowngradeReason),
   };
 };
 const buildAppealEvidence = ({subject, subjectProfile, neighborResult, readiness, neighborhoodBenchmark, salesByParcelId=null}) => {
@@ -4441,7 +4575,7 @@ const buildComparablePrintReportHtml = ({
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.caseStrength)}</div><div>Case strength</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")}</div><div>Possible reduction in assessed value</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(appealSummary.supportingComparableHomes ?? 0))}</div><div>Supporting comparable homes found</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(`${appealReadiness.score} / 100`)}</div><div>Case assessment score</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealReadiness.scoreReliable ? `${appealReadiness.score} / 100` : "Not scored (fewer than 3 similar homes)")}</div><div>Match quality (how closely the homes match; not a filing recommendation)</div></div>
       </div>
       <p><strong>Key reason:</strong> ${escapePrintableHtml(appealSummary.keyReason || "")}</p>
       <p><strong>Suggested filing ground:</strong> ${escapePrintableHtml(appealReadiness.complaintReasonGuidance?.selectionLabel || "No automatic RP-524 ground selected")}</p>
@@ -5607,7 +5741,7 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
         const typicalText = ctx => !ctx || !Number.isFinite(ctx.median) ? null : ctx.median===0 && Number.isFinite(ctx.unchangedShare) ? `no change (${Math.round(ctx.unchangedShare)}% of ${ctx.count.toLocaleString()} unchanged)` : `${formatChangePct(ctx.median)} (median of ${ctx.count.toLocaleString()})`;
         const neighborhoodText = typicalText(neighborhoodContext);
         const citywideText = typicalText(changeContext ? { median: changeContext.citywideMedian, count: changeContext.citywideCount||0, unchangedShare: changeContext.citywideUnchangedShare } : null);
-        const levelNote = levelShiftNote(prior.uniformPercentOfValue, datasetMeta?.uniformPercentOfValue);
+        const levelNote = levelShiftNote(prior.uniformPercentOfValue, datasetMeta?.uniformPercentOfValue, { assessedValue: change===0 ? p.assessedValue : null, priorFullValue: prior.fullMarketValue, currentFullValue: p.fullMarketValue, mostUnchanged: (changeContext?.citywideUnchangedShare ?? 0) >= 80 });
         return <Sec title={`Change from ${priorYear}`}>
           {change===0
             ? <Row label="Assessed value" value={`${$f(p.assessedValue)} in both ${priorYear} and ${currentYear} (no change)`} mono/>
@@ -6489,7 +6623,7 @@ const Equity = ({parcels, onDrill, meta={}}) => {
       {view==="change"&&priorYear&&(()=>{
         const c=changeByNeighborhood;
         const pct=n=>c.count?Math.round(n/c.count*1000)/10:0;
-        const levelNote=levelShiftNote(parcels.find(p=>priorOf(p))?.prior?.uniformPercentOfValue, meta?.uniformPercentOfValue);
+        const levelNote=levelShiftNote(parcels.find(p=>priorOf(p))?.prior?.uniformPercentOfValue, meta?.uniformPercentOfValue, { mostUnchanged: c.count>0 && c.unchanged/c.count >= .8 });
         return <div>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:14,fontWeight:700,color:"var(--white)",marginBottom:6}}>How residential assessments changed since {priorYear}</div>
@@ -7983,86 +8117,80 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
             return <>
               <div ref={compareResultRef} className="fi" style={{display:"grid",gap:14}}>
               {appealSummary&&appealReadiness&&<div id="step-4-appeal-summary" className="workflow-step-anchor" data-workflow-step-id="step-4-appeal-summary">
-                <WorkflowStepCard step="Step 2 - See the summary" title="What the comparison suggests" subtitle="Based on the comparable homes currently included (you can change them in Step 4). This is a decision aid for your own review, not legal advice or proof of over-assessment.">
+                <WorkflowStepCard step="Step 2 - See the summary" title="What the comparison suggests" subtitle="Based on recent sales and the similar homes currently included (you can change the homes in Step 4). A starting point for your own review, not legal advice or proof of over-assessment.">
                 <div style={{display:"grid",gap:12}}>
-                  <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
-                    <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Suggested next step</div><div style={{fontSize:20,fontWeight:800,color:recommendationTheme?.color || "var(--gray2)"}}>{appealSummary.recommendation}</div></div>
-                      <div>
-                        <div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Case strength</div>
-                        <div style={{display:"grid",gap:3}}>
-                          <div style={{fontSize:20,fontWeight:800,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel),lineHeight:1.15}}>{appealReadiness.caseStrengthBase}</div>
-                          <div style={{fontSize:12,fontWeight:700,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel),lineHeight:1.35}}>{appealReadiness.complaintReasonGuidance.displayLabel}</div>
+                  {(()=>{
+                    const plain = buildPlainAppealSummary({
+                      subject: effectiveNeighborResult.p,
+                      neighborResult: effectiveNeighborResult,
+                      visibleComps: displayNeighborResult?.neighbors || effectiveNeighborResult?.neighbors || [],
+                      appealSummary,
+                      readiness: appealReadiness,
+                      meta,
+                      mostAssessmentsUnchanged: (assessmentChangeContext?.citywideUnchangedShare ?? 0) >= 80,
+                    });
+                    const statusPill = status => ({
+                      supports: { label:"Supports a lower assessment", background:"#dcfce7", border:"#86efac", color:"#166534" },
+                      against: { label:"Doesn't support it", background:"#fee2e2", border:"#fca5a5", color:"#991b1b" },
+                      limited: { label:"Limited support", background:"#fef3c7", border:"#fcd34d", color:"#92400e" },
+                      info: { label:"Background", background:"#e0e7ff", border:"#c7d2fe", color:"#3730a3" },
+                    })[status] || null;
+                    const box = {background:"rgba(255,255,255,.8)",border:"1px solid rgba(148,163,184,.24)",borderRadius:10,padding:"12px 14px",display:"grid",gap:10};
+                    const sectionTitle = {fontSize:11,fontWeight:800,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7};
+                    const bodyText = {fontSize:13,color:"var(--gray)",lineHeight:1.65};
+                    const strong = {color:"var(--white)"};
+                    return (
+                      <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"16px 18px",display:"grid",gap:14}}>
+                        <div>
+                          <div style={sectionTitle}>Our read</div>
+                          <div style={{fontSize:21,fontWeight:800,color:recommendationTheme?.color || "var(--gray2)",lineHeight:1.3,marginTop:4}}>{plain.headline}</div>
+                          <div style={{fontSize:14,color:"var(--gray)",lineHeight:1.6,marginTop:6}}>{plain.explanation}</div>
                         </div>
+                        <div style={box}>
+                          <div style={sectionTitle}>What we found</div>
+                          {plain.findings.map(item=>{
+                            const pill = statusPill(item.status);
+                            return (
+                              <div key={item.key} style={{display:"grid",gap:4}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                                  <b style={{fontSize:14,color:"var(--white)"}}>{item.title}</b>
+                                  {pill&&<span style={{background:pill.background,border:`1px solid ${pill.border}`,color:pill.color,borderRadius:999,padding:"2px 9px",fontSize:11,fontWeight:800}}>{pill.label}</span>}
+                                </div>
+                                <div style={bodyText}>{item.text}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={box}>
+                          <div style={sectionTitle}>If you decide to file</div>
+                          {plain.file.intro&&<div style={bodyText}>{plain.file.intro}</div>}
+                          {plain.file.ask&&<div style={bodyText}><b style={strong}>Ask for</b> {plain.file.ask}</div>}
+                          <div style={bodyText}><b style={strong}>Reason on form RP-524:</b> {plain.file.reasonTitle&&<b style={strong}>{plain.file.reasonTitle}. </b>}{plain.file.reasonText}</div>
+                          {effectiveNeighborResult?.scarWarning&&<div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"10px 12px",fontSize:12,color:"var(--amber2)",lineHeight:1.6}}>{effectiveNeighborResult.scarWarning}</div>}
+                          <div style={bodyText}><b style={strong}>Make your case stronger:</b> add your own evidence, such as a recent appraisal, the price you paid if you bought in the last few years, photos or repair estimates for condition problems, or similar homes that sold for less.</div>
+                        </div>
+                        <details style={box}>
+                          <summary style={{cursor:"pointer",fontSize:12,fontWeight:800,color:"var(--blue3)"}}>Details for reviewers: match score, cautions, and model notes</summary>
+                          <div style={{display:"grid",gap:12,marginTop:4}}>
+                            <div>
+                              <div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",alignItems:"baseline"}}>
+                                <b style={{fontSize:13,color:"var(--white)"}}>Match quality</b>
+                                <span style={{fontFamily:"var(--fm)",fontSize:16,fontWeight:800,color:"var(--white)"}}>{appealReadiness.scoreReliable ? `${appealReadiness.score} / 100` : "Not scored"}</span>
+                              </div>
+                              <div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>{appealReadiness.scoreReliable
+                                ? "How closely the selected homes match yours and how complete their records are. It is not a filing recommendation: the overall read above also weighs how many homes support the case and what recent sales show."
+                                : `${appealReadiness.scoredHomeCount===0 ? "No similar homes were selected" : `Only ${appealReadiness.scoredHomeCount} similar home${appealReadiness.scoredHomeCount===1?" was":"s were"} selected`}, and a match score needs at least 3 to mean anything, so none is shown. ${effectiveNeighborResult?.marketSaleModel?.available ? "The overall read above relies mainly on recent sales." : "Treat the overall read above as a starting point only."}`}</div>
+                            </div>
+                            {plain.cautions.length>0&&<div><b style={{fontSize:13,color:"var(--white)"}}>Why the overall read is cautious</b><ul style={{margin:"4px 0 0 18px",fontSize:12,color:"var(--gray)",lineHeight:1.6}}>{plain.cautions.map((item,idx)=><li key={`caution-${idx}`}>{item}</li>)}</ul></div>}
+                            {appealReadiness.scoreReliable&&<div><b style={{fontSize:13,color:"var(--white)"}}>How the match score was built</b><ul style={{margin:"4px 0 0 18px",fontSize:12,color:"var(--gray)",lineHeight:1.6}}>{appealReadiness.why.map((item,idx)=><li key={`score-why-${idx}`}>{item}</li>)}</ul></div>}
+                            {effectiveNeighborResult?.evidenceSufficiency?.reason&&<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}><b style={{color:"var(--white)"}}>Sales model:</b> {effectiveNeighborResult.evidenceSufficiency.reason}</div>}
+                            {appealReadiness.complaintReasonGuidance?.why&&<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}><b style={{color:"var(--white)"}}>Complaint-reason model:</b> {appealReadiness.complaintReasonGuidance.why}</div>}
+                            <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance?.unlawfulNotSupportedNote} {appealReadiness.complaintReasonGuidance?.misclassificationNotSupportedNote}</div>
+                          </div>
+                        </details>
                       </div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Possible reduction in assessed value</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.potentialReduction!=null ? $f(appealSummary.potentialReduction) : '-'}</div></div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Supporting comparable homes found</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.supportingComparableHomes}</div></div>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Evidence status</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray2)"}}>{effectiveNeighborResult?.evidenceSufficiency?.label || '-'}</div></div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Sale-backed market estimate</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray)"}}>{Number.isFinite(effectiveNeighborResult?.marketEvidenceModel?.estimatedSubjectFmv) ? $f(effectiveNeighborResult.marketEvidenceModel.estimatedSubjectFmv) : '-'}</div></div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Requested assessed value</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray)"}}>{Number.isFinite(effectiveNeighborResult?.suggestedRequestedAssessedValue) ? $f(effectiveNeighborResult.suggestedRequestedAssessedValue) : '-'}</div></div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate market-value check</TermWithHelp></div><div style={{fontSize:15,fontWeight:800,color:effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)"}}>{effectiveNeighborResult?.overvaluationFlag?.active ? "Also flags a possible overvaluation" : "Does not flag an overvaluation on its own"}</div></div>
-                    </div>
-                    {effectiveNeighborResult?.scarWarning && <div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"var(--amber2)",lineHeight:1.6}}>{effectiveNeighborResult.scarWarning}</div>}
-                    {effectiveNeighborResult?.evidenceSufficiency?.reason && <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(148,163,184,.22)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.6}}><b style={{color:"var(--gray2)"}}>Sale-backed evidence:</b> {effectiveNeighborResult.evidenceSufficiency.reason}</div>}
-                    <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}><b style={{color:"var(--gray2)"}}>Key reason:</b> {appealSummary.keyReason}</div>
-                    {(()=>{
-                      const subject = effectiveNeighborResult?.p;
-                      const subjectPrior = priorOf(subject);
-                      const subjectChange = assessedChangePct(subject);
-                      if(!subjectPrior || subjectChange==null) return null;
-                      const compChanges = (displayNeighborResult?.neighbors||[]).map(assessedChangePct).filter(v=>v!=null);
-                      const compMedian = medianOf(compChanges);
-                      const compsUnchanged = compChanges.filter(v=>v===0).length;
-                      const nb = assessmentChangeContext.byNeighborhood.get(subject.neighborhood || "") || null;
-                      const reference = compMedian ?? nb?.median ?? assessmentChangeContext.citywideMedian;
-                      const gap = reference!=null ? subjectChange - reference : null;
-                      const priorLevel = Number(subjectPrior.uniformPercentOfValue), currentLevel = Number(meta?.uniformPercentOfValue);
-                      const levelChanged = priorLevel>0 && currentLevel>0 && priorLevel!==currentLevel;
-                      const valuationLabel = formatIsoDate(meta?.valuationDate);
-                      return <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(148,163,184,.22)",borderRadius:10,padding:"10px 12px",fontSize:12,color:"var(--gray)",lineHeight:1.7}}>
-                        <b style={{color:"var(--white)"}}>Change since {subjectPrior.assessmentYear}:</b> {subjectChange===0
-                          ? <>this assessment is the same as last year ({$f(subject.assessedValue)}).</>
-                          : <>this assessment went from {$f(subjectPrior.assessedValue)} to {$f(subject.assessedValue)} ({formatChangePct(subjectChange)}).</>}
-                        {compChanges.length>0&&(compsUnchanged===compChanges.length
-                          ? <> {compChanges.length===1?"The similar home shown also kept its value.":`All ${compChanges.length} similar homes shown also kept their values.`}</>
-                          : compMedian!=null&&<> The similar homes shown changed a median {formatChangePct(compMedian)} ({compsUnchanged} of {compChanges.length} unchanged).</>)}
-                        {nb?.median!=null&&(nb.median===0&&Number.isFinite(nb.unchangedShare)
-                          ? <> In {subject.neighborhood}, {Math.round(nb.unchangedShare)}% of homes kept the same assessment.</>
-                          : <> Homes in {subject.neighborhood} changed a median {formatChangePct(nb.median)}.</>)}
-                        {gap!=null&&Math.abs(gap)>=5&&<> Your change is {Math.abs(gap).toFixed(1)} points {gap>0?"higher":"lower"} than {compMedian!=null?"the similar homes":"the neighborhood"}{gap>0?", which is worth mentioning in a grievance alongside the evidence below":""}.</>}
-                        {levelChanged&&subjectPrior.fullMarketValue>0&&subject.fullMarketValue>0&&<> Because the City's uniform percentage went from {priorLevel}% to {currentLevel}%, the City's full-value estimate for this property {subject.fullMarketValue>subjectPrior.fullMarketValue?"rose":"fell"} from {$f(subjectPrior.fullMarketValue)} to {$f(subject.fullMarketValue)}. A grievance asks whether the property would have sold for less than {$f(subject.fullMarketValue)}{valuationLabel?` on ${valuationLabel}`:""}.</>}
-                      </div>;
-                    })()}
-                    <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(255,255,255,.24)",borderRadius:10,padding:"12px 14px",display:"grid",gap:6}}>
-                      <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Recommended RP-524 complaint reason</div>
-                      <div style={{fontSize:13,fontWeight:800,color:"var(--gray2)"}}>{appealReadiness.complaintReasonGuidance.selectionLabel}</div>
-                      <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{appealReadiness.complaintReasonGuidance.why}</div>
-                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance.unlawfulNotSupportedNote}</div>
-                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.55}}>{appealReadiness.complaintReasonGuidance.misclassificationNotSupportedNote}</div>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "minmax(0,1.4fr) minmax(260px,.9fr)",gap:12}}>
-                      <div style={{background:"rgba(255,255,255,.68)",border:"1px solid rgba(255,255,255,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                          <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Case assessment score</div>
-                          <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel)}}>{appealReadiness.score} / 100</div>
-                        </div>
-                        <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>The score measures how closely the included homes match yours and how strongly they point the same way. 75-100 usually supports filing, 58-74 suggests caution, 40-57 needs your own review, and 0-39 usually does not support filing. This is a decision aid, not a guarantee.</div>
-                        {Array.isArray(appealReadiness.downgradeReasons) && appealReadiness.downgradeReasons.length>0 && <div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.28)",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#7c2d12",lineHeight:1.6}}><b>Why the suggested next step is more cautious than the score:</b> {appealReadiness.downgradeReasons.map(reason=>reason.replace(/.$/,"")).join("; ")}.</div>}
-                        <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Why this score?</div>
-                        <div style={{display:"grid",gap:6}}>
-                          {appealReadiness.why.map((item, idx)=><div key={`score-why-${idx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.55}}>- {item}</div>)}
-                        </div>
-                      </div>
-                      <details style={{background:"rgba(255,255,255,.68)",border:"1px solid rgba(255,255,255,.18)",borderRadius:10,padding:"12px 14px"}}>
-                        <summary style={{cursor:"pointer",fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Why this recommendation?</summary>
-                        <div style={{display:"grid",gap:6,marginTop:10}}>
-                          {appealSummary.why.map((item, idx)=><div key={`recommendation-why-${idx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.55}}>- {item}</div>)}
-                        </div>
-                      </details>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
                 </WorkflowStepCard>
               </div>}
@@ -9710,6 +9838,7 @@ const HomebuyerGuide = ({parcels, myHome}) => {
     {term:"Taxable value (county, city, school)",def:"Assessed value minus any exemptions. There are three because some exemptions apply only to certain taxes. For example, STAR lowers only school taxable value, and the veterans exemption does not usually lower school taxes."},
     {term:"Tax bill",def:"Each taxable value multiplied by that government's tax rate, plus any special charges. This app does not have tax rates, so it cannot show a bill."},
     {term:"Land value",def:"The part of the assessed value that comes from the land alone, not the building."},
+    {term:"Uniform percentage",def:"Albany sets every assessment at the same share of what the City estimates a property is worth. That share is the uniform percentage: 91.17% on the 2026 roll (96% on the 2025 roll). A home the City values at $300,000 is assessed at about $273,500. When the City lowers the percentage and leaves an assessment alone, its estimate of the home's value goes up."},
     {term:"Change from last year",def:"Where a property is on both rolls, the app compares this year's assessed value with last year's. Compare assessed values, not full-value estimates: the City's uniform percentage changes each year (96% on the 2025 roll, 91.17% on the 2026 roll), so the same assessment can imply a different full value."},
     {term:"Homestead and non-homestead tax class",def:"Albany taxes two classes of property at different rates. The homestead class covers one- to three-family homes, residential condos, and residential vacant land; the non-homestead class covers everything else, such as commercial buildings, apartment buildings with four or more units, parking lots, and utilities. It is a tax-rate category, not a statement about whether the owner lives there."},
     {term:"STAR exemption (codes 41854 and 41834)",def:"Basic STAR (41854) and Enhanced STAR for seniors (41834) lower school taxable value for an owner-occupied primary residence. The STAR exemption has been closed to new applicants since 2016; homeowners who still have it can keep it."},

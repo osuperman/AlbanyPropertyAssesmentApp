@@ -411,6 +411,54 @@ test("research-only summary can pivot claim recommendation toward excessive asse
   assert.strictEqual(summary.claimRecommendation.code, "EXCESSIVE");
 });
 
+const salesLevelFixture = () => {
+  const salesByParcelId = makeSalesMap([
+    { parcel: makeParcel({ parcelId: "sale1", livingAreaSqft: 1980, yearBuilt: 1921, eastCoord: 1200, nrthCoord: 1000, assessedValue: 360000, fullMarketValue: 360000 }), sales: [{ sale_price: 360000, sale_dte: "2025-06-01", arms_length_flag: "Y" }] },
+    { parcel: makeParcel({ parcelId: "sale2", livingAreaSqft: 2020, yearBuilt: 1919, eastCoord: 1400, nrthCoord: 1000, assessedValue: 370000, fullMarketValue: 370000 }), sales: [{ sale_price: 370000, sale_dte: "2025-07-01", arms_length_flag: "Y" }] },
+    { parcel: makeParcel({ parcelId: "sale3", livingAreaSqft: 2050, yearBuilt: 1924, eastCoord: 1600, nrthCoord: 1000, assessedValue: 380000, fullMarketValue: 380000 }), sales: [{ sale_price: 380000, sale_dte: "2025-08-01", arms_length_flag: "Y" }] },
+  ]);
+  const salesParcels = ["sale1", "sale2", "sale3"].map((id, idx) => makeParcel({ parcelId: id, livingAreaSqft: 1980 + (idx * 20), yearBuilt: 1921 + idx, eastCoord: 1200 + (idx * 200), nrthCoord: 1000, assessedValue: 360000 + (idx * 10000), fullMarketValue: 360000 + (idx * 10000) }));
+  return { salesByParcelId, salesParcels };
+};
+const summarizeAgainstSales = assessedValue => {
+  const { salesByParcelId, salesParcels } = salesLevelFixture();
+  const subject = makeParcel({ parcelId: "lvl", assessedValue, fullMarketValue: Math.round(assessedValue / 0.9117), livingAreaSqft: 2000 });
+  return engine.summarizeGrievancePackage({
+    subject,
+    subjectProfile: makeProfile(subject),
+    visibleComps: [],
+    selectedComps: [],
+    parcels: [subject].concat(salesParcels),
+    salesByParcelId,
+    equalizationRate: 0.9117,
+    currentDate: new Date("2026-03-15T00:00:00Z"),
+  });
+};
+
+test("sales showing an assessment above the uniform percent recommend unequal assessment", () => {
+  // Market estimate is about $370,000; at 91.17% a fair assessment is about $337,000, so $350,000 is about 4% high
+  // but still below full market value (so not excessive).
+  const summary = summarizeAgainstSales(350000);
+  const check = summary.marketLevelCheck;
+  assert.ok(check.available);
+  assert.strictEqual(check.status, "above_level");
+  assert.strictEqual(check.supportedAssessedValue, Math.round(check.estimatedMarketValue * 0.9117));
+  assert.strictEqual(summary.claimRecommendation.code, "UNEQUAL");
+  assert.strictEqual(summary.claimRecommendation.basis, "sales_level");
+});
+
+test("an assessment at the uniform percent of the sales estimate gets no automatic complaint reason", () => {
+  const summary = summarizeAgainstSales(Math.round(370000 * 0.9117));
+  assert.ok(["at_level", "below_level"].includes(summary.marketLevelCheck.status));
+  assert.strictEqual(summary.claimRecommendation, null);
+});
+
+test("an assessment above full market value stays excessive assessment", () => {
+  const summary = summarizeAgainstSales(406000);
+  assert.strictEqual(summary.marketLevelCheck.status, "above_market");
+  assert.strictEqual(summary.claimRecommendation.code, "EXCESSIVE");
+});
+
 test("normalized metric summary always returns a numeric score", () => {
   const neutral = engine.summarizeNormalizedMetricSupport([]);
   assert.strictEqual(neutral.score, 0);

@@ -305,7 +305,7 @@ Automatic claim guidance and automatic requested value are allowed only when `st
 
 If evidence is insufficient, `allowRecommendation` must be `false` and the workflow must instruct the user to review RP-524 Part Three manually.
 
-`claimGuidance` may recommend `UNEQUAL` only when the subject has a directly comparable verified sale ratio inside the accepted valuation window. The packet must not substitute a roll-derived or implied subject ratio for this direct-comparison gate.
+`claimGuidance` may recommend `UNEQUAL` when the subject has a directly comparable verified sale ratio inside the accepted valuation window (17.2), or when sufficient sale-backed evidence puts the assessment at a higher share of estimated market value than the roll's uniform percent (17.2b). The packet must not substitute a roll-derived subject ratio (assessed value / roll full market value) for either test.
 
 ### 14.4 Packet / Helper Explanation Requirements
 
@@ -386,6 +386,8 @@ Follow RPTL 730(1)(c): small claims assessment review (SCAR) is available when t
 
 The overvaluation flag remains a separate supporting signal. It is not sufficient by itself to trigger an automatic claim recommendation.
 
+Note: when the equalization rate equals the roll's uniform percent (Albany passes the uniform percent), `subject.fmv * rate` is the assessed value itself, so this flag cannot fire. The resident summary therefore does not show it; it uses the sale-backed market level check (17.2b) instead.
+
 Computation:
 
 ```
@@ -441,6 +443,22 @@ if canCompareSubjectToRatioStudyDirectly:
 ```
 
 If `canCompareSubjectToRatioStudyDirectly != true`, the ratio study remains neighborhood context only. It may still display COD / PRD / PRB, but it must not be used as direct headline proof against a roll-derived or implied subject ratio.
+
+### 17.2b Unequal Assessment from Sale-Backed Market Level
+
+When evidence is sufficient and the subject has no usable direct sale comparison, compare the assessment with the sale-backed market estimate at the roll's uniform percent (`marketLevelCheck`):
+
+```
+supported_av = estimated_subject_fmv * uniform_percent_of_value
+above_level_pct = subject.av / supported_av - 1
+
+if subject.av > estimated_subject_fmv * 1.03:   status = "above_market"   (17.3 applies: EXCESSIVE)
+elif above_level_pct > 0.03:                     status = "above_level"    -> recommendation = "UNEQUAL" (basis "sales_level")
+elif above_level_pct < -0.03:                    status = "below_level"
+else:                                            status = "at_level"
+```
+
+This matches RP-524 Part Three: "Unequal assessment" asks for the percentage of market value the property should be assessed at (the uniform percent), and "Excessive assessment" means the assessed value exceeds full market value. The 3% margins absorb the sales model's rounding and noise.
 
 ### 17.3 Excessive Assessment Rule
 
