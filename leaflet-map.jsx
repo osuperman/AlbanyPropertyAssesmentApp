@@ -183,7 +183,7 @@ const medianOfValues = values => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
-export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, compactMode = false, subjectParcelId = null, compactTitle = "", compactSubtitle = "", onOpenProperty = null, utils }) => {
+export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries, neighborhoodAssociations, compareList = [], onCompare, onDrill, jumpRequest = null, advanced = true, compactMode = false, subjectParcelId = null, compactTitle = "", compactSubtitle = "", onOpenProperty = null, renderPropertyDetails = null, utils }) => {
   const {
     normalizeParcelId,
     FC,
@@ -211,6 +211,7 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     assessedChangePct,
     describeChangeShort,
     ExemptionTerm,
+    ChangePill,
   } = utils;
 
   const mapElRef = useRef(null);
@@ -646,6 +647,42 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     else map.zoomOut();
   }, []);
 
+  // "Change since <prior year>": the properties on the map whose assessed value changed, plus parcels that are new or
+  // renumbered since the prior roll. Few properties changed, so each gets a dot and the panel lists them.
+  const [changeFilter, setChangeFilter] = useState("all");
+  const inspectorBodyRef = useRef(null);
+  const highlightRendererRef = useRef(null);
+  const highlightLayerRef = useRef(null);
+  const changeSummary = useMemo(() => {
+    if (!priorYear || typeof priorOf !== "function" || typeof assessedChangePct !== "function") return null;
+    const rows = [];
+    for (const item of mapped) {
+      const p = item.p;
+      if (!priorOf(p)) { rows.push({ item, kind: "new", change: null }); continue; }
+      const change = assessedChangePct(p);
+      if (change == null || change === 0) continue;
+      rows.push({ item, kind: change > 0 ? "up" : "down", change });
+    }
+    rows.sort((a, b) => (a.kind === "new") - (b.kind === "new") || Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0));
+    const up = rows.filter(row => row.kind === "up").length;
+    const down = rows.filter(row => row.kind === "down").length;
+    const added = rows.filter(row => row.kind === "new").length;
+    return { rows, up, down, added, changed: up + down };
+  }, [assessedChangePct, mapped, priorOf, priorYear]);
+  const changeColor = row => row.kind === "new" ? "#7c3aed" : row.kind === "up" ? (row.change >= 10 ? "#b91c1c" : "#ef4444") : "#15803d";
+  const changeLabel = row => row.kind === "new" ? `New or renumbered since ${priorYear}` : `${row.kind === "up" ? "Up" : "Down"} ${Math.abs(row.change).toFixed(1)}% since ${priorYear}`;
+  const filteredChangeRows = changeSummary ? changeSummary.rows.filter(row => changeFilter === "all" || row.kind === changeFilter) : [];
+  const openChangeList = useCallback(filter => {
+    setSelectedParcelId(null);
+    setChangeFilter(filter || "all");
+    window.setTimeout(() => { inspectorBodyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
+  }, []);
+  const changePill = row => {
+    if (row.kind === "new") return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#ede9fe", border: "1px solid #c4b5fd", color: "#5b21b6", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" }}>New</span>;
+    if (typeof ChangePill === "function") return <ChangePill pct={row.change}>{row.kind === "up" ? "Up" : "Down"} {Math.abs(row.change).toFixed(1)}%</ChangePill>;
+    return <span style={{ fontWeight: 800, color: changeColor(row) }}>{changeLabel(row)}</span>;
+  };
+
   // Parcel shapes stay on the map between renders, keyed by parcel id. Panning adds and removes only the parcels that
   // entered or left the view; a new selection restyles two shapes; a new coloring or search restyles in place. (The
   // map used to delete and rebuild every shape on each pan, zoom, or click.)
@@ -723,6 +760,10 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       aerial: L.tileLayer.wms(AERIAL_WMS_URL, { layers: "0", format: "image/jpeg", version: "1.3.0", transparent: false, maxZoom: 20, attribution: AERIAL_ATTRIBUTION }),
     };
     parcelGroupsRef.current = { polygons: L.layerGroup().addTo(map), points: L.layerGroup().addTo(map) };
+    const highlightPane = map.createPane("changeHighlightPane");
+    highlightPane.style.zIndex = 450;
+    highlightPane.style.pointerEvents = "none";
+    highlightRendererRef.current = L.svg({ pane: "changeHighlightPane", padding: 0.4 });
     // A shared link opens at its own view; otherwise the map fits the loaded parcels once.
     if (initialUrlState.center || initialUrlState.parcel) didFitInitialRef.current = true;
     map.setView(initialUrlState.center || ALBANY_DEFAULT_CENTER, initialUrlState.zoom || ALBANY_DEFAULT_ZOOM);
@@ -747,6 +788,8 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       boundaryLayersRef.current = { neighborhoods: null, associations: null };
       labelLayerRef.current = null;
       lastStyledSelectionRef.current = null;
+      highlightRendererRef.current = null;
+      highlightLayerRef.current = null;
     };
   }, [mapRuntimeReady]);
 
@@ -997,6 +1040,30 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     }
   }, [compactMode, getParcelRole, mapRuntimeReady, visibleItems]);
 
+
+  // Change view: a dot on every changed or new parcel, drawn above the shapes and visible at every zoom. The dots use
+  // their own click-through SVG layer so clicks still reach the parcel shapes underneath.
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = getLeafletRuntime();
+    if (!map || !L) return;
+    if (highlightLayerRef.current) {
+      map.removeLayer(highlightLayerRef.current);
+      highlightLayerRef.current = null;
+    }
+    if (compactMode || colorMode !== "change" || !changeSummary || !highlightRendererRef.current) return;
+    const group = L.layerGroup();
+    for (const row of changeSummary.rows) {
+      const id = row.item.p.parcelId;
+      const marker = L.circleMarker(row.item.latLng, { renderer: highlightRendererRef.current, radius: 6.5, color: "#ffffff", weight: 2, opacity: 1, fillColor: changeColor(row), fillOpacity: 0.95 });
+      marker.on("click", evt => { L.DomEvent.stopPropagation(evt); setSelectedParcelId(id); });
+      marker.bindTooltip(`${escapeHtml(row.item.p.address || id)}<br/>${escapeHtml(changeLabel(row))}`, { direction: "top", opacity: 0.94 });
+      marker.addTo(group);
+    }
+    group.addTo(map);
+    highlightLayerRef.current = group;
+  }, [changeSummary, colorMode, compactMode, mapRuntimeReady]);
+
   const mapStatusText = mapStatus || (
     zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM ? "Zoom in to see property boundaries."
       : !hasParcelGeometry ? "Property boundaries are still loading, so properties show as points for now."
@@ -1071,7 +1138,14 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
                   <button key={mode.id} type="button" onClick={() => setColorBy(mode.id)} aria-pressed={colorMode === mode.id} style={{ background: colorMode === mode.id ? (advanced ? "var(--teal)" : "var(--blue)") : "var(--card2)", border: `1px solid ${colorMode === mode.id ? (advanced ? "var(--teal)" : "var(--blue)") : "var(--border)"}`, color: colorMode === mode.id ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{mode.label}</button>
                 ))}
               </div>
-              <div style={{ fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: "rgba(255,255,255,.72)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px" }}>{activeColorMode.help}</div>
+              <div style={{ fontSize: 12, color: "var(--gray2)", lineHeight: 1.6, background: colorMode === "change" && changeSummary ? "rgba(254,243,199,.7)" : "rgba(255,255,255,.72)", border: `1px solid ${colorMode === "change" && changeSummary ? "rgba(217,119,6,.35)" : "var(--border)"}`, borderRadius: 10, padding: "8px 12px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                {colorMode === "change" && changeSummary ? (
+                  <>
+                    <span style={{ flex: "1 1 320px" }}><b style={{ color: "var(--white)", fontSize: 13 }}>{changeSummary.changed.toLocaleString()} properties changed since {priorYear}</b>: {changeSummary.up.toLocaleString()} went up and {changeSummary.down.toLocaleString()} went down{changeSummary.added ? `, plus ${changeSummary.added.toLocaleString()} new or renumbered parcels` : ""}. Each one has a dot on the map; everything else kept the same assessment.</span>
+                    <button type="button" onClick={() => openChangeList("all")} style={{ background: "var(--blue)", color: "white", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>List them</button>
+                  </>
+                ) : activeColorMode.help}
+              </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: "var(--gray)", fontWeight: 700 }}>Base map</span>
                 <div role="group" aria-label="Base map" style={{ display: "inline-flex", border: "1px solid var(--border2)", borderRadius: 8, overflow: "hidden" }}>
@@ -1179,133 +1253,178 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
             </div>
             {selectedParcel && !compactMode && <button onClick={() => setSelectedParcelId(null)} aria-label="Close selected parcel" style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--gray2)", borderRadius: 999, width: 32, height: 32, fontSize: 18, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}>x</button>}
           </div>
-          <div style={{ padding: "14px 16px", display: "grid", gap: 14, minWidth: 0 }}>
+          <div ref={inspectorBodyRef} style={{ padding: "14px 16px", display: "grid", gap: 14, minWidth: 0, scrollMarginTop: 16 }}>
             {selectedParcel ? <>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 }}>
-                {compactMode && selectedParcelRole?.kind === "subject" && <Badge color="#f59e0b">Subject parcel</Badge>}
-                {compactMode && selectedParcelRole?.kind === "compare" && <Badge color="#2563eb">{selectedParcelRole.label}</Badge>}
-                <Badge color="#6366f1">{propClassLabel(selectedParcel)}</Badge>
-                <Badge color={selectedItem?.geom ? "#0d9488" : "#f59e0b"}>{selectedItem?.geom ? "Boundary loaded" : "Point location only"}</Badge>
-                {eqFlagFast(selectedParcel) !== "fair" && eqFlagFast(selectedParcel) !== "neutral" && <Badge color={FC[eqFlagFast(selectedParcel)]}>{`Record check: ${FL[eqFlagFast(selectedParcel)].toLowerCase()}`}</Badge>}
-                {isAbsenteeFast(selectedParcel) && <Badge color="#f97316">Owner likely lives elsewhere</Badge>}
-              </div>
-              {!compactMode && isAbsenteeFast(selectedParcel) && <details style={{ background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" }}><summary style={{ cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" }}>Why flagged as absentee?</summary><div style={{ display: "grid", gap: 4, marginTop: 8 }}><div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 }}>{getAbsenteeModelFast(selectedParcel).label} ({getAbsenteeModelFast(selectedParcel).confidence}, score {getAbsenteeModelFast(selectedParcel).score})</div>{(getAbsenteeModelFast(selectedParcel).signals?.length ? getAbsenteeModelFast(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => <div key={`${selectedParcel.parcelId}-absentee-${idx}`} style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 }}>{signal}</div>)}</div></details>}
-              {(() => {
-                const p = selectedParcel;
-                const prior = typeof priorOf === "function" ? priorOf(p) : null;
-                const changeText = typeof describeChangeShort === "function" ? describeChangeShort(p) : null;
-                const exemptions = Array.isArray(p.exemptions) ? p.exemptions : [];
-                const sqftComparison = valuePerSqftComparison(p);
-                const sqftDifference = sqftComparison ? Math.round((sqftComparison.ratio - 1) * 100) : null;
-                const box = { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 };
-                const label = { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 };
+              {!compactMode && colorMode === "change" && changeSummary && filteredChangeRows.length > 0 && (() => {
+                // Step through the changed properties (in the list's order and filter) without leaving the map.
+                const index = filteredChangeRows.findIndex(row => row.item.p.parcelId === selectedParcel.parcelId);
+                const total = filteredChangeRows.length;
+                const goTo = position => focusParcel(filteredChangeRows[(position + total) % total].item.p.parcelId, 18);
+                const current = index >= 0 ? filteredChangeRows[index] : null;
+                const stepButton = { background: "var(--card)", border: "1px solid var(--border2)", color: "var(--blue3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", minHeight: 34 };
                 return (
-                  <div className="metric-grid-2" style={{ display: "grid", gap: 10, minWidth: 0 }}>
-                    <div style={box}>
-                      <div style={label}>Assessed value</div>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{$f(p.assessedValue)}</div>
-                      {(changeText || (priorYear && !prior)) && <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 4, lineHeight: 1.5 }}>{changeText || `Not on the ${priorYear} roll`}</div>}
-                      <div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 4, lineHeight: 1.5 }}>City's full-value estimate {$f(p.fullMarketValue)}</div>
+                  <div style={{ background: "rgba(254,243,199,.6)", border: "1px solid rgba(217,119,6,.35)", borderRadius: 10, padding: "10px 12px", display: "grid", gap: 8, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13, color: "var(--white)", fontWeight: 700 }}>
+                        {current ? `Changed property ${index + 1} of ${total.toLocaleString()}` : `Not one of the ${total.toLocaleString()} changed properties`}
+                      </span>
+                      {current && changePill(current)}
                     </div>
-                    <div style={box}>
-                      <div style={label}>Taxable value</div>
-                      <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.7, fontFamily: "var(--fm)" }}>
-                        <div>County {$f(p.countyTaxable)}</div>
-                        <div>City {$f(p.cityTaxable)}</div>
-                        <div>School {$f(p.schoolTaxable)}</div>
-                      </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => goTo(index >= 0 ? index - 1 : total - 1)} aria-label="Previous changed property" style={stepButton}>◀ Previous</button>
+                      <button type="button" onClick={() => goTo(index >= 0 ? index + 1 : 0)} aria-label="Next changed property" style={stepButton}>Next ▶</button>
+                      <button type="button" onClick={() => openChangeList(changeFilter)} style={{ ...stepButton, color: "var(--gray)" }}>Back to the list</button>
                     </div>
-                    <div style={box}><div style={label}>Owner</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.owner1 || "Unknown owner"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.mailAddress || "Mailing address not available"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.neighborhood || p.neighborhoodAssociation || "Neighborhood unknown"}{p.neighborhoodAssociation && p.neighborhoodAssociation !== p.neighborhood ? ` | ${p.neighborhoodAssociation}` : ""}</div></div>
-                    <div style={box}>
-                      <div style={label}>Exemptions and credits</div>
-                      <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.6, display: "grid", gap: 4 }}>
-                        {exemptions.length
-                          ? exemptions.map((ex, idx) => <div key={`${ex.code}-${idx}`}>{typeof ExemptionTerm === "function" ? <ExemptionTerm ex={ex} /> : ex.name}</div>)
-                          : <div>None recorded</div>}
-                      </div>
-                    </div>
-                    {sqftComparison && (
-                      <div style={{ ...box, gridColumn: "1 / -1" }}>
-                        <div style={label}>Value per square foot</div>
-                        <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.6 }}>
-                          {$f(Math.round(sqftComparison.value))} of assessed value per sq ft of living space. The typical home in {sqftComparison.scope} is {$f(Math.round(sqftComparison.reference))}
-                          {Math.abs(sqftDifference) < 5 ? ", about the same." : `, so this one is ${Math.abs(sqftDifference)}% ${sqftDifference > 0 ? "higher" : "lower"}.`}
-                          {" "}Lot size, condition, and features also affect value; Check My Assessment compares similar homes.
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })()}
-              {selectedInventoryRows.length > 0 && (
-                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Residential profile</div>
-                  <div className="metric-grid-2" style={{ display: "grid", gap: 10, marginTop: 10, minWidth: 0 }}>
-                    {selectedInventoryRows.map(([label, value]) => (
-                      <div key={label} style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: "var(--gray3)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>{label}</div>
-                        <div style={{ fontSize: 13, color: "var(--gray)", lineHeight: 1.55, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{value}</div>
-                      </div>
-                    ))}
-                  </div>
+              <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 }}>
+                  <button onClick={() => focusParcel(selectedParcel.parcelId, 18)} style={{ background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>Zoom to property on app map</button>
+                  {!compactMode && typeof onCompare === "function" && <button onClick={() => onCompare(selectedParcel)} style={{ background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>{selectedInCompare ? "In Compare" : "+ Compare"}</button>}
                 </div>
-              )}
-              {!compactMode && selectedOwnerPortfolio && (
-                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => setOwnerPortfolioOpen(v => !v)}
-                    style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer", textAlign: "left", minWidth: 0 }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Owner portfolio</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedOwnerPortfolio.propertyCount.toLocaleString()} parcel{selectedOwnerPortfolio.propertyCount === 1 ? "" : "s"} potentially owned by same owner</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--blue3)", fontWeight: 700, flexShrink: 0 }}>{ownerPortfolioOpen ? "Hide list" : "Show list"}</div>
-                  </button>
-                  {ownerPortfolioOpen && (
-                    <div style={{ display: "grid", gap: 10, padding: "0 14px 14px", marginTop: -2, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 }}>Grouped by normalized owner name across the loaded Albany roll. Verify manually before treating this as confirmed common ownership.</div>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 2 }}>
-                        {selectedOwnerPortfolio.parcels.map(p => {
-                          const current = p.parcelId === selectedParcel.parcelId;
-                          return (
-                            <button
-                              key={p.parcelId}
-                              type="button"
-                              onClick={() => focusParcel(p.parcelId, 18)}
-                              style={{ textAlign: "left", background: current ? "rgba(37,99,235,.10)" : "var(--card)", border: `1px solid ${current ? "rgba(37,99,235,.28)" : "var(--border)"}`, borderRadius: 9, padding: "11px 12px", cursor: "pointer", minWidth: 0 }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 }}>
-                                <div style={{ minWidth: 0, flex: "1 1 180px" }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.address || p.parcelId}</div>
-                                  <div style={{ fontSize: 11, color: "var(--gray2)", marginTop: 4, lineHeight: 1.5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.parcelId} | {p.neighborhood || "Neighborhood unknown"}{current ? " | Current parcel" : ""}</div>
-                                </div>
-                                <div style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto" }}>
-                                  <div style={{ fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" }}>{$f(p.fullMarketValue)}</div>
-                                  <div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 4 }}>{propClassLabel(p)}</div>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}              {!compactMode && selectedWarnings.length > 0 && <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" }}>{selectedWarnings.slice(0, 4).map(w => <div key={w} style={{ fontSize: 12, color: "var(--gray2)" }}>{w.replace(/_/g, " ")}</div>)}</div>}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", minWidth: 0 }}>
-                {!compactMode && typeof onOpenProperty === "function" && <button onClick={() => onOpenProperty(selectedParcel)} style={{ background: "var(--card)", color: "var(--blue3)", border: "1px solid var(--border2)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>View full property details</button>}
-                <button onClick={() => focusParcel(selectedParcel.parcelId, 18)} style={{ background: advanced ? "var(--teal)" : "var(--blue)", color: "white", border: "none", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>Zoom to property on app map</button>
-                {!compactMode && typeof onCompare === "function" && <button onClick={() => onCompare(selectedParcel)} style={{ background: selectedInCompare ? "rgba(37,99,235,.15)" : "var(--card2)", border: `1px solid ${selectedInCompare ? "rgba(37,99,235,.35)" : "var(--border)"}`, color: selectedInCompare ? "var(--blue3)" : "var(--gray)", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", flex: "1 1 150px", minWidth: 0 }}>{selectedInCompare ? "In Compare" : "+ Compare"}</button>}
-              </div>
-              <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                   {selectedParcelMapsUrl && <a href={selectedParcelMapsUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open ${selectedParcel.address || selectedParcel.parcelId} in Google Maps (opens in a new tab)`} style={{ ...GOOGLE_LINK, padding: "9px 13px", borderRadius: 9, flex: "1 1 150px", justifyContent: "center" }}>Open in Google Maps <span aria-hidden="true">↗</span></a>}
                   {selectedStreetViewUrl && <a href={selectedStreetViewUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open Google Street View near ${selectedParcel.address || selectedParcel.parcelId} (opens in a new tab)`} style={{ ...GOOGLE_LINK, padding: "9px 13px", borderRadius: 9, flex: "1 1 150px", justifyContent: "center" }}>Street View <span aria-hidden="true">↗</span></a>}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 }}>Google Maps and Street View open in a new tab.</div>
               </div>
+              {!compactMode && typeof renderPropertyDetails === "function" ? (
+                <>
+                  {(() => {
+                    const sqftComparison = valuePerSqftComparison(selectedParcel);
+                    if (!sqftComparison) return null;
+                    const difference = Math.round((sqftComparison.ratio - 1) * 100);
+                    return (
+                      <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Value per square foot</div>
+                        <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.6 }}>
+                          {$f(Math.round(sqftComparison.value))} of assessed value per sq ft of living space. The typical home in {sqftComparison.scope} is {$f(Math.round(sqftComparison.reference))}
+                          {Math.abs(difference) < 5 ? ", about the same." : `, so this one is ${Math.abs(difference)}% ${difference > 0 ? "higher" : "lower"}.`}
+                          {" "}Lot size, condition, and features also affect value; Check My Assessment compares similar homes.
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {renderPropertyDetails(selectedParcel, parcel => focusParcel(parcel.parcelId, 18))}
+                </>
+              ) : (
+                <>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", minWidth: 0 }}>
+                  {compactMode && selectedParcelRole?.kind === "subject" && <Badge color="#f59e0b">Subject parcel</Badge>}
+                  {compactMode && selectedParcelRole?.kind === "compare" && <Badge color="#2563eb">{selectedParcelRole.label}</Badge>}
+                  <Badge color="#6366f1">{propClassLabel(selectedParcel)}</Badge>
+                  <Badge color={selectedItem?.geom ? "#0d9488" : "#f59e0b"}>{selectedItem?.geom ? "Boundary loaded" : "Point location only"}</Badge>
+                  {eqFlagFast(selectedParcel) !== "fair" && eqFlagFast(selectedParcel) !== "neutral" && <Badge color={FC[eqFlagFast(selectedParcel)]}>{`Record check: ${FL[eqFlagFast(selectedParcel)].toLowerCase()}`}</Badge>}
+                  {isAbsenteeFast(selectedParcel) && <Badge color="#f97316">Owner likely lives elsewhere</Badge>}
+                </div>
+                {!compactMode && isAbsenteeFast(selectedParcel) && <details style={{ background: "rgba(249,115,22,.06)", border: "1px solid rgba(249,115,22,.18)", borderRadius: 8, padding: "8px 10px" }}><summary style={{ cursor: "pointer", listStyle: "none", fontSize: 11, fontWeight: 700, color: "#c2410c", fontFamily: "var(--fm)" }}>Why flagged as absentee?</summary><div style={{ display: "grid", gap: 4, marginTop: 8 }}><div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.5 }}>{getAbsenteeModelFast(selectedParcel).label} ({getAbsenteeModelFast(selectedParcel).confidence}, score {getAbsenteeModelFast(selectedParcel).score})</div>{(getAbsenteeModelFast(selectedParcel).signals?.length ? getAbsenteeModelFast(selectedParcel).signals : ["No strong off-site ownership signal."]).map((signal, idx) => <div key={`${selectedParcel.parcelId}-absentee-${idx}`} style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.45 }}>{signal}</div>)}</div></details>}
+                {(() => {
+                  const p = selectedParcel;
+                  const prior = typeof priorOf === "function" ? priorOf(p) : null;
+                  const changeText = typeof describeChangeShort === "function" ? describeChangeShort(p) : null;
+                  const exemptions = Array.isArray(p.exemptions) ? p.exemptions : [];
+                  const sqftComparison = valuePerSqftComparison(p);
+                  const sqftDifference = sqftComparison ? Math.round((sqftComparison.ratio - 1) * 100) : null;
+                  const box = { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", minWidth: 0 };
+                  const label = { fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 };
+                  return (
+                    <div className="metric-grid-2" style={{ display: "grid", gap: 10, minWidth: 0 }}>
+                      <div style={box}>
+                        <div style={label}>Assessed value</div>
+                        <div style={{ fontFamily: "var(--fd)", fontSize: 21, fontWeight: 800, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{$f(p.assessedValue)}</div>
+                        {(changeText || (priorYear && !prior)) && <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 4, lineHeight: 1.5 }}>{changeText || `Not on the ${priorYear} roll`}</div>}
+                        <div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 4, lineHeight: 1.5 }}>City's full-value estimate {$f(p.fullMarketValue)}</div>
+                      </div>
+                      <div style={box}>
+                        <div style={label}>Taxable value</div>
+                        <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.7, fontFamily: "var(--fm)" }}>
+                          <div>County {$f(p.countyTaxable)}</div>
+                          <div>City {$f(p.cityTaxable)}</div>
+                          <div>School {$f(p.schoolTaxable)}</div>
+                        </div>
+                      </div>
+                      <div style={box}><div style={label}>Owner</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.owner1 || "Unknown owner"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.mailAddress || "Mailing address not available"}</div><div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 6, lineHeight: 1.6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.neighborhood || p.neighborhoodAssociation || "Neighborhood unknown"}{p.neighborhoodAssociation && p.neighborhoodAssociation !== p.neighborhood ? ` | ${p.neighborhoodAssociation}` : ""}</div></div>
+                      <div style={box}>
+                        <div style={label}>Exemptions and credits</div>
+                        <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.6, display: "grid", gap: 4 }}>
+                          {exemptions.length
+                            ? exemptions.map((ex, idx) => <div key={`${ex.code}-${idx}`}>{typeof ExemptionTerm === "function" ? <ExemptionTerm ex={ex} /> : ex.name}</div>)
+                            : <div>None recorded</div>}
+                        </div>
+                      </div>
+                      {sqftComparison && (
+                        <div style={{ ...box, gridColumn: "1 / -1" }}>
+                          <div style={label}>Value per square foot</div>
+                          <div style={{ fontSize: 13, color: "var(--gray)", marginTop: 6, lineHeight: 1.6 }}>
+                            {$f(Math.round(sqftComparison.value))} of assessed value per sq ft of living space. The typical home in {sqftComparison.scope} is {$f(Math.round(sqftComparison.reference))}
+                            {Math.abs(sqftDifference) < 5 ? ", about the same." : `, so this one is ${Math.abs(sqftDifference)}% ${sqftDifference > 0 ? "higher" : "lower"}.`}
+                            {" "}Lot size, condition, and features also affect value; Check My Assessment compares similar homes.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {selectedInventoryRows.length > 0 && (
+                  <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Residential profile</div>
+                    <div className="metric-grid-2" style={{ display: "grid", gap: 10, marginTop: 10, minWidth: 0 }}>
+                      {selectedInventoryRows.map(([label, value]) => (
+                        <div key={label} style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: "var(--gray3)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>{label}</div>
+                          <div style={{ fontSize: 13, color: "var(--gray)", lineHeight: 1.55, marginTop: 5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {!compactMode && selectedOwnerPortfolio && (
+                  <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", minWidth: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setOwnerPortfolioOpen(v => !v)}
+                      style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer", textAlign: "left", minWidth: 0 }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Owner portfolio</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedOwnerPortfolio.propertyCount.toLocaleString()} parcel{selectedOwnerPortfolio.propertyCount === 1 ? "" : "s"} potentially owned by same owner</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--blue3)", fontWeight: 700, flexShrink: 0 }}>{ownerPortfolioOpen ? "Hide list" : "Show list"}</div>
+                    </button>
+                    {ownerPortfolioOpen && (
+                      <div style={{ display: "grid", gap: 10, padding: "0 14px 14px", marginTop: -2, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "var(--gray2)", lineHeight: 1.55 }}>Grouped by normalized owner name across the loaded Albany roll. Verify manually before treating this as confirmed common ownership.</div>
+                        <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 2 }}>
+                          {selectedOwnerPortfolio.parcels.map(p => {
+                            const current = p.parcelId === selectedParcel.parcelId;
+                            return (
+                              <button
+                                key={p.parcelId}
+                                type="button"
+                                onClick={() => focusParcel(p.parcelId, 18)}
+                                style={{ textAlign: "left", background: current ? "rgba(37,99,235,.10)" : "var(--card)", border: `1px solid ${current ? "rgba(37,99,235,.28)" : "var(--border)"}`, borderRadius: 9, padding: "11px 12px", cursor: "pointer", minWidth: 0 }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 }}>
+                                  <div style={{ minWidth: 0, flex: "1 1 180px" }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.address || p.parcelId}</div>
+                                    <div style={{ fontSize: 11, color: "var(--gray2)", marginTop: 4, lineHeight: 1.5, overflowWrap: "anywhere", wordBreak: "break-word" }}>{p.parcelId} | {p.neighborhood || "Neighborhood unknown"}{current ? " | Current parcel" : ""}</div>
+                                  </div>
+                                  <div style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto" }}>
+                                    <div style={{ fontFamily: "var(--fm)", fontSize: 12, color: "var(--amber)" }}>{$f(p.fullMarketValue)}</div>
+                                    <div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 4 }}>{propClassLabel(p)}</div>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}              {!compactMode && selectedWarnings.length > 0 && <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 10, padding: "12px 14px" }}>{selectedWarnings.slice(0, 4).map(w => <div key={w} style={{ fontSize: 12, color: "var(--gray2)" }}>{w.replace(/_/g, " ")}</div>)}</div>}
+                </>
+              )}
             </> : addrSearch ? <>
               <div style={{ display: "grid", gap: 8 }}>
                 {searchMatches.length > 0 ? searchMatches.map(p => (
@@ -1316,6 +1435,41 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
                 )) : <div style={{ fontSize: 13, color: "var(--gray2)", lineHeight: 1.7 }}>No mapped parcels match that search.</div>}
               </div>
             </> : <>
+              {!compactMode && colorMode === "change" && changeSummary && (
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 10, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Changed since {priorYear}</div>
+                  <div style={{ fontSize: 13, color: "var(--gray)", lineHeight: 1.6 }}>
+                    <b style={{ color: "var(--white)" }}>{changeSummary.changed.toLocaleString()} properties</b> on the map have a different assessed value than in {priorYear}: {changeSummary.up.toLocaleString()} went up and {changeSummary.down.toLocaleString()} went down{changeSummary.added ? `. ${changeSummary.added.toLocaleString()} more are new or renumbered parcels` : ""}. Click one to see it on the map.
+                  </div>
+                  <div role="group" aria-label="Filter changed properties" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {[["all", `All (${changeSummary.rows.length.toLocaleString()})`], ["up", `Went up (${changeSummary.up.toLocaleString()})`], ["down", `Went down (${changeSummary.down.toLocaleString()})`], ["new", `New (${changeSummary.added.toLocaleString()})`]]
+                      .filter(([id]) => id === "all" || (id === "up" ? changeSummary.up : id === "down" ? changeSummary.down : changeSummary.added) > 0)
+                      .map(([id, label]) => (
+                        <button key={id} type="button" onClick={() => setChangeFilter(id)} aria-pressed={changeFilter === id} style={{ background: changeFilter === id ? "var(--blue)" : "var(--card)", color: changeFilter === id ? "white" : "var(--gray)", border: `1px solid ${changeFilter === id ? "var(--blue)" : "var(--border2)"}`, borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+                      ))}
+                  </div>
+                  <div style={{ display: "grid", gap: 6, maxHeight: 440, overflowY: "auto", paddingRight: 2, minWidth: 0 }}>
+                    {filteredChangeRows.map(row => {
+                      const p = row.item.p;
+                      const prior = typeof priorOf === "function" ? priorOf(p) : null;
+                      return (
+                        <button key={p.parcelId} type="button" onClick={() => focusParcel(p.parcelId, 18)} style={{ textAlign: "left", background: "var(--card)", border: "1px solid var(--border)", borderLeft: `4px solid ${changeColor(row)}`, borderRadius: 8, padding: "9px 11px", cursor: "pointer", display: "grid", gap: 4, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, overflowWrap: "anywhere" }}>{p.address || p.parcelId}</span>
+                            {changePill(row)}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)" }}>
+                            {prior ? `${$f(prior.assessedValue)} → ${$f(p.assessedValue)}` : `${$f(p.assessedValue)} (not on the ${priorYear} roll)`}{p.neighborhood ? ` | ${p.neighborhood}` : ""}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {typeof onDrill === "function" && filteredChangeRows.length > 0 && (
+                    <button type="button" onClick={() => onDrill({ title: `Properties that changed since ${priorYear}${changeFilter === "all" ? "" : changeFilter === "up" ? " (went up)" : changeFilter === "down" ? " (went down)" : " (new or renumbered)"}`, parcels: filteredChangeRows.map(row => row.item.p) })} style={{ justifySelf: "start", background: "var(--card)", border: "1px solid var(--border2)", color: "var(--blue3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Open this list as a table</button>
+                  )}
+                </div>
+              )}
               <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Start here</div><div style={{ fontSize: 13, color: "var(--gray2)", lineHeight: 1.7, marginTop: 6 }}>{"Search an address or owner name, or click a parcel directly."}</div></div>
               <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}><button onClick={() => setLegendOpen(prev => ({ ...prev, coloring: !prev.coloring }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" }}><span style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Current coloring: {activeColorMode.label}</span><span style={{ fontSize: 12, color: "var(--gray3)" }}>{legendOpen.coloring ? "Hide" : "Show"}</span></button>{legendOpen.coloring && <div style={{ display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 }}>{legendItems.map(([label, color]) => <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 10, height: 10, borderRadius: "50%", background: color, border: "1px solid rgba(255,255,255,.18)", flexShrink: 0 }} /><span style={{ fontSize: 12, color: "var(--gray2)" }}>{label}</span></div>)}</div>}</div>
               {boundaryLegendItems.length > 0 && <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}><button onClick={() => setLegendOpen(prev => ({ ...prev, boundaries: !prev.boundaries }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" }}><span style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Boundary legend</span><span style={{ fontSize: 12, color: "var(--gray3)" }}>{legendOpen.boundaries ? "Hide" : "Show"}</span></button>{legendOpen.boundaries && <div style={{ padding: "0 14px 12px", marginTop: -2 }}><div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 5 }}>{advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."}</div><div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>{boundaryLegendItems.map(item => <div key={`${item.kind}:${item.label}`} style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 }} /><span style={{ fontSize: 12, color: "var(--gray2)" }}>{item.label}</span></div>)}</div></div>}</div>}
