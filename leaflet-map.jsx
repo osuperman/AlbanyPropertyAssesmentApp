@@ -402,7 +402,8 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     if (colorMode === "change") {
       if (typeof priorOf !== "function" || !priorOf(p)) return "#a78bfa";
       const change = typeof assessedChangePct === "function" ? assessedChangePct(p) : null;
-      if (change == null) return null;
+      // No percent change exists from a $0 assessment (condo common land, for example): same value means no change.
+      if (change == null) return Number(p.assessedValue) === Number(priorOf(p).assessedValue) ? "#cbd5e1" : null;
       return change >= 10 ? "#b91c1c" : change > 0 ? "#f87171" : change < 0 ? "#16a34a" : "#cbd5e1";
     }
     if (colorMode === "exemption") {
@@ -646,6 +647,30 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     if (direction > 0) map.zoomIn();
     else map.zoomOut();
   }, []);
+
+  // Number of properties on the map in each legend item. Legend colors match colorForParcel exactly; a parcel the
+  // current view does not apply to (null) belongs to the light "not applicable" item.
+  const legendCounts = useMemo(() => {
+    const counts = new Map();
+    for (const item of mapped) {
+      const key = colorForParcel(item.p) || "none";
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [colorForParcel, mapped]);
+  const legendCountFor = color => (legendCounts.get(color) || 0) + (color === "#e2e8f0" ? (legendCounts.get("none") || 0) : 0);
+  const boundaryCounts = useMemo(() => {
+    const neighborhoods = new Map();
+    const associations = new Map();
+    for (const item of mapped) {
+      const neighborhood = String(item.p.neighborhoodLabel || "").trim();
+      if (neighborhood) neighborhoods.set(neighborhood, (neighborhoods.get(neighborhood) || 0) + 1);
+      const association = String(item.p.neighborhoodAssociation || "").trim();
+      if (association) associations.set(association, (associations.get(association) || 0) + 1);
+    }
+    return { neighborhoods, associations };
+  }, [mapped]);
+  const propertyCountText = n => " (" + n.toLocaleString() + " " + (n === 1 ? "property" : "properties") + ")";
 
   // "Change since <prior year>": the properties on the map whose assessed value changed, plus parcels that are new or
   // renumbered since the prior roll. Few properties changed, so each gets a dot and the panel lists them.
@@ -1471,8 +1496,8 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
                 </div>
               )}
               <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}><div style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Start here</div><div style={{ fontSize: 13, color: "var(--gray2)", lineHeight: 1.7, marginTop: 6 }}>{"Search an address or owner name, or click a parcel directly."}</div></div>
-              <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}><button onClick={() => setLegendOpen(prev => ({ ...prev, coloring: !prev.coloring }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" }}><span style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Current coloring: {activeColorMode.label}</span><span style={{ fontSize: 12, color: "var(--gray3)" }}>{legendOpen.coloring ? "Hide" : "Show"}</span></button>{legendOpen.coloring && <div style={{ display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 }}>{legendItems.map(([label, color]) => <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 10, height: 10, borderRadius: "50%", background: color, border: "1px solid rgba(255,255,255,.18)", flexShrink: 0 }} /><span style={{ fontSize: 12, color: "var(--gray2)" }}>{label}</span></div>)}</div>}</div>
-              {boundaryLegendItems.length > 0 && <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}><button onClick={() => setLegendOpen(prev => ({ ...prev, boundaries: !prev.boundaries }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" }}><span style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Boundary legend</span><span style={{ fontSize: 12, color: "var(--gray3)" }}>{legendOpen.boundaries ? "Hide" : "Show"}</span></button>{legendOpen.boundaries && <div style={{ padding: "0 14px 12px", marginTop: -2 }}><div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 5 }}>{advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."}</div><div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>{boundaryLegendItems.map(item => <div key={`${item.kind}:${item.label}`} style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 }} /><span style={{ fontSize: 12, color: "var(--gray2)" }}>{item.label}</span></div>)}</div></div>}</div>}
+              <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}><button onClick={() => setLegendOpen(prev => ({ ...prev, coloring: !prev.coloring }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" }}><span style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Current coloring: {activeColorMode.label}</span><span style={{ fontSize: 12, color: "var(--gray3)" }}>{legendOpen.coloring ? "Hide" : "Show"}</span></button>{legendOpen.coloring && <div style={{ display: "grid", gap: 7, padding: "0 14px 12px", marginTop: -2 }}>{legendItems.filter(([, color]) => legendCountFor(color) > 0).map(([label, color]) => <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 10, height: 10, borderRadius: "50%", background: color, border: "1px solid rgba(15,23,42,.28)", flexShrink: 0 }} /><span style={{ fontSize: 12, color: "var(--gray2)" }}>{label}<span style={{ color: "var(--gray3)", fontWeight: 600, whiteSpace: "nowrap" }}>{propertyCountText(legendCountFor(color))}</span></span></div>)}<div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 2 }}>Counts are properties shown on the map ({mapped.length.toLocaleString()} in all).</div></div>}</div>
+              {boundaryLegendItems.length > 0 && <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}><button onClick={() => setLegendOpen(prev => ({ ...prev, boundaries: !prev.boundaries }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "transparent", border: "none", color: "inherit", padding: "12px 14px", cursor: "pointer" }}><span style={{ fontSize: 11, color: "var(--gray2)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Boundary legend</span><span style={{ fontSize: 12, color: "var(--gray3)" }}>{legendOpen.boundaries ? "Hide" : "Show"}</span></button>{legendOpen.boundaries && <div style={{ padding: "0 14px 12px", marginTop: -2 }}><div style={{ fontSize: 11, color: "var(--gray3)", marginTop: 5 }}>{advanced && showAssociationOverlay ? "Neighborhood and association outlines use distinct colors." : "Each neighborhood outline uses a distinct color."}</div><div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>{boundaryLegendItems.map(item => <div key={`${item.kind}:${item.label}`} style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 16, height: 0, borderTop: `4px solid ${item.color}`, flexShrink: 0 }} /><span style={{ fontSize: 12, color: "var(--gray2)" }}>{item.label}{(() => { const n = (item.kind === "Association" ? boundaryCounts.associations : boundaryCounts.neighborhoods).get(item.label) || 0; return n > 0 ? <span style={{ color: "var(--gray3)", fontWeight: 600, whiteSpace: "nowrap" }}>{propertyCountText(n)}</span> : null; })()}</span></div>)}</div></div>}</div>}
             </>}
           </div>
         </Card>
