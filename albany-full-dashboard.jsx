@@ -82,6 +82,13 @@ const GS = () => (
     .research-rail{padding-top:0;border-top:1px solid var(--border)}
     .workflow-main *{min-width:0}
     @media (max-width: 1100px){ .detail-sticky{position:static !important;max-height:none !important;overflow:visible !important} }
+    .detail-scroll{scrollbar-width:auto;scrollbar-color:#64748b #dbe3ee}
+    .detail-scroll::-webkit-scrollbar{width:14px}
+    .detail-scroll::-webkit-scrollbar-track{background:#dbe3ee;border-radius:10px}
+    .detail-scroll::-webkit-scrollbar-thumb{background:#64748b;border-radius:10px;border:3px solid #dbe3ee;min-height:48px}
+    .detail-scroll::-webkit-scrollbar-thumb:hover{background:#334155}
+    .detail-scroll-hint{position:sticky;bottom:0;margin-top:-72px;height:72px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:12px;background:linear-gradient(180deg,transparent 0%,var(--bg2) 68%);pointer-events:none;border-radius:0 0 14px 14px}
+    .detail-scroll-hint button{pointer-events:auto}
     .workflow-main{overflow-wrap:break-word;overflow-anchor:none}
     .workflow-main table{max-width:100%}
     .workflow-main img,.workflow-main svg,.workflow-main iframe{max-width:100%}
@@ -5808,6 +5815,21 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
   const [sel,setSel]=useState(null);
   const [showMoreFilters,setShowMoreFilters]=useState(false);
   const detailRef=useRef(null);
+  // Show "More details below" while the property details panel has content below the fold.
+  const [detailMoreBelow,setDetailMoreBelow]=useState(false);
+  const updateDetailScrollHint=useCallback(()=>{
+    const el=detailRef.current;
+    setDetailMoreBelow(!!el && el.scrollHeight-el.clientHeight-el.scrollTop>24);
+  },[]);
+  useEffect(()=>{
+    updateDetailScrollHint();
+    const el=detailRef.current;
+    if(!el || typeof ResizeObserver==="undefined") return undefined;
+    const observer=new ResizeObserver(updateDetailScrollHint);
+    observer.observe(el);
+    if(el.firstElementChild) observer.observe(el.firstElementChild);
+    return ()=>observer.disconnect();
+  },[sel, updateDetailScrollHint]);
   const changeContext=useMemo(()=>buildAssessmentChangeContext(parcels),[parcels]);
   const addressSearchIndex=useMemo(()=>{
     const m=new Map();
@@ -5979,7 +6001,7 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
           </table>
         </div>}
       </div>
-      {sel&&<div ref={detailRef} className="detail-sticky" style={{position:"sticky",top:20,maxHeight:"90vh",overflowY:"auto",scrollMarginTop:16}}><DetailPanel p={sel} onClose={()=>setSel(null)} myHome={myHome} onSaveHome={onSaveHome} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={setSel} onCheckAssessment={onCheckAssessment} onOpenTaxRelief={onOpenTaxRelief} datasetMeta={meta} changeContext={changeContext}/></div>}
+      {sel&&<div ref={detailRef} className="detail-sticky detail-scroll" onScroll={updateDetailScrollHint} style={{position:"sticky",top:20,maxHeight:"90vh",overflowY:"auto",scrollMarginTop:16}}><DetailPanel p={sel} onClose={()=>setSel(null)} myHome={myHome} onSaveHome={onSaveHome} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={setSel} onCheckAssessment={onCheckAssessment} onOpenTaxRelief={onOpenTaxRelief} datasetMeta={meta} changeContext={changeContext}/>{detailMoreBelow&&<div className="detail-scroll-hint"><button type="button" onClick={()=>{const el=detailRef.current; if(el) el.scrollBy({top:Math.round(el.clientHeight*0.75),behavior:"smooth"});}} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:999,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 8px 20px rgba(37,99,235,.28)"}}>More details below <span aria-hidden="true">↓</span></button></div>}</div>}
     </div>
   );
 };
