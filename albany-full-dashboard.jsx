@@ -2,10 +2,11 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from "react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, ScatterChart, Scatter, LineChart, Line, Legend } from "recharts";
 import { LeafletMapView } from "./leaflet-map.jsx";
-import { AddressAutocompleteInput, findBestAddressMatch } from "./address-autocomplete.jsx";
+import { AddressAutocompleteInput, findBestAddressMatch, normalizeAddressText, suggestSimilarAddresses } from "./address-autocomplete.jsx";
 import propertyTypeClassificationCodes from "./property-type-classification-codes.json";
 import grievanceSettings from "./grievance-settings.json";
 import grievanceEngine from "./grievance-engine.js";
+import rollCompactFormat from "./roll-compact-format.js";
 
 const mergeDashboardSettings = (base, override) => {
   if(!override || typeof override !== "object" || Array.isArray(override)) return base;
@@ -33,6 +34,12 @@ const {
   sortVisibleComparableCandidates: sortVisibleComparableCandidatesWithSpec,
   summarizeGrievancePackage: summarizeGrievancePackageWithSpec,
 } = grievanceEngine;
+// albany-roll.json is stored in a compact column format (see roll-compact-format.js); this rebuilds parcel objects.
+const decodeCompactRollPayload = rollCompactFormat.decodeCompactRollPayload;
+const parcelsFromRollPayload = payload => {
+  if(payload && payload.format==="albany-roll-compact") return decodeCompactRollPayload(payload) || [];
+  return payload && (payload.parcels || payload);
+};
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ GLOBAL STYLES ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
 const GS = () => (
@@ -42,13 +49,13 @@ const GS = () => (
     :root{
       --bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#c8d3e2;
       --blue:#2563eb;--blue2:#3b82f6;--blue3:#1d4ed8;
-      --amber:#d97706;--amber2:#b45309;
-      --teal:#0d9488;--teal2:#0f766e;
+      --amber:#b45309;--amber2:#92400e;
+      --teal:#0f766e;--teal2:#115e59;
       --red:#dc2626;--red2:#b91c1c;
-      --green:#16a34a;--green2:#15803d;
+      --green:#15803d;--green2:#166534;
       --purple:#7c3aed;--purple2:#6d28d9;
       --orange:#ea580c;--orange2:#c2410c;
-      --white:#1e293b;--gray:#475569;--gray2:#64748b;--gray3:#94a3b8;
+      --white:#1e293b;--gray:#475569;--gray2:#4b5a6c;--gray3:#526071;
       --border:rgba(0,0,0,0.09);--border2:rgba(0,0,0,0.15);
       --card:#ffffff;--card2:#f8fafc;--card3:#f1f5f9;
       --fd:'Syne',sans-serif;--fb:'IBM Plex Sans',sans-serif;--fm:'IBM Plex Mono',monospace;
@@ -62,6 +69,17 @@ const GS = () => (
     .pulse{animation:pulse 2.5s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
     input,select{outline:none}
+    :focus-visible{outline:3px solid #d97706;outline-offset:2px}
+    input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #d97706;outline-offset:1px}
+    .skip-link{position:absolute;left:12px;top:-60px;z-index:5000;background:var(--blue3);color:white;padding:10px 14px;border-radius:8px;font-weight:700;text-decoration:none}
+    .skip-link:focus{top:12px}
+    .resident-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .research-rail{padding-top:0;border-top:1px solid var(--border)}
+    .workflow-main *{min-width:0}
+    @media (max-width: 1100px){ .detail-sticky{position:static !important;max-height:none !important;overflow:visible !important} }
+    .workflow-main{overflow-wrap:break-word;overflow-anchor:none}
+    .workflow-main table{max-width:100%}
+    .workflow-main img,.workflow-main svg,.workflow-main iframe{max-width:100%}
     input::placeholder{color:var(--gray3)}
     .app-shell{max-width:1400px;margin:0 auto;padding:0 24px}
     .hero-grid{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(320px,.95fr);gap:18px;align-items:stretch}
@@ -97,7 +115,7 @@ const GS = () => (
       .leaflet-layout,.panel-split{grid-template-columns:1fr}
     }
     @media (max-width: 980px){
-      .hero-grid,.resident-grid,.quick-grid{grid-template-columns:1fr}
+      .hero-grid,.resident-grid,.quick-grid,.resident-grid-3{grid-template-columns:1fr}
       .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
       .app-header-row{align-items:flex-start}
       .app-brand{width:100%}
@@ -130,14 +148,14 @@ const GS = () => (
 );
 
 const GRIEVANCE_WORKFLOW_STEPS = [
-  { id: "step-1-how-to-read", label: "How to Read", stepNumber: 1 },
-  { id: "step-2-terminology", label: "Terminology", stepNumber: 2 },
-  { id: "step-3-find-property", label: "Find Property", stepNumber: 3 },
-  { id: "step-4-appeal-summary", label: "Appeal Summary", stepNumber: 4 },
-  { id: "step-5-review-evidence", label: "Evidence", stepNumber: 5 },
-  { id: "step-6-build-grievance", label: "Build Packet", stepNumber: 6 },
-  { id: "step-7-print-packet", label: "Print Packet", stepNumber: 7 },
-  { id: "step-8-file", label: "File", stepNumber: 8 },
+  { id: "step-3-find-property", label: "Find your property", stepNumber: 1 },
+  { id: "step-4-appeal-summary", label: "Summary", stepNumber: 2 },
+  { id: "step-5-review-evidence", label: "Evidence", stepNumber: 3 },
+  { id: "step-6-build-grievance", label: "Comparable homes", stepNumber: 4 },
+  { id: "step-7-print-packet", label: "Share or print", stepNumber: 5 },
+  { id: "step-8-file", label: "How to file", stepNumber: 6 },
+  { id: "step-1-how-to-read", label: "How this works", stepNumber: 7 },
+  { id: "step-2-terminology", label: "Key terms", stepNumber: 8 },
 ];
 const GRIEVANCE_WORKFLOW_SCROLL_OFFSET = 104;
 const GRIEVANCE_WORKFLOW_MOBILE_BREAKPOINT = 980;
@@ -489,9 +507,9 @@ const ARM_LENGTH_DEFINITION = "Arm's-length means a normal open-market sale betw
 const SALES_DATA_SOURCE_NOTE = "Sales data source: New York State Office of Real Property Tax Services (ORPTS) Municipal Data Portal. Used here for sale history and arm's-length market evidence.";
 const MATCHED_HOME_DETAILS_INFO = 'See "Why this home was included" for details.';
 const TERM_HELP = {
-  fmv: "Estimated full market value of your property.",
-  assessedValue: "The value the city uses to calculate your taxes.",
-  equityRatio: "Assessed value divided by market value. It helps compare whether homes are assessed consistently.",
+  fmv: "The City's full-value estimate for the property: the assessed value divided by the city-wide assessment level (the uniform percent of value printed on the roll). It is not a separate appraisal.",
+  assessedValue: "The value the City uses to calculate property taxes, before exemptions. Taxable value is assessed value minus exemptions.",
+  equityRatio: "Assessed value divided by market value. Using the roll's full-value estimate it is the same for almost every Albany home, so the app relies on sale prices and assessed value per square foot instead.",
   cod: "Coefficient of Dispersion. It measures how tightly neighborhood assessment ratios cluster together. Lower usually means more uniform assessments.",
   iaaoStandard: "The International Association of Assessing Officers benchmark for acceptable assessment uniformity. In this app, COD at or below 15.0 is treated as meeting the residential uniformity standard.",
   armLengthSale: "A normal market sale between unrelated buyers and sellers.",
@@ -499,12 +517,12 @@ const TERM_HELP = {
   grievancePackage: "The set of selected comps and narrative materials you may use when filing RP-524.",
   methodA: "A comp-based value estimate. It asks: if we look at the best comparable homes, what assessed value do they suggest you should ask for?",
   methodB: "An equity-ratio value estimate. It asks: if your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?",
-  independentOvervaluation: "A separate overassessment check. It asks: even aside from the comps, does your assessment look too high compared with your FMV and the municipality's equalization rate?",
+  independentOvervaluation: "A separate check that ignores the comparable homes: does your assessment look high compared with a sale-based estimate of your home's market value and the city-wide assessment level?",
   rp524: "The New York form used to challenge your property assessment.",
 };
 const TAX_APPEAL_NEXT_STEPS = [
   "Review your comparable homes",
-  "Include only the strongest supporting comps",
+  "Choose which comparable homes to include",
   "Confirm your owner and mailing information",
   "Review your requested assessed value",
   "Copy or edit the grievance narrative",
@@ -704,7 +722,7 @@ function normalizeDatasetMeta(meta={}, parcels=[], sourceName=""){
   };
 }
 
-const APP_TAB_IDS = new Set(["home","browse","mapview","equity","taxtools","compare","ownership","analytics","opportunity","dataquality","guide"]);
+const APP_TAB_IDS = new Set(["home","browse","assessment","mapview","equity","taxtools","compare","ownership","analytics","opportunity","dataquality","guide"]);
 const COMPARE_SNAPSHOT_QUERY_KEYS = ["tab","tool","subject","comps","dataset","label"];
 function slugifyShareLabel(raw){
   return (raw||"").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
@@ -724,8 +742,12 @@ function parseComparableSnapshotSearch(searchString=""){
   const compIds = [...new Set(rawCompIds)];
   const tool = (params.get("tool") || "").trim().toLowerCase();
   const tab = (params.get("tab") || "").trim().toLowerCase();
+  // Older share links used tab=taxtools&tool=neighbor; the comparison now lives in its own "assessment" tab.
+  const resolvedTab = (tool==="neighbor" && (tab==="taxtools" || !tab || (rawSubjectId || compIds.length)))
+    ? "assessment"
+    : (APP_TAB_IDS.has(tab) ? tab : "");
   return {
-    tab: APP_TAB_IDS.has(tab) ? tab : ((tool==="neighbor" && (rawSubjectId || compIds.length)) ? "taxtools" : ""),
+    tab: resolvedTab,
     tool,
     subjectId: rawSubjectId,
     compIds,
@@ -738,7 +760,7 @@ function buildComparableSnapshotUrl({subjectId="", compIds=[], datasetKey="", la
   if(typeof window==="undefined") return "";
   const url = new URL(window.location.href);
   const params = url.searchParams;
-  params.set("tab", "taxtools");
+  params.set("tab", "assessment");
   params.set("tool", "neighbor");
   const normalizedSubjectId = normalizeParcelId(subjectId);
   const normalizedCompIds = [...new Set((compIds||[]).map(normalizeParcelId).filter(Boolean))];
@@ -775,6 +797,7 @@ function extractPayloadMeta(payload){
     valuationDate: payload.valuationDate ?? meta.valuationDate,
     taxableStatusDate: payload.taxableStatusDate ?? meta.taxableStatusDate,
     uniformPercentOfValue: payload.uniformPercentOfValue ?? meta.uniformPercentOfValue,
+    priorRoll: payload.priorRoll ?? meta.priorRoll ?? null,
   }, Array.isArray(payload.parcels) ? payload.parcels : [], payload.source || "");
 }
 
@@ -810,7 +833,8 @@ function extractRollMetadata(text, sourceName=""){
 
 function parseTextRoll(text, rollMeta) {
   const datasetMeta = normalizeDatasetMeta(rollMeta || extractRollMetadata(text), [], "Albany assessment roll");
-  const delimPat = /\*{5,}[\s*]+(\d+\.\d+-\d+-\d+)[\s*]+\*{5,}/g;
+  // Matches plain print keys plus condo units, split lots, and utility franchise records (see convert-roll.js).
+  const delimPat = /\*{5,}[\s*]+(\d+\.[\d.\-]*\d)[\s*]+\*{5,}/g;
   const parts = [];
   let m, lastIdx=0, lastPid=null;
   while ((m=delimPat.exec(text))!==null) {
@@ -821,18 +845,52 @@ function parseTextRoll(text, rollMeta) {
   const num = s => parseFloat((s||"").replace(/[,$]/g,""))||0;
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
   const swisPattern = datasetMeta.swisCode || "010100";
-  return parts.map(({pid,blk}) => {
+  // Estimate property ZIPs for records whose owner does not live there; see estimatePropertyZips in convert-roll.js.
+  const estimatePropertyZips=records=>{
+    const streetZips=new Set(["12202","12203","12204","12205","12206","12207","12208","12209","12210","12211"]);
+    const streetKey=address=>(address||"").toLowerCase().replace(/^(?:rears+|pts+)?[d.-]+[a-z]?s+/i,"").replace(/s*(unit [^)]*)s*$/i,"").replace(/s+/g," ").trim();
+    const houseNumber=address=>{const m=(address||"").match(/^(?:rears+|pts+)?(d+)/i);return m?parseInt(m[1],10):null;};
+    const lotKey=id=>((id||"").match(/^(d+.d*-d+-d+)/)||[])[1]||null;
+    const anchorZip=r=>streetZips.has(r._ownerOccupiedZip)?r._ownerOccupiedZip:null;
+    const cellSize=1500,hasCoords=r=>r.eastCoord>0&&r.nrthCoord>0,cellKey=(e,n)=>Math.floor(e/cellSize)+":"+Math.floor(n/cellSize);
+    const ownerOccupiedByStreet=new Map(),ownerOccupiedZipsByLot=new Map(),ownerOccupiedByCell=new Map();
+    for(const r of records){
+      const zip=anchorZip(r);if(!zip)continue;
+      const key=streetKey(r.address),hn=houseNumber(r.address);if(key&&hn!=null){if(!ownerOccupiedByStreet.has(key))ownerOccupiedByStreet.set(key,[]);ownerOccupiedByStreet.get(key).push({hn,zip});}
+      const lot=lotKey(r.parcelId);if(lot){const counts=ownerOccupiedZipsByLot.get(lot)||{};counts[zip]=(counts[zip]||0)+1;ownerOccupiedZipsByLot.set(lot,counts);}
+      if(hasCoords(r)){const cell=cellKey(r.eastCoord,r.nrthCoord);if(!ownerOccupiedByCell.has(cell))ownerOccupiedByCell.set(cell,[]);ownerOccupiedByCell.get(cell).push({e:r.eastCoord,n:r.nrthCoord,zip});}
+    }
+    const nearestByCoords=r=>{
+      if(!hasCoords(r))return null;const ce=Math.floor(r.eastCoord/cellSize),cn=Math.floor(r.nrthCoord/cellSize),nearby=[];
+      for(let de=-2;de<=2;de++)for(let dn=-2;dn<=2;dn++)for(const a of ownerOccupiedByCell.get((ce+de)+":"+(cn+dn))||[])nearby.push({d:(a.e-r.eastCoord)**2+(a.n-r.nrthCoord)**2,zip:a.zip});
+      if(!nearby.length)return null;const votes=new Map();nearby.sort((a,b)=>a.d-b.d).slice(0,3).forEach((a,i)=>votes.set(a.zip,(votes.get(a.zip)||0)+1-i*0.01));
+      return [...votes.entries()].sort((a,b)=>b[1]-a[1])[0][0];
+    };
+    for(const r of records){
+      const own=anchorZip(r);
+      if(own){r.zip=own;}
+      else{const neighbors=ownerOccupiedByStreet.get(streetKey(r.address))||[];const hn=houseNumber(r.address);let best=null;if(neighbors.length&&hn!=null){for(const n of neighbors)if(!best||Math.abs(n.hn-hn)<Math.abs(best.hn-hn))best=n;}const lotCounts=ownerOccupiedZipsByLot.get(lotKey(r.parcelId));const byCoords=nearestByCoords(r);if(byCoords)r.zip=byCoords;else if(best)r.zip=best.zip;else if(lotCounts)r.zip=Object.entries(lotCounts).sort((x,y)=>y[1]-x[1]||x[0].localeCompare(y[0]))[0][0];else if(!streetZips.has(r.zip))r.zip="12207";}
+      delete r._zipFromRecord;delete r._albanyMailZip;delete r._ownerOccupiedZip;
+    }
+    return records;
+  };
+  return estimatePropertyZips(parts.map(({pid,blk}) => {
     const pidE=esc(pid);
     const clsM=blk.match(new RegExp(pidE+"\\t(\\d{3})\\s+(.+?)(?=\\s{3,}|\\t)"))||
                blk.match(new RegExp("\\d+\\s+"+pidE+"\\t(\\d{3})\\s+(.+?)(?=\\s{3,}|\\t)"));
     const propClass=clsM?clsM[1]:"000";
     const propClassDesc=clsM?clsM[2].trim():"Unknown";
-    const parcelType=blk.includes("HOMESTEAD PARCEL")?"HOMESTEAD":"NON-HOMESTEAD";
+    // Check NON-HOMESTEAD first: "NON-HOMESTEAD PARCEL" also contains the text "HOMESTEAD PARCEL".
+    const parcelType=blk.includes("NON-HOMESTEAD PARCEL")?"NON-HOMESTEAD":blk.includes("HOMESTEAD PARCEL")?"HOMESTEAD":"NON-HOMESTEAD";
     const firstLine=blk.trim().split("\n")[0];
     const addrM=firstLine.match(/^(.+?)\s+(?:HOMESTEAD|NON-HOMESTEAD)/);
-    const address=(addrM?addrM[1]:firstLine).replace(/\s+/g," ").trim();
-    const zipM=blk.match(/Albany,?\s+NY\s+(122\d{2})/)||blk.match(/\b(122\d{2})\b/);
+    const noStreetAddress=/^(?:NON-)?HOMESTEAD\b/.test(firstLine.trim());
+    const address=noStreetAddress?"No street address":(addrM?addrM[1]:firstLine).replace(/\s+/g," ").trim();
+    const albanyZipM=blk.match(/Albany,?\s+NY\s+(122\d{2})/);
+    const zipM=albanyZipM||blk.match(/\b(122\d{2})\b/);
     const zip=zipM?(zipM[1]||zipM[0]):"12207";
+    const recordAfterFirstLine=blk.replace(/^\s+/,"").split("\n").slice(1).join("\n");
+    const ownerOccupied=!!(albanyZipM&&!noStreetAddress&&address&&new RegExp("(^|\\n|\\t)\\s*"+esc(address)+"\\b").test(recordAfterFirstLine));
     let ownM=blk.match(new RegExp("(?:\\t|\\n)([A-Z][^\\t\\n]+?)\\t(?:Albany|ALBANY)\\s*\\t?"+swisPattern))||
              blk.match(new RegExp("(?:\\t|\\n)([A-Z][^\\t\\n]+?)\\s{3,}(?:Albany|ALBANY)\\s*\\t?"+swisPattern));
     if(!ownM)ownM=blk.match(new RegExp("([A-Z][^0-9\\t\\n]{2,45}?)\\s+(?:Albany|ALBANY)\\s*\\t?"+swisPattern));
@@ -847,7 +905,8 @@ function parseTextRoll(text, rollMeta) {
     const frntM=blk.match(/FRNT\s+([\d.]+)\s+DPTH\s+([\d.]+)\s+([\d,]+)/);
     const frontage=frntM?parseFloat(frntM[1]):0;
     const depth=frntM?parseFloat(frntM[2]):0;
-    const assessedValue=frntM?num(frntM[3]):(fullMarketValue>0?Math.round(fullMarketValue*0.96):0);
+    const rollLevel=Number(rollMeta?.uniformPercentOfValue)>0?Number(rollMeta.uniformPercentOfValue)/100:0.96;
+    const assessedValue=frntM?num(frntM[3]):(fullMarketValue>0?Math.round(fullMarketValue*rollLevel):0);
     const ctyM=blk.match(/COUNTY\s+TAXABLE\s+VALUE\s+([\d,]+)/);
     const cityM=blk.match(/CITY\s+TAXABLE\s+VALUE\s+([\d,]+)/);
     const schM=blk.match(/SCHOOL\s+TAXABLE\s+VALUE\s+([\d,]+)/);
@@ -861,12 +920,17 @@ function parseTextRoll(text, rollMeta) {
     const dy=deedM?parseInt(deedM[1],10):null;
     const deedYear=(dy&&dy>=1900&&dy<=2025)?dy:null;
     const exemptions=[];
-    const exPat=/([A-Z][A-Za-z\s\-]{1,20}?)\s{2,}(\d{5})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/g;
+    // Only scan this parcel's own record. Sub-parcel records (e.g. 12.34-5-6.1) are not split out above,
+    // so without this cut their exemptions would be attributed to the preceding parcel.
+    const nextRecordIdx=blk.search(/\*{5,}[\s*]+\d+\.[\d.\-]*\d[\s*]+\*{5,}/);
+    const ownBlk=nextRecordIdx>=0?blk.slice(0,nextRecordIdx):blk;
+    // Exemption names are single-space-separated words (e.g. "VETWAR CTS", "AGED - ALL"); the code may follow a single space or tab.
+    const exPat=/(?:^|[\t\n]| {2,}|(?<=\d) )([A-Z][A-Za-z_/&'-]*(?: (?:-|[A-Za-z_/&'-]+))*)[ \t]+(\d{5})[ \t]+([\d,]+)[ \t]+([\d,]+)[ \t]+([\d,]+)(?=\s|$)/g;
     const skipEx=new Set(["COUNTY TAXABLE","CITY TAXABLE","SCHOOL TAXABLE","FULL MARKET","DEED BOOK"]);
     let exM;
-    while((exM=exPat.exec(blk))!==null){
-      const nm=exM[1].trim();
-      if(skipEx.has(nm)||nm.length<3)continue;
+    while((exM=exPat.exec(ownBlk))!==null){
+      const nm=exM[1].trim().replace(/^A (?=[A-Z])/,"");
+      if(skipEx.has(nm)||nm.length<2)continue;
       exemptions.push({name:nm,code:exM[2],countyAmt:num(exM[3]),cityAmt:num(exM[4]),schoolAmt:num(exM[5])});
     }
     const mailM=blk.match(/(\d+[^\n]+?),?\s+([A-Z]{2})\s+(1\d{4})(?=[\s\n])/);
@@ -881,6 +945,9 @@ function parseTextRoll(text, rollMeta) {
       rollType:datasetMeta.rollType || null,
       address,
       zip,
+      _zipFromRecord:!!zipM,
+      _albanyMailZip:albanyZipM?albanyZipM[1]:null,
+      _ownerOccupiedZip:ownerOccupied?albanyZipM[1]:null,
       neighborhood:datasetMeta.municipality || "Albany",
       owner1:owner1||"Unknown",
       owner2,
@@ -911,15 +978,110 @@ function parseTextRoll(text, rollMeta) {
       parcelArea:null,
       saleDate:null,
     };
-  }).filter(p=>p.parcelId&&p.assessedValue>=0);
+  }).filter(p=>p.parcelId&&p.assessedValue>=0));
 }
 
 const $f = v => v==null?"-":"$"+Number(v).toLocaleString();
 const nf = v => v==null?"-":Number(v).toLocaleString();
 const eqR = p => p.fullMarketValue>0?((p.assessedValue/p.fullMarketValue)*100).toFixed(1):"-";
-const eqFlag = p => { const r=parseFloat(eqRFast(p)); if(isNaN(r))return"neutral"; if(r<80)return"under"; if(r>120)return"over"; return"fair"; };
-const FC = {under:"#f59e0b",over:"#dc2626",fair:"#22c55e",neutral:"#64748b"};
-const FL = {under:"Under-Assessed",over:"Over-Assessed",fair:"Fair Value",neutral:"No Data"};
+// Albany assesses at a uniform percent of value (96% in 2025, 91.17% in 2026), and the roll's "full market value"
+// is simply assessed value / that percent. So assessed / full value is the same for nearly every parcel and
+// is NOT a fairness signal. Bands below only flag records that differ from the city-wide level (usually a
+// partial assessment or a data issue), never "over-assessed" or "under-assessed".
+const DEFAULT_UNIFORM_PERCENT = 96;
+const ASSESSMENT_LEVEL_TOLERANCE = 2;
+const assessmentLevelBand = (ratio, uniformPercent=DEFAULT_UNIFORM_PERCENT) => {
+  if(ratio==null || !isFinite(ratio)) return "neutral";
+  const level = Number.isFinite(Number(uniformPercent)) && Number(uniformPercent)>0 ? Number(uniformPercent) : DEFAULT_UNIFORM_PERCENT;
+  if(ratio < level-ASSESSMENT_LEVEL_TOLERANCE) return "under";
+  if(ratio > level+ASSESSMENT_LEVEL_TOLERANCE) return "over";
+  return "fair";
+};
+// Level of the roll currently loaded (set when data loads) for records that were not preprocessed with it.
+let activeUniformPercent = DEFAULT_UNIFORM_PERCENT;
+const setActiveUniformPercent = value => { const n = Number(value); activeUniformPercent = Number.isFinite(n) && n>0 ? n : DEFAULT_UNIFORM_PERCENT; };
+const eqFlag = p => { const r=parseFloat(eqRFast(p)); return isNaN(r) ? "neutral" : assessmentLevelBand(r, activeUniformPercent); };
+const FC = {under:"#92400e",over:"#5b21b6",fair:"#115e59",neutral:"#475569"};
+const FL = {under:"Below city-wide level",over:"Above city-wide level",fair:"Standard city-wide level",neutral:"No data"};
+const ASSESSMENT_LEVEL_EXPLAINER = "Albany assesses every property at the same percentage of the city's full-value estimate (the uniform percent of value, shown in About this data), and the roll's full value is simply assessed value divided by that percentage. This number is therefore the same for almost every property and cannot show whether an assessment is fair. To check fairness, compare with similar homes and recent sales in Check My Assessment.";
+
+// Plain-English names for the exemption codes that appear on the Albany roll.
+const EXEMPTION_CODE_INFO = {
+  "41854": { label:"Basic STAR exemption", kind:"star", note:"Lowers the school taxable value for an owner-occupied home. Closed to new applicants since 2016; new homeowners receive the STAR credit instead." },
+  "41834": { label:"Enhanced STAR exemption", kind:"star", note:"Larger school-tax reduction for owners 65 or older who meet the income limit." },
+  "99999": { label:"STAR credit", kind:"star_credit", note:"New York State pays this benefit directly to the homeowner by check or deposit, so it does not lower the taxable values on this record." },
+  "41800": { label:"Senior citizens exemption", kind:"senior", note:"For owners 65 or older with limited income. Can lower assessed value by up to 50%." },
+  "41120": { label:"Veterans exemption (wartime service)", kind:"veteran", note:"Alternative veterans' exemption for wartime service." },
+  "41130": { label:"Veterans exemption (combat zone)", kind:"veteran", note:"Additional alternative veterans' exemption for combat-zone service." },
+  "41140": { label:"Veterans exemption (service-connected disability)", kind:"veteran", note:"Additional alternative veterans' exemption based on a VA disability rating." },
+  "41001": { label:"Veterans exemption (eligible funds)", kind:"veteran", note:"A veterans' exemption for property bought with pension or other eligible funds, adjusted for changes in assessment level. Ask the Assessor's Office for details." },
+  "41930": { label:"Disability and limited-income exemption", kind:"disability", note:"For owners with a disability who meet the income limit." },
+  "41931": { label:"Disability and limited-income exemption", kind:"disability", note:"For owners with a disability who meet the income limit." },
+  "41932": { label:"Disability and limited-income exemption", kind:"disability", note:"For owners with a disability who meet the income limit." },
+  "41934": { label:"Disability and limited-income exemption", kind:"disability", note:"For owners with a disability who meet the income limit." },
+  "41400": { label:"Clergy exemption", kind:"other", note:"" },
+  "44210": { label:"Home improvement exemption", kind:"other", note:"Temporarily excludes the added value of certain residential improvements." },
+  "50000": { label:"Wholly exempt property", kind:"other", note:"" },
+  "13350": { label:"City-owned public property", kind:"other", note:"Property the City owns and uses for a public purpose, such as parks, is exempt (RPTL 406(1))." },
+  "33200": { label:"Acquired by the City for unpaid taxes", kind:"other", note:"Property the City took through tax foreclosure is exempt while the City holds it (RPTL 406(5))." },
+};
+const tidyExemptionName = raw => (raw||"").toString().replace(/\s+/g," ").trim();
+const exemptionInfo = ex => {
+  const code = (ex?.code||"").toString().trim();
+  const known = EXEMPTION_CODE_INFO[code];
+  if(known) return { ...known, code, rollName: tidyExemptionName(ex?.name) };
+  return { label: tidyExemptionName(ex?.name) || `Exemption ${code}`, kind:"other", note:"", code, rollName: tidyExemptionName(ex?.name) };
+};
+const isStarCreditRecord = ex => (ex?.code||"").toString().trim()==="99999";
+// Exemptions that actually reduce a taxable value on the roll (the STAR credit is paid separately).
+const taxReducingExemptions = p => (Array.isArray(p?.exemptions) ? p.exemptions : []).filter(ex=>!isStarCreditRecord(ex));
+const hasStarBenefitOnRecord = p => (Array.isArray(p?.exemptions) ? p.exemptions : []).some(ex=>["41854","41834","99999"].includes((ex?.code||"").toString().trim()));
+const exemptionSummaryLabel = p => {
+  const labels = [...new Set((Array.isArray(p?.exemptions) ? p.exemptions : []).map(ex=>exemptionInfo(ex).label))];
+  return labels.join(", ");
+};
+// Prior-year values (stored with the current roll; see roll-compact-format.js).
+const priorOf = p => (p && p.prior && typeof p.prior==="object") ? p.prior : null;
+const assessedChangePct = p => {
+  const prior = priorOf(p);
+  if(!prior || !(Number(prior.assessedValue) > 0) || !Number.isFinite(Number(p?.assessedValue))) return null;
+  return (Number(p.assessedValue) - Number(prior.assessedValue)) / Number(prior.assessedValue) * 100;
+};
+const formatChangePct = value => value==null || !Number.isFinite(value) ? "-" : `${value>0?"+":""}${value.toFixed(1)}%`;
+const formatIsoDate = iso => {
+  if(!iso) return "";
+  const d = new Date(`${iso}T00:00:00Z`);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric",timeZone:"UTC"});
+};
+const describeChangeShort = p => { const c=assessedChangePct(p); const prior=priorOf(p); if(c==null||!prior) return null; return c===0 ? `Same as ${prior.assessmentYear}` : `${formatChangePct(c)} from ${prior.assessmentYear}`; };
+// How a change in the City's uniform percentage alone moves the full-value estimate of an unchanged assessment.
+const levelShiftNote = (priorLevel, currentLevel) => {
+  const a=Number(priorLevel), b=Number(currentLevel);
+  if(!(a>0) || !(b>0) || a===b) return null;
+  const pct=(a/b-1)*100;
+  return `The City's uniform percentage went from ${a}% to ${b}%, so the same assessed value now stands for a ${pct>0?"higher":"lower"} full-value estimate (about ${pct>0?"+":""}${pct.toFixed(1)}%). Compare assessed values, not full-value estimates, from year to year.`;
+};
+const formatSignedMoney = value => value==null || !Number.isFinite(value) ? "-" : `${value>0?"+":value<0?"-":""}${$f(Math.abs(value))}`;
+const medianOf = values => { const v=values.filter(Number.isFinite).sort((a,b)=>a-b); if(!v.length) return null; const m=Math.floor(v.length/2); return v.length%2?v[m]:(v[m-1]+v[m])/2; };
+// Median assessed-value change for residential properties, by neighborhood and citywide.
+const buildAssessmentChangeContext = parcels => {
+  const byNeighborhood = new Map();
+  const all = [];
+  for(const p of parcels||[]){
+    if(!/^2\d\d$/.test(String(p?.propClass||""))) continue;
+    const change = assessedChangePct(p);
+    if(change==null) continue;
+    all.push(change);
+    const key = p.neighborhood || "";
+    if(!byNeighborhood.has(key)) byNeighborhood.set(key, []);
+    byNeighborhood.get(key).push(change);
+  }
+  const unchangedShare = values => values.length ? values.filter(v=>v===0).length / values.length * 100 : null;
+  const medians = new Map([...byNeighborhood.entries()].map(([key, values])=>[key, { median: medianOf(values), count: values.length, unchangedShare: unchangedShare(values) }]));
+  return { citywideMedian: medianOf(all), citywideCount: all.length, citywideUnchangedShare: unchangedShare(all), byNeighborhood: medians };
+};
+const STAR_REGISTRATION_URL = "https://www.tax.ny.gov/pit/property/star/";
+const ALBANY_ASSESSOR_URL = "https://www.albanyny.gov/207/Assessment";
 const lotSqFt = p => p.frontage&&p.depth?p.frontage*p.depth:null;
 const gentriIdx = p => p.assessedValue>0?(p.landValue/p.assessedValue*100).toFixed(1):0;
 function normalizeStreetKeyForCompare(raw){
@@ -1307,7 +1469,9 @@ function preprocessParcels(arr, datasetMeta={}){
     const absenteeModel = buildAbsenteeModel(next, ownerPortfolio);
     const absentee = absenteeModel.flag;
     const eqRatioNum = next.fullMarketValue>0 ? (next.assessedValue/next.fullMarketValue)*100 : null;
-    const eqBand = eqRatioNum==null || !isFinite(eqRatioNum) ? "neutral" : eqRatioNum<80 ? "under" : eqRatioNum>120 ? "over" : "fair";
+    const uniformPercent = Number(meta?.uniformPercentOfValue);
+    const levelPercent = Number.isFinite(uniformPercent) && uniformPercent>0 ? uniformPercent : 96;
+    const eqBand = eqRatioNum==null || !isFinite(eqRatioNum) ? "neutral" : eqRatioNum<levelPercent-2 ? "under" : eqRatioNum>levelPercent+2 ? "over" : "fair";
     const warnings = buildParcelQualityWarnings(next);
     return {
       ...next,
@@ -1472,6 +1636,7 @@ ${cleanMailAddress.toString()}
 ${buildCanonicalRecordKey.toString()}
 ${buildParcelQualityWarnings.toString()}
 ${preprocessParcels.toString()}
+var __decodeCompactRoll = (${decodeCompactRollPayload.toString()});
 self.onmessage = function(ev){
   try{
     var data = ev.data || {};
@@ -1483,7 +1648,7 @@ self.onmessage = function(ev){
     var sourceType = "csv";
     if(lowerName.slice(-5)===".json"){
       var payload = JSON.parse(raw);
-      arr = payload && (payload.parcels || payload);
+      arr = payload && payload.format==="albany-roll-compact" ? __decodeCompactRoll(payload) : (payload && (payload.parcels || payload));
       if(!Array.isArray(arr) || arr.length===0) throw new Error("JSON file does not contain a parcels array.");
       meta = extractPayloadMeta(payload);
       sourceType = "json";
@@ -1759,10 +1924,10 @@ const ComparableMapFeatureCard = ({ subject, comparables = [], onOpen }) => {
         <span style={{ background:"rgba(245,158,11,.16)", border:"1px solid rgba(245,158,11,.28)", color:"#b45309", borderRadius:999, padding:"6px 10px", fontSize:10, fontWeight:800 }}>1 subject</span>
         <span style={{ background:"rgba(37,99,235,.14)", border:"1px solid rgba(37,99,235,.24)", color:"var(--blue3)", borderRadius:999, padding:"6px 10px", fontSize:10, fontWeight:800 }}>{compCount} selected comp{compCount===1?"":"s"}</span>
         <span style={{ background:"rgba(22,163,74,.12)", border:"1px solid rgba(22,163,74,.22)", color:"var(--green2)", borderRadius:999, padding:"6px 10px", fontSize:10, fontWeight:800 }}>Live with your selections</span>
-        <span style={{ background:"rgba(139,92,246,.12)", border:"1px solid rgba(139,92,246,.22)", color:"var(--purple)", borderRadius:999, padding:"6px 10px", fontSize:10, fontWeight:800 }}>Included in your packet</span>
+        <span style={{ background:"rgba(139,92,246,.12)", border:"1px solid rgba(139,92,246,.22)", color:"var(--purple2)", borderRadius:999, padding:"6px 10px", fontSize:10, fontWeight:800 }}>Included in your packet</span>
       </div>
       <div style={{ display:"grid", gap:6 }}>
-        <div style={{ fontSize:11, fontWeight:800, color:"var(--purple)", textTransform:"uppercase", letterSpacing:.65 }}>Interactive grievance evidence</div>
+        <div style={{ fontSize:11, fontWeight:800, color:"var(--purple2)", textTransform:"uppercase", letterSpacing:.65 }}>Interactive grievance evidence</div>
         <div style={{ fontFamily:"var(--fd)", fontSize:24, fontWeight:800, color:"var(--gray)", lineHeight:1.06, maxWidth:620 }}>See your parcel and grievance comps on one map</div>
       </div>
       <div style={{ fontSize:13, color:"var(--gray2)", lineHeight:1.78, maxWidth:640 }}>This map shows whether your supporting comps are truly nearby and in the same neighborhood context. It updates instantly when you include or remove comps from the grievance package, and the same map overview is now printed in your downloaded grievance packet.</div>
@@ -1971,10 +2136,11 @@ const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, child
       <button
         type="button"
         onClick={e=>{ if(stopPropagation) e.stopPropagation(); dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel }); }}
-        title={`Open ${address} in Application Map`}
+        title={`Show ${address} on the map`}
+        aria-label={`Show ${address} on the map`}
         style={{background:"transparent",border:"none",padding:0,color:"var(--teal2)",fontSize:"0.85em",fontWeight:700,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}
       >
-        Application Map
+        Show on map
       </button>
     </span>
   );
@@ -2042,7 +2208,7 @@ const formatResidentialStyleCode = rawValue => {
   if(!codeMatch) return raw;
   const code = codeMatch[1].padStart(2, "0");
   const label = RESIDENTIAL_STYLE_CODE_LABELS[code];
-  return label ? `Style code ${parseInt(code, 10)} - ${label}` : `Style code ${parseInt(code, 10)}`;
+  return label ? `${label} (style code ${parseInt(code, 10)})` : `Style code ${parseInt(code, 10)}`;
 };
 const inventoryStyle = p => {
   const raw = ((inventoryOf(p)?.buildingStyle || "").toString().trim());
@@ -2180,7 +2346,10 @@ const residentialUnitCountForClass = (code, desc="") => {
   if(codeKey==="230" || codeKey==="231") return 3;
   return null;
 };
+// Mirrors grievance-engine.js: condo units are only compared with other condo units.
+const isCondoUnitParcel = parcel => /\bCONDO\b/i.test(String(parcel?.propClassDesc || ""));
 const residentialFamilyForClass = (code, desc="") => {
+  if(/\bCONDO\b/i.test(String(desc || "")) && isResidentialPropClass(code)) return "condo";
   const unitCount = residentialUnitCountForClass(code, desc);
   if(unitCount===1) return "single_family";
   if(unitCount===2) return "two_family";
@@ -2192,6 +2361,7 @@ const classCompatibilityTier = (subject, comp, { allowBroadClass=false }={}) => 
   const subjectCode = String(subject?.propClass || "").trim();
   const compCode = String(comp?.propClass || "").trim();
   if(!subjectCode || !compCode) return { tier: "tier_3_incompatible", score: 0, label: "Class unavailable" };
+  if(isCondoUnitParcel(subject)!==isCondoUnitParcel(comp)) return { tier: "tier_3_incompatible", score: 0, label: "Condo units are only compared with condo units" };
   if(subjectCode===compCode) return { tier: "tier_0_exact", score: 18, label: "Exact class match" };
   if(!isResidentialPropClass(subjectCode) || !isResidentialPropClass(compCode)) return { tier: "tier_3_incompatible", score: 0, label: "Incompatible class" };
   if(RESIDENTIAL_CLASS_CLOSE_PAIRS.has(`${subjectCode}|${compCode}`)){
@@ -2893,19 +3063,26 @@ const grievanceDayForYear = (year) => {
   const offsetToTuesday = (2 - firstOfMay.getUTCDay() + 7) % 7;
   return new Date(Date.UTC(year, 4, 1 + offsetToTuesday + 21));
 };
-const grievanceDayLabel = (meta={}, subject=null) => {
-  const currentYear = new Date().getFullYear();
-  const year = parseInt(subject?.assessmentYear, 10) || parseInt(meta?.assessmentYear, 10) || currentYear;
-  const deadline = grievanceDayForYear(year);
-  const formatted = deadline ? deadline.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric", year:"numeric", timeZone:"UTC" }) : null;
-  const warning = deadline && new Date() > deadline
-    ? "This date may be outdated or already passed. Confirm the current year's Grievance Day with the City of Albany Assessor's Office before filing."
-    : "";
+// Grievance Day is usually the fourth Tuesday in May. The label is based on today's date, so it always points
+// to the next opportunity instead of a date that has already passed.
+const grievanceDayLabel = (meta={}, subject=null, now=new Date()) => {
+  const formatDay = date => date.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric", year:"numeric", timeZone:"UTC" });
+  const currentYear = now.getUTCFullYear();
+  const thisYearsDay = grievanceDayForYear(currentYear);
+  const thisYearPassed = !!thisYearsDay && now.getTime() > thisYearsDay.getTime() + 24*60*60*1000;
+  const nextYear = thisYearPassed ? currentYear + 1 : currentYear;
+  const nextDay = grievanceDayForYear(nextYear);
+  const rollYear = parseInt(subject?.assessmentYear, 10) || parseInt(meta?.assessmentYear, 10) || null;
+  const warnings = [];
+  if(thisYearPassed) warnings.push(`The ${currentYear} grievance period ended on ${formatDay(thisYearsDay)}.`);
+  if(rollYear && rollYear < nextYear) warnings.push(`This app uses the ${rollYear} assessment roll. A ${nextYear} grievance challenges the ${nextYear} assessment, which may be different. Check your current assessment with the Assessor's Office before relying on these numbers.`);
   return {
-    text: formatted
-      ? `Albany's Grievance Day for ${year} is ${formatted}. Confirm the date annually with the City of Albany Assessor's Office.`
-      : "Albany's Grievance Day is the 4th Tuesday in May. Confirm the date annually with the City of Albany Assessor's Office.",
-    warning,
+    text: nextDay
+      ? `The next Grievance Day is expected to be ${formatDay(nextDay)} (usually the fourth Tuesday in May). Your RP-524 complaint must reach the City of Albany Board of Assessment Review by then. Confirm the date and how to file with the City of Albany Assessor's Office.`
+      : "Grievance Day is usually the fourth Tuesday in May. Confirm the date and how to file with the City of Albany Assessor's Office.",
+    warning: warnings.join(" "),
+    nextYear,
+    thisYearPassed,
   };
 };
 const buildComplaintReasonGuidance = (subject, subjectProfile, neighborResult, neighborhoodBenchmark=null) => {
@@ -3356,12 +3533,12 @@ const buildAppealRecommendation = ({subject, neighborResult, readiness}) => {
       ? Math.max(subject.assessedValue - neighborResult.grievanceAvgAssessed, 0)
       : null;
   const recommendation = readiness.recommendedAction==="recommend_filing"
-    ? "Recommend filing"
+    ? "Filing looks supportable"
     : readiness.recommendedAction==="recommend_filing_with_caution"
-      ? "File with caution"
+      ? "Consider filing, with caution"
       : readiness.recommendedAction==="review_manually"
-        ? "Review manually"
-        : "Do not recommend";
+        ? "Review the evidence yourself"
+        : "This comparison does not support filing";
   let keyReason = "The current evidence does not clearly point to a supported lower assessment.";
   if(readiness.recommendedAction==="recommend_filing"){
     keyReason = neighborResult?.evidenceSufficiency?.status==="sale_backed_sufficient"
@@ -4043,7 +4220,7 @@ const buildComparablePrintReportHtml = ({
       <div class="summary-grid">
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.recommendation)}</div><div>Recommendation</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.caseStrength)}</div><div>Case strength</div></div>
-        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")}</div><div>Potential assessed value reduction</div></div>
+        <div class="summary-box"><div class="summary-value">${escapePrintableHtml(appealSummary.potentialReduction != null ? $f(appealSummary.potentialReduction) : "-")}</div><div>Possible reduction in assessed value</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(String(appealSummary.supportingComparableHomes ?? 0))}</div><div>Supporting comparable homes found</div></div>
         <div class="summary-box"><div class="summary-value">${escapePrintableHtml(`${appealReadiness.score} / 100`)}</div><div>Case assessment score</div></div>
       </div>
@@ -4402,13 +4579,14 @@ const annotateComparablePackageDecisions = (visibleComps=[], grievanceCandidateP
   };
   return comp;
 });
-const buildComparableSnapshotCandidate = (subject, comp, subjectProfile) => {
-  const candidate = buildComparableCandidate(subject, comp, { subjectProfile, sharedSnapshotMode: true });
+const buildComparableSnapshotCandidate = (subject, comp, subjectProfile, engineOptions={}) => {
+  const candidate = buildComparableCandidate(subject, comp, { ...engineOptions, subjectProfile, sharedSnapshotMode: true });
   if(candidate) return candidate;
   const baseSubjectProfile = subjectProfile || buildComparableProfile(subject);
   const compProfile = buildComparableProfile(comp);
   const location = comparableLocationContext(subject, comp, baseSubjectProfile, compProfile);
   const fallbackCandidate = buildComparableCandidate(subject, comp, {
+    ...engineOptions,
     subjectProfile: baseSubjectProfile,
     compProfile,
     allowBroadClass: true,
@@ -4535,6 +4713,26 @@ const buildComparableResult = (subject, parcels, options={}) => {
     currentDatasetKey,
     datasetMismatch: false,
   };
+  if(exactCompIds.length && residential){
+    // A shared link normally lists exactly the homes a fresh lookup finds. Reuse the fresh result in that case
+    // so the shared page shows the same package and recommendation the sender saw.
+    const fresh = buildComparableResult(subject, parcels, { ...options, exactCompIds: [] });
+    const freshIds = new Set((fresh?.neighbors || []).map(comp=>normalizeParcelId(comp?.parcelIdNorm || comp?.parcelId || comp?.printKey || comp?.pinSbl)).filter(Boolean));
+    if(fresh && freshIds.size===exactCompIds.length && exactCompIds.every(id=>freshIds.has(id))){
+      return {
+        ...fresh,
+        snapshot: {
+          active: true,
+          requestedCompIds: exactCompIds,
+          resolvedCompIds: exactCompIds,
+          missingCompIds: [],
+          requestedDatasetKey,
+          currentDatasetKey,
+          datasetMismatch: !!(requestedDatasetKey && currentDatasetKey && requestedDatasetKey!==currentDatasetKey),
+        },
+      };
+    }
+  }
   if(exactCompIds.length){
     comparableMode = "snapshot";
     snapshot = {
@@ -4554,7 +4752,7 @@ const buildComparableResult = (subject, parcels, options={}) => {
     neighbors = exactCompIds.map(compId=>{
       const comp = parcelById.get(compId);
       if(!comp || normalizeParcelId(comp.parcelIdNorm || comp.parcelId)===normalizeParcelId(subject.parcelIdNorm || subject.parcelId)) return null;
-      return buildComparableSnapshotCandidate(subject, comp, subjectProfile);
+      return buildComparableSnapshotCandidate(subject, comp, subjectProfile, engineOptions);
     }).filter(Boolean);
     snapshot.resolvedCompIds = neighbors.map(comp=>normalizeParcelId(comp.parcelIdNorm || comp.parcelId || comp.printKey || comp.pinSbl)).filter(Boolean);
     snapshot.missingCompIds = exactCompIds.filter(compId=>!snapshot.resolvedCompIds.includes(compId));
@@ -4647,8 +4845,14 @@ const buildComparableResult = (subject, parcels, options={}) => {
       grievancePackage: grievanceCandidates,
     };
   }
+  // Shared comps stay visible exactly as shared, but only those that pass the normal quality, confidence,
+  // and support gates can join the default package (the same gates a fresh lookup uses).
   const grievanceCandidatePool = exactCompIds.length
-    ? sortGrievanceCandidatePool(neighbors.filter(comp => Number(comp?._grievanceSupportScore) > 0))
+    ? sortGrievanceCandidatePool(neighbors.filter(comp =>
+      Number(comp?._comparableQualityScore) >= 50 &&
+      Number(comp?._dataConfidenceScore) >= 60 &&
+      Number(comp?._grievanceSupportScore) > 0
+    ))
     : [];
   const grievancePackageSelection = exactCompIds.length ? selectGrievancePackage(grievanceCandidatePool, subjectProfile) : { selected: [], decisionById: new Map(), targetCount: 0 };
   const grievanceCandidates = grievancePackageSelection.selected;
@@ -4943,8 +5147,23 @@ function convertGeoJsonFeatureCollectionToStreetCenterlines(payload, sourceName=
     }
   };
 }
+// Darken a badge's hex color for its text so small labels stay readable (WCAG AA contrast) on the tinted background.
+const readableBadgeTextColor = hex => {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex||"").toString());
+  if(!m) return hex;
+  const n = parseInt(m[1], 16);
+  const channel = shift => {
+    const v = ((n >> shift) & 255) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const luminance = 0.2126*channel(16) + 0.7152*channel(8) + 0.0722*channel(0);
+  if(luminance <= 0.12) return hex;
+  const factor = Math.max(0.35, Math.min(0.85, Math.sqrt(0.12 / luminance)));
+  const scale = shift => Math.round(((n >> shift) & 255) * factor).toString(16).padStart(2, "0");
+  return `#${scale(16)}${scale(8)}${scale(0)}`;
+};
 const Badge = ({children,color="#3b82f6",small}) => (
-  <span style={{background:color+"22",color,border:`1px solid ${color}33`,borderRadius:5,padding:small?"1px 6px":"2px 8px",fontSize:small?10:11,fontWeight:600,fontFamily:"var(--fm)",whiteSpace:"nowrap"}}>{children}</span>
+  <span style={{background:color+"1a",color:readableBadgeTextColor(color),border:`1px solid ${color}40`,borderRadius:5,padding:small?"1px 6px":"2px 8px",fontSize:small?11:12,fontWeight:600,whiteSpace:"nowrap"}}>{children}</span>
 );
 const AbsenteeExplain = ({parcel,compact=false}) => {
   if(!parcel) return null;
@@ -5012,7 +5231,7 @@ const OwnerPortfolioSection = ({parcel, ownerPortfolioIndex, onSelectParcel}) =>
                     <div style={{fontSize:10,color:"var(--gray2)",marginTop:3,overflowWrap:"anywhere",wordBreak:"break-word"}}>{other.parcelId} | {other.neighborhood||"Neighborhood unknown"}{current?" | Current parcel":""}</div>
                   </div>
                   <div style={{textAlign:"right",minWidth:0,flex:"0 1 auto"}}>
-                    <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--amber)"}}>{$f(other.fullMarketValue)}</div>
+                    <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--amber2)"}}>{$f(other.fullMarketValue)}</div>
                     <div style={{fontSize:10,color:"var(--gray3)",marginTop:3}}>{propClassLabel(other)}</div>
                   </div>
                 </div>
@@ -5051,10 +5270,15 @@ const StatCard = ({label,value,icon,color="#3b82f6",sub,onClick}) => (
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ PARCEL MINI CARD ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
 const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
-  const flag=eqFlagFast(p); const fc=FC[flag];
   const ownerPortfolioCount = getOwnerPortfolioCountFast(p);
   return (
-    <div className="fi" onClick={()=>onClick&&onClick(p)} style={{
+    <div className="fi" onClick={()=>onClick&&onClick(p)}
+      role={onClick?"button":undefined}
+      tabIndex={onClick?0:undefined}
+      aria-label={onClick?`Open details for ${p.address}`:undefined}
+      aria-pressed={onClick?!!selected:undefined}
+      onKeyDown={e=>{ if(onClick && e.target===e.currentTarget && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); onClick(p); } }}
+      style={{
       background:selected?"rgba(37,99,235,0.12)":"var(--card)",border:`1px solid ${selected?"var(--blue)":"var(--border)"}`,
       borderRadius:11,padding:"14px 16px",cursor:onClick?"pointer":"default",transition:"all .15s",
     }}
@@ -5065,30 +5289,33 @@ const ParcelMini = ({p,onClick,selected,onCompare,inCompare}) => {
           <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
           <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",margin:"3px 0 7px"}}>{p.parcelId} | {p.zip}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-            <Badge color="#6366f1" small>{propClassLabel(p)}</Badge>
+            <Badge color="#4338ca" small>{propClassLabel(p)}</Badge>
             {ownerPortfolioCount>1&&<Badge color="#0f766e" small>{ownerPortfolioBadgeLabel(p)}</Badge>}
-            {p.parcelType==="HOMESTEAD"&&<Badge color="#0d9488" small>Homestead</Badge>}
-            {p.exemptions.length>0&&<Badge color="#f59e0b" small>{p.exemptions.length} Exemption{p.exemptions.length>1?"s":""}</Badge>}
-            {isAbsenteeFast(p)&&<><Badge color="#f97316" small>Absentee</Badge><AbsenteeExplain parcel={p} compact /></>}
+            {p.exemptions.length>0&&<Badge color="#92400e" small>{exemptionSummaryLabel(p)}</Badge>}
+            {isAbsenteeFast(p)&&<><Badge color="#c2410c" small>Owner likely lives elsewhere</Badge><AbsenteeExplain parcel={p} compact /></>}
           </div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
-          <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
-          <div style={{fontSize:10,color:"var(--gray)",margin:"2px 0 5px"}}>FMV</div>
-          <span style={{fontSize:11,color:fc,fontWeight:600}}>o {eqRFast(p)}%</span>
+          <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--white)"}}>{$f(p.assessedValue)}</div>
+          <div style={{fontSize:11,color:"var(--gray)",margin:"2px 0 0"}}>Assessed value</div>
+          {describeChangeShort(p)&&<div style={{fontSize:11,color:"var(--gray)",marginTop:2}}>{describeChangeShort(p)}</div>}
         </div>
       </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid var(--border)",paddingTop:8,marginTop:8}}>
-        <div style={{fontSize:11,color:"var(--gray2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"65%"}}>{p.owner1}{p.owner2?` & ${p.owner2}`:""}</div>
-        {onCompare&&<button onClick={e=>{e.stopPropagation();onCompare(p)}} style={{background:inCompare?"rgba(37,99,235,.25)":"rgba(255,255,255,.05)",border:`1px solid ${inCompare?"var(--blue)":"var(--border)"}`,color:inCompare?"var(--blue2)":"var(--gray)",borderRadius:5,padding:"2px 8px",fontSize:10,cursor:"pointer",fontFamily:"var(--fm)"}}>{inCompare?"Added to Compare":"+ Compare"}</button>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,borderTop:"1px solid var(--border)",paddingTop:8,marginTop:8}}>
+        <div style={{fontSize:11,color:"var(--gray)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"60%"}}>{p.owner1}{p.owner2?` & ${p.owner2}`:""}</div>
+        {onCompare&&<button onClick={e=>{e.stopPropagation();onCompare(p)}} aria-pressed={!!inCompare} aria-label={`${inCompare?"Remove":"Add"} ${p.address} ${inCompare?"from":"to"} side-by-side comparison`} style={{background:inCompare?"rgba(37,99,235,.14)":"var(--card2)",border:`1px solid ${inCompare?"var(--blue)":"var(--border2)"}`,color:inCompare?"var(--blue3)":"var(--gray)",borderRadius:6,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:600,minHeight:32}}>{inCompare?"In comparison (remove)":"+ Compare"}</button>}
       </div>
     </div>
   );
 };
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ DETAIL PANEL ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
-const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectParcel}) => {
-  const flag=eqFlagFast(p); const fc=FC[flag]; const r=parseFloat(eqRFast(p)); const absenteeModel=getAbsenteeModelFast(p);
+const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectParcel,onCheckAssessment,onOpenTaxRelief,datasetMeta={},changeContext=null}) => {
+  const flag=eqFlagFast(p); const absenteeModel=getAbsenteeModelFast(p);
+  const levelPercent = Number.isFinite(Number(datasetMeta?.uniformPercentOfValue)) && Number(datasetMeta.uniformPercentOfValue)>0 ? Number(datasetMeta.uniformPercentOfValue) : DEFAULT_UNIFORM_PERCENT;
+  const rollYearLabel = [datasetMeta?.assessmentYear, datasetMeta?.rollType ? `${datasetMeta.rollType.charAt(0).toUpperCase()}${datasetMeta.rollType.slice(1)}` : ""].filter(Boolean).join(" ") || "current";
+  const starCredit = (p.exemptions||[]).some(isStarCreditRecord);
+  const reducing = taxReducingExemptions(p);
   const ownerPortfolioGroup = getOwnerPortfolioGroupFromIndex(p, ownerPortfolioIndex);
   const ownerPortfolioCount = ownerPortfolioGroup?.propertyCount || 0;
   const Row = ({label,value,color,mono}) => (
@@ -5103,13 +5330,13 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
       {children}
     </div>
   );
-  const totExC=p.exemptions.reduce((s,e)=>s+e.countyAmt,0);
-  const totExCI=p.exemptions.reduce((s,e)=>s+e.cityAmt,0);
-  const totExS=p.exemptions.reduce((s,e)=>s+e.schoolAmt,0);
+  const totExC=reducing.reduce((s,e)=>s+e.countyAmt,0);
+  const totExCI=reducing.reduce((s,e)=>s+e.cityAmt,0);
+  const totExS=reducing.reduce((s,e)=>s+e.schoolAmt,0);
   return (
-    <div className="fi" style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:20,height:"100%",maxWidth:"100%",minWidth:0,overflowY:"auto",position:"relative"}}>
-      <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--gray)",width:26,height:26,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>x</button>
-      <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:32,lineHeight:1.1,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
+    <section className="fi" aria-label={`Property details for ${p.address}`} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:20,height:"100%",maxWidth:"100%",minWidth:0,overflowY:"auto",position:"relative"}}>
+      <button onClick={onClose} aria-label="Close property details" style={{position:"absolute",top:12,right:12,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:8,color:"var(--gray)",width:36,height:36,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>x</button>
+      <h2 tabIndex={-1} data-detail-heading="true" style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:40,lineHeight:1.1,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></h2>
       <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)",marginBottom:10,overflowWrap:"anywhere",wordBreak:"break-word"}}>Parcel {p.parcelId} | Albany, NY {p.zip}{parcelAreaSummary(p)?` | ${parcelAreaSummary(p)}`:""}</div>
       {/* Save My Home button */}
       {onSaveHome&&<button onClick={()=>onSaveHome(p)} style={{
@@ -5119,24 +5346,68 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
         color:myHome?.parcelId===p.parcelId?"var(--green2)":"var(--gray)",
         borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",marginBottom:14
       }}>
-        {myHome?.parcelId===p.parcelId?"Home: This is My Home (saved)":"Save as My Home"}
+        {myHome?.parcelId===p.parcelId?"Saved as my home":"Save as my home"}
       </button>}
       <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14,minWidth:0}}>
         {ownerPortfolioCount>1&&<Badge color="#0f766e">{ownerPortfolioBadgeLabel(p)}</Badge>}
-        {isAbsenteeFast(p)&&<Badge color="#f97316">Absentee</Badge>}
-        {p.exemptions.length>0&&<Badge color="#f59e0b">{p.exemptions.length} exemption{p.exemptions.length===1?"":"s"}</Badge>}
+        {isAbsenteeFast(p)&&<Badge color="#c2410c">Owner likely lives elsewhere</Badge>}
+        {p.exemptions.length>0&&<Badge color="#92400e">{exemptionSummaryLabel(p)}</Badge>}
       </div>
-      {/* Equity meter */}
-      <div style={{background:`${fc}11`,border:`1px solid ${fc}33`,borderRadius:9,padding:12,marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-          <span style={{fontSize:11,fontWeight:600,color:fc}}>{FL[flag]}</span>
-          <span style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:fc}}>{eqRFast(p)}%</span>
+      {/* Plain-language assessment summary */}
+      <div style={{background:"var(--card)",border:"1px solid var(--border2)",borderRadius:10,padding:14,marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--gray)",textTransform:"uppercase",letterSpacing:.8}}>{rollYearLabel} assessment</div>
+        <div style={{display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap",marginTop:4}}>
+          <span style={{fontFamily:"var(--fm)",fontSize:22,fontWeight:700,color:"var(--white)"}}>{$f(p.assessedValue)}</span>
+          <span style={{fontSize:12,color:"var(--gray)"}}>assessed value</span>
         </div>
-        <div style={{height:5,background:"var(--bg)",borderRadius:3,overflow:"hidden"}}>
-          <div style={{height:"100%",width:`${Math.min(isNaN(r)?0:r,150)/1.5}%`,background:fc,borderRadius:3,transition:"width .5s ease"}}></div>
+        <div style={{fontSize:12,color:"var(--gray)",lineHeight:1.7,marginTop:6}}>
+          The assessed value is what property taxes are based on. It is not an appraisal or a sale price. The city's full-value estimate on the roll is {$f(p.fullMarketValue)} (assessed value divided by {levelPercent}%).
         </div>
-        <div style={{fontSize:10,color:"var(--gray2)",marginTop:5}}>Assessed / FMV | Fair range: 80-120%</div>
+        {flag!=="fair"&&flag!=="neutral"&&<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.7,marginTop:6,background:"var(--card3)",borderRadius:8,padding:"8px 10px"}}>
+          <b style={{color:"var(--white)"}}>Record check:</b> this record's assessed-to-full-value ratio ({eqRFast(p)}%) differs from the city-wide {levelPercent}%. That usually means a partial assessment or a data issue, not proof of over- or under-assessment. Ask the Assessor's Office if it looks wrong.
+        </div>}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+          {onCheckAssessment&&<button onClick={()=>onCheckAssessment(p)} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"9px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36}}>Compare with similar homes</button>}
+          {onOpenTaxRelief&&<button onClick={()=>onOpenTaxRelief(p)} style={{background:"var(--card2)",color:"var(--blue3)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36}}>Check exemptions and credits</button>}
+        </div>
       </div>
+      {(()=>{
+        const prior = priorOf(p);
+        const priorYear = datasetMeta?.priorRoll?.assessmentYear || prior?.assessmentYear || null;
+        if(!priorYear) return null;
+        if(!prior) return <Sec title={`Change from ${priorYear}`}><div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>This parcel ID was not on the {priorYear} roll. It may be a new, split, or renumbered parcel, so there is no prior-year value to compare.</div></Sec>;
+        const change = assessedChangePct(p);
+        const currentYear = datasetMeta?.assessmentYear || "this year";
+        const neighborhoodContext = changeContext?.byNeighborhood?.get(p.neighborhood || "") || null;
+        const currentCodes = new Set((p.exemptions||[]).map(ex=>String(ex.code)));
+        const priorCodes = new Set((prior.exemptionCodes||[]).map(String));
+        const added = [...currentCodes].filter(code=>!priorCodes.has(code));
+        const removed = [...priorCodes].filter(code=>!currentCodes.has(code));
+        const codeLabel = code => exemptionInfo({code}).label;
+        const typicalText = ctx => !ctx || !Number.isFinite(ctx.median) ? null : ctx.median===0 && Number.isFinite(ctx.unchangedShare) ? `no change (${Math.round(ctx.unchangedShare)}% of ${ctx.count.toLocaleString()} unchanged)` : `${formatChangePct(ctx.median)} (median of ${ctx.count.toLocaleString()})`;
+        const neighborhoodText = typicalText(neighborhoodContext);
+        const citywideText = typicalText(changeContext ? { median: changeContext.citywideMedian, count: changeContext.citywideCount||0, unchangedShare: changeContext.citywideUnchangedShare } : null);
+        const levelNote = levelShiftNote(prior.uniformPercentOfValue, datasetMeta?.uniformPercentOfValue);
+        return <Sec title={`Change from ${priorYear}`}>
+          {change===0
+            ? <Row label="Assessed value" value={`${$f(p.assessedValue)} in both ${priorYear} and ${currentYear} (no change)`} mono/>
+            : <>
+              <Row label={`${priorYear} assessed value`} value={$f(prior.assessedValue)} mono/>
+              <Row label={`${currentYear} assessed value`} value={$f(p.assessedValue)} mono/>
+              <Row label="Change" value={`${formatSignedMoney(p.assessedValue - prior.assessedValue)} (${formatChangePct(change)})`} mono color={change>0?"var(--red2)":change<0?"var(--green2)":"var(--white)"}/>
+            </>}
+          {prior.fullMarketValue>0&&p.fullMarketValue>0&&prior.fullMarketValue!==p.fullMarketValue&&<Row label="City's full-value estimate" value={`${$f(prior.fullMarketValue)} → ${$f(p.fullMarketValue)}`} mono/>}
+          {neighborhoodText&&p.neighborhood&&<Row label={`Typical change for homes in ${p.neighborhood}`} value={neighborhoodText} mono/>}
+          {citywideText&&<Row label="Typical change for Albany homes" value={citywideText} mono/>}
+          {prior.schoolTaxable!==p.schoolTaxable&&<Row label="School taxable value" value={`${$f(prior.schoolTaxable)} → ${$f(p.schoolTaxable)}`} mono/>}
+          {added.length>0&&<Row label="Exemptions or credits added" value={added.map(codeLabel).join(", ")}/>}
+          {removed.length>0&&<Row label="Exemptions or credits no longer recorded" value={removed.map(codeLabel).join(", ")} color="var(--red2)"/>}
+          {removed.some(code=>["41854","41834"].includes(code))&&!hasStarBenefitOnRecord(p)&&<div style={{fontSize:12,color:"var(--white)",lineHeight:1.6,margin:"4px 0 6px"}}>The STAR exemption recorded in {priorYear} is not on this roll. If the owner still lives here as a primary residence, check with New York State: the STAR credit replaces the exemption for many homeowners and does not appear on this record. <a href={STAR_REGISTRATION_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>STAR (NYS Tax &amp; Finance)</a></div>}
+          {prior.ownerChanged&&<Row label={`Owner on the ${priorYear} roll`} value={prior.owner1}/>}
+          {prior.propClass&&prior.propClass!==p.propClass&&<Row label={`Property class in ${priorYear}`} value={prior.propClass}/>}
+          {levelNote&&<div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6,marginTop:4}}>{levelNote}</div>}
+        </Sec>;
+      })()}
       <Sec title="Ownership">
         <Row label="Primary Owner" value={p.owner1}/>
         {p.owner2&&<Row label="Co-Owner" value={p.owner2}/>}
@@ -5148,46 +5419,50 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
         <AbsenteeExplain parcel={p} />
         <OwnerPortfolioSection parcel={p} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={onSelectParcel} />
       </Sec>
-      <Sec title="Valuation">
-        <Row label="Full Market Value" value={$f(p.fullMarketValue)} mono color="#f59e0b"/>
-        <Row label="Total Assessed Value" value={$f(p.assessedValue)} mono/>
-        <Row label="Land Value" value={$f(p.landValue)} mono/>
-        <Row label="Building Value" value={$f(p.assessedValue-p.landValue)} mono/>
-        <Row label="Land Share" value={gentriIdx(p)+"% land-to-total"} mono color={parseFloat(gentriIdx(p))>50?"#f97316":"var(--white)"}/>
+      <Sec title="Value">
+        <Row label="Assessed value (used for taxes)" value={$f(p.assessedValue)} mono/>
+        <Row label="Land portion" value={$f(p.landValue)} mono/>
+        <Row label="Building portion" value={$f(p.assessedValue-p.landValue)} mono/>
+        <Row label={`City's full-value estimate (assessed / ${levelPercent}%)`} value={$f(p.fullMarketValue)} mono/>
       </Sec>
-      <Sec title="Taxable Values">
-        <Row label="County Taxable" value={$f(p.countyTaxable)} mono/>
-        <Row label="City Taxable" value={$f(p.cityTaxable)} mono/>
-        <Row label="School Taxable" value={$f(p.schoolTaxable)} mono/>
+      <Sec title="Taxable value">
+        <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6,marginBottom:8}}>Taxable value is the assessed value minus any exemptions. Each tax (county, city, school) multiplies its own tax rate by its taxable value, so this is not your tax bill.</div>
+        <Row label="County taxable value" value={$f(p.countyTaxable)} mono/>
+        <Row label="City taxable value" value={$f(p.cityTaxable)} mono/>
+        <Row label="School taxable value" value={$f(p.schoolTaxable)} mono/>
       </Sec>
-      {p.exemptions.length>0&&<Sec title="Exemptions">
-        {p.exemptions.map((ex,i)=>(
-          <div key={i} style={{background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.18)",borderRadius:7,padding:"8px 10px",marginBottom:7}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{fontFamily:"var(--fm)",fontSize:12,fontWeight:600,color:"var(--amber2)"}}>{ex.name}</span>
-              <Badge color="#f59e0b" small>Sec. {ex.code}</Badge>
+      <Sec title="Exemptions and credits on record">
+        {p.exemptions.length===0&&<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>None recorded on this roll. That does not mean the owner is missing out; some benefits, like the STAR credit for newer homeowners, are paid by New York State and may not appear here.</div>}
+        {p.exemptions.map((ex,i)=>{
+          const info = exemptionInfo(ex);
+          return (
+            <div key={i} style={{background:"var(--card)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 11px",marginBottom:7}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4}}>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--white)"}}>{info.label}</span>
+                <span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)"}}>Code {info.code}</span>
+              </div>
+              {info.note&&<div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6,marginBottom:isStarCreditRecord(ex)?0:4}}>{info.note}</div>}
+              {!isStarCreditRecord(ex)&&<div className="cols-3" style={{display:"grid",gap:4,fontSize:11,color:"var(--gray)"}}>
+                <span>County: -{$f(ex.countyAmt)}</span><span>City: -{$f(ex.cityAmt)}</span><span>School: -{$f(ex.schoolAmt)}</span>
+              </div>}
             </div>
-            <div className="cols-3" style={{display:"grid",gap:4,fontSize:11,color:"var(--gray)"}}>
-              <span>County: {$f(ex.countyAmt)}</span><span>City: {$f(ex.cityAmt)}</span><span>School: {$f(ex.schoolAmt)}</span>
-            </div>
-          </div>
-        ))}
-        <div style={{fontSize:10,color:"var(--gray2)",marginTop:4}}>Totals - County: {$f(totExC)} | City: {$f(totExCI)} | School: {$f(totExS)}</div>
-      </Sec>}
+          );
+        })}
+        {reducing.length>0&&<div style={{fontSize:11,color:"var(--gray)",marginTop:4}}>Total reduction in taxable value: county {$f(totExC)}, city {$f(totExCI)}, school {$f(totExS)}.</div>}
+        {starCredit&&<div style={{fontSize:11,color:"var(--gray)",marginTop:4}}>STAR credit details: <a href={STAR_REGISTRATION_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>NYS Tax &amp; Finance</a></div>}
+      </Sec>
       {hasInventoryProfile(p)&&<Sec title="Residential Profile">
         {inventoryStyle(p)&&<Row label="Building Style" value={inventoryStyle(p)}/>}
         {inventoryYearBuilt(p)&&<Row label="Year Built (inventory)" value={inventoryYearBuilt(p)} mono color="var(--teal2)"/>}
         {inventorySqft(p)!=null&&<Row label="Living Area" value={`${inventorySqft(p).toLocaleString()} sq ft`} mono/>}
         {inventoryBedrooms(p)!=null&&<Row label="Bedrooms" value={inventoryBedrooms(p)} mono/>}
         {(inventoryFullBaths(p)!=null || inventoryHalfBaths(p)!=null)&&<Row label="Baths" value={inventoryBathText(p)} mono/>}
-        {Number.isFinite(Number(inventoryOf(p)?.inventoryTotalAssessedValue))&&<Row label="Inventory Total AV" value={$f(Number(inventoryOf(p)?.inventoryTotalAssessedValue))} mono/>}
-        {inventoryOf(p)?.joinSource&&<Row label="Inventory Source" value={inventoryOf(p)?.joinSource}/>} 
       </Sec>}
       <Sec title="Property Details">
-        <Row label="Class" value={propClassLabel(p)}/>
-        {propClassOfficialTitle(p?.propClass)&&propClassOfficialLabel(p)!==propClassLabel(p)&&<Row label="Official Class" value={propClassOfficialLabel(p)}/>} 
-        {propClassMeaning(p)&&<Row label="Class Meaning" value={propClassMeaning(p)}/>}
-        <Row label="Type" value={p.parcelType}/>
+        <Row label="Property type" value={propClassLabel(p)}/>
+        {propClassOfficialTitle(p?.propClass)&&propClassOfficialLabel(p)!==propClassLabel(p)&&<Row label="Official class" value={propClassOfficialLabel(p)}/>}
+        {propClassMeaning(p)&&<Row label="What this class means" value={propClassMeaning(p)}/>}
+        <Row label="Tax class" value={p.parcelType==="HOMESTEAD"?"Homestead (one- to three-family homes, condos, and residential land)":p.parcelType==="NON-HOMESTEAD"?"Non-homestead (commercial, apartment buildings, and other property)":p.parcelType}/>
         <Row label="Lot Size" value={p.frontage&&p.depth?`${p.frontage}x${p.depth} ft (${nf(p.frontage*p.depth)} sq ft)`:"-"}/>
         {p.acres&&<Row label="Lot Acres" value={p.acres.toFixed(4)+" ac"} mono/>}
         {p.yearBuilt&&<Row label="Year Built" value={p.yearBuilt} mono color="var(--teal2)"/>}
@@ -5197,14 +5472,19 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
         {p.sewerType&&<Row label="Sewer Type" value={p.sewerType} color="var(--blue3)"/>}
         {p.saleDate&&<Row label="Last Sale Date" value={p.saleDate} mono color="var(--green2)"/>}
         {!p.saleDate&&p.deedYear&&<Row label="Last Sale Year" value={p.deedYear} mono/>}
-        {p.eastCoord>0&&<Row label="Survey Coords" value={`E-${p.eastCoord} N-${p.nrthCoord}`} mono/>}
       </Sec>
-      <Sec title="Tax Reduction vs. Assessed">
-        <Row label="County Savings" value={$f(p.assessedValue-p.countyTaxable)} mono color="#22c55e"/>
-        <Row label="City Savings" value={$f(p.assessedValue-p.cityTaxable)} mono color="#22c55e"/>
-        <Row label="School Savings" value={$f(p.assessedValue-p.schoolTaxable)} mono color="#22c55e"/>
-      </Sec>
-    </div>
+      <details style={{marginBottom:8}}>
+        <summary style={{fontSize:12,fontWeight:700,color:"var(--gray)",cursor:"pointer",padding:"6px 0"}}>Record details for researchers</summary>
+        <div style={{marginTop:8}}>
+          <Row label="Parcel ID" value={p.parcelId} mono/>
+          <Row label="Tax class code" value={p.parcelType}/>
+          {p.eastCoord>0&&<Row label="State plane coordinates" value={`E-${p.eastCoord} N-${p.nrthCoord}`} mono/>}
+          {Number.isFinite(Number(inventoryOf(p)?.inventoryTotalAssessedValue))&&<Row label="Residential inventory assessed value" value={$f(Number(inventoryOf(p)?.inventoryTotalAssessedValue))} mono/>}
+          {inventoryOf(p)?.joinSource&&<Row label="Residential inventory source" value={inventoryOf(p)?.joinSource}/>}
+          {p.exemptions.map((ex,i)=><Row key={i} label={`Roll exemption text (${ex.code})`} value={ex.name} mono/>)}
+        </div>
+      </details>
+    </section>
   );
 };
 
@@ -5232,7 +5512,7 @@ const PropListModal = ({data, onClose}) => {
           </div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
-          <div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+          <div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div>
           <div style={{fontSize:10,color:"var(--gray)",marginTop:1}}>FMV</div>
           <div style={{fontSize:11,color:FC[eqFlagFast(p)],marginTop:2,fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(p)}%</div>
         </div>
@@ -5275,6 +5555,20 @@ const PropListModal = ({data, onClose}) => {
 };
 
 /* u{00E2}u{0080}u{009D}u{00E2}u{0082}u{00AC}u{00E2}u{0080}u{009D} DEBOUNCE HOOK ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â delays useMemo recomputation until typing stops ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
+// Sort addresses by street name, then house number, so "2 Elk St" comes before "10 Elk St" and records
+// without a street name (for example a bare "1") go last instead of first.
+const addressSortParts = raw => {
+  const text = (raw||"").toString().trim();
+  const m = text.match(/^(?:rears+|pts+)?(d+(?:.d+)?)[a-z-]*s+(.*)$/i);
+  const street = (m ? m[2] : text.replace(/^d+(?:.d+)?s*/,"")).toLowerCase().trim();
+  return { street, number: m ? parseFloat(m[1]) : Number.POSITIVE_INFINITY };
+};
+const compareAddressesForSort = (a, b) => {
+  const pa = addressSortParts(a), pb = addressSortParts(b);
+  if(!pa.street && pb.street) return 1;
+  if(pa.street && !pb.street) return -1;
+  return pa.street.localeCompare(pb.street) || (pa.number - pb.number) || (a||"").localeCompare(b||"");
+};
 function useDebounce(value, delay) {
   const [dv, setDv] = useState(value);
   useEffect(() => {
@@ -5289,13 +5583,35 @@ function useDebounce(value, delay) {
 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â */
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ 1. BROWSE ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
-const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup,ownerPortfolioIndex}) => {
+const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenHomeSetup,ownerPortfolioIndex,focusRequest=null,onCheckAssessment,onOpenTaxRelief,compareLimitNotice=""}) => {
   const [search,setSearch]=useState("");
   const [fZip,setFZip]=useState(""); const [fCls,setFCls]=useState(""); const [fTyp,setFTyp]=useState("");
   const [fEx,setFEx]=useState(""); const [fEq,setFEq]=useState(""); const [fNbr,setFNbr]=useState("");
   const [fBeds,setFBeds]=useState(""); const [fSqft,setFSqft]=useState(""); const [fYear,setFYear]=useState(""); const [fStyle,setFStyle]=useState("");
-  const [sort,setSort]=useState("fmv-desc");
+  const [sort,setSort]=useState("address");
   const [sel,setSel]=useState(null);
+  const [showMoreFilters,setShowMoreFilters]=useState(false);
+  const detailRef=useRef(null);
+  const changeContext=useMemo(()=>buildAssessmentChangeContext(parcels),[parcels]);
+  const addressSearchIndex=useMemo(()=>{
+    const m=new Map();
+    for(const p of parcels) m.set(p.parcelId, normalizeAddressText(p.address));
+    return m;
+  },[parcels]);
+  useEffect(()=>{
+    if(!focusRequest?.parcel) return;
+    setSearch(focusRequest.parcel.address || "");
+    setSel(focusRequest.parcel);
+  },[focusRequest]);
+  useEffect(()=>{
+    if(!sel || !detailRef.current || typeof window==="undefined") return;
+    const node=detailRef.current;
+    const rect=node.getBoundingClientRect();
+    const offscreen=rect.top<0 || rect.top>window.innerHeight*0.6;
+    if(offscreen) node.scrollIntoView({behavior:"smooth",block:"start"});
+    const heading=node.querySelector("[data-detail-heading]");
+    if(heading) heading.focus({preventScroll:true});
+  },[sel]);
   const [view,setView]=useState("grid");
   const [page,setPage]=useState(0);
   const [ownerSearch,setOwnerSearch]=useState("");
@@ -5308,7 +5624,7 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
   const clss=useMemo(()=>meta.classes?meta.classes.map(c=>c.code):[...new Set(parcels.map(p=>p.propClass))].sort(),[meta,parcels]);
   const clssDescs=useMemo(()=>meta.classes?Object.fromEntries(meta.classes.map(c=>[c.code,c.desc])):null,[meta]);
   // Use Set loop instead of flatMap to avoid 80K+ intermediate array; skip if metadata available
-  const exs=useMemo(()=>{if(meta.exemptionNames)return meta.exemptionNames;const s=new Set();for(const p of parcels)for(const e of p.exemptions)s.add(e.name);return[...s].sort();},[meta,parcels]);
+  const exs=useMemo(()=>{const m=new Map();for(const p of parcels)for(const e of p.exemptions){if(!m.has(e.name))m.set(e.name,exemptionInfo(e).label);}return[...m.entries()].sort((a,b)=>a[1].localeCompare(b[1])||a[0].localeCompare(b[0]));},[parcels]);
   const nbrs=useMemo(()=>[...new Set(parcels.map(p=>p.neighborhood).filter(Boolean))].sort(),[parcels]);
   const inventoryStyles=useMemo(()=>[...new Set(parcels.map(p=>(p._invStyle||"").trim()).filter(Boolean))].sort(),[parcels]);
   const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,fontFamily:"var(--fb)",cursor:"pointer"};
@@ -5317,18 +5633,18 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
   const useMyHome = () => { if(myHome) setSearch(myHome.address.split(" ").slice(0,2).join(" ")); };
   const filtered=useMemo(()=>{
     let r=parcels.slice();
-    const q=dSearch.toLowerCase();
+    const q=dSearch.trim().toLowerCase();
+    const qAddr=normalizeAddressText(dSearch);
     const oq=dOwner.toLowerCase();
-    if(q)r=r.filter(p=>(p._searchBlob||"").includes(q));
+    if(q)r=r.filter(p=>(p._searchBlob||"").includes(q) || (!!qAddr && (addressSearchIndex.get(p.parcelId)||"").includes(qAddr)));
     if(oq)r=r.filter(p=>(p._ownerBlob||"").includes(oq));
     if(fZip)r=r.filter(p=>p.zip===fZip);
     if(fCls)r=r.filter(p=>p.propClass===fCls);
     if(fTyp)r=r.filter(p=>p.parcelType===fTyp);
     if(fEx)r=r.filter(p=>p.exemptions.some(e=>e.name===fEx));
     if(fNbr)r=r.filter(p=>p.neighborhood===fNbr);
-    if(fEq==="under")r=r.filter(p=>p._eqBand==="under");
     if(fEq==="fair")r=r.filter(p=>p._eqBand==="fair");
-    if(fEq==="over")r=r.filter(p=>p._eqBand==="over");
+    if(fEq==="differs")r=r.filter(p=>p._eqBand==="under"||p._eqBand==="over");
     if(fEq==="absentee")r=r.filter(p=>p._absentee===true);
     if(fBeds==="0-1")r=r.filter(p=>(p._invBedrooms??-1)>=0&&(p._invBedrooms??-1)<=1);
     if(fBeds==="2")r=r.filter(p=>(p._invBedrooms??-1)===2);
@@ -5349,14 +5665,20 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
     r.sort((a,b)=>{
       if(sort==="fmv-desc")return b.fullMarketValue-a.fullMarketValue;
       if(sort==="fmv-asc")return a.fullMarketValue-b.fullMarketValue;
-      if(sort==="address")return a.address.localeCompare(b.address);
+      if(sort==="address")return compareAddressesForSort(a.address,b.address);
       if(sort==="assessed")return b.assessedValue-a.assessedValue;
       if(sort==="equity")return (a._eqRatioNum??0)-(b._eqRatioNum??0);
       if(sort==="land")return b.landValue-a.landValue;
+      if(sort==="change-desc")return (assessedChangePct(b)??-Infinity)-(assessedChangePct(a)??-Infinity);
+      if(sort==="change-asc")return (assessedChangePct(a)??Infinity)-(assessedChangePct(b)??Infinity);
       return 0;
     });
     return r;
-  },[parcels,dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,fBeds,fSqft,fYear,fStyle,sort]);
+  },[parcels,addressSearchIndex,dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,fBeds,fSqft,fYear,fStyle,sort]);
+  const similarAddressSuggestions=useMemo(()=>{
+    if(filtered.length>0 || !dSearch.trim()) return [];
+    return suggestSimilarAddresses(parcels, dSearch, 3);
+  },[filtered.length,dSearch,parcels]);
   // Reset to page 1 whenever debounced filters or sort change
   useEffect(()=>{setPage(0);},[dSearch,dOwner,fZip,fCls,fTyp,fEx,fEq,fNbr,fBeds,fSqft,fYear,fStyle,sort]);
   const pageCount=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
@@ -5366,42 +5688,37 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
   return (
     <div className={sel?"panel-split":undefined} style={!sel?{display:"grid",gridTemplateColumns:"1fr",gap:18}:undefined}>
       <div>
-        {!myHome&&<div style={{background:"linear-gradient(135deg,rgba(37,99,235,.12) 0%,rgba(13,148,136,.08) 100%)",border:"1px solid rgba(37,99,235,.3)",borderRadius:12,padding:"18px 20px",marginBottom:16,display:"flex",gap:16,alignItems:"flex-start"}}>
-          <span style={{fontSize:28,flexShrink:0}}>Start</span>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15,marginBottom:6}}>Check Any Albany Property</div>
-            <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.8,marginBottom:10}}>This dashboard lets you explore every property in Albany's 2025 Final Assessment Roll - search by address, compare neighborhoods, check if you're overpaying taxes, and understand what every number on your tax bill actually means. <b style={{color:"var(--white)"}}>No property tax experience required.</b> Each tab has plain-English explanations built in.</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={onOpenHomeSetup} style={{background:"var(--green)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Save My Home Address</button>
-              <span style={{fontSize:12,color:"var(--gray2)",alignSelf:"center"}}>Saves your address so you never have to type it again across any tab</span>
-            </div>
+        <div style={{marginBottom:14}}>
+          <SectionTitle>Find a property</SectionTitle>
+          <Sub>Type an address, then pick your property from the list to see its assessment, taxable value, and exemptions.</Sub>
+        </div>
+        {myHome&&<MyHomeBanner myHome={myHome} onUse={useMyHome} label="Show my home"/>}
+        {!myHome&&<div style={{fontSize:12,color:"var(--gray)",marginBottom:12}}>Looking up your own home often? <button onClick={onOpenHomeSetup} style={{background:"none",border:"none",color:"var(--blue3)",fontWeight:700,cursor:"pointer",padding:0,fontSize:12,textDecoration:"underline"}}>Save it as My Home</button> so other tools can fill it in for you.</div>}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
+          <AddressAutocompleteInput id="browse-search" ariaLabel="Search by address, parcel ID, or neighborhood" parcels={parcels} value={search} onChange={setSearch} onSelectParcel={p=>{setSearch(p.address);setSel(p);}} placeholder="Address, e.g. 470 Elk St" inputStyle={{...SI,width:"100%",cursor:"text",fontSize:14,padding:"10px 12px"}} wrapperStyle={{flex:"2 1 260px",minWidth:220}}/>
+          <select aria-label="Neighborhood" value={fNbr} onChange={e=>setFNbr(e.target.value)} style={{...SI,minHeight:40}}><option value="">All neighborhoods</option>{nbrs.map(n=><option key={n}>{n}</option>)}</select>
+          <button onClick={()=>setShowMoreFilters(v=>!v)} aria-expanded={showMoreFilters} aria-controls="browse-more-filters" style={{...SI,minHeight:40,fontWeight:600,color:"var(--blue3)"}}>{showMoreFilters?"Fewer filters":"More filters"}</button>
+          {hasFilters&&<button onClick={clearAll} style={{...SI,minHeight:40,color:"var(--red2)",borderColor:"rgba(220,38,38,.3)",cursor:"pointer",fontWeight:600}}>Clear search and filters</button>}
+        </div>
+        {showMoreFilters&&<div id="browse-more-filters" style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14,padding:12,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:10}}>
+          <input aria-label="Owner name" placeholder="Owner name (last, first or company)" value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)} style={{...SI,flex:"1 1 200px",minWidth:200,cursor:"text",borderColor:ownerSearch?"rgba(59,130,246,.6)":"var(--border)",background:ownerSearch?"rgba(37,99,235,.12)":"var(--bg3)"}}/>
+          <select aria-label="ZIP code" value={fZip} onChange={e=>setFZip(e.target.value)} style={SI}><option value="">All ZIP codes</option>{zips.map(z=><option key={z}>{z}</option>)}</select>
+          <select aria-label="Property type" value={fCls} onChange={e=>setFCls(e.target.value)} style={SI}><option value="">All property types</option>{clss.map(c=><option key={c} value={c}>{formatPropClassOfficialLabel(c, clssDescs?.[c])}</option>)}</select>
+          <select aria-label="Tax class" value={fTyp} onChange={e=>setFTyp(e.target.value)} style={SI}><option value="">All tax classes</option><option value="HOMESTEAD">Homestead tax class</option><option value="NON-HOMESTEAD">Non-homestead tax class</option></select>
+          {exs.length>0&&<select aria-label="Exemption or credit" value={fEx} onChange={e=>setFEx(e.target.value)} style={SI}><option value="">Any exemption or credit</option>{exs.map(([name,label])=><option key={name} value={name}>{label===name?name:`${label} (${name})`}</option>)}</select>}
+          <select aria-label="Record checks" value={fEq} onChange={e=>setFEq(e.target.value)} style={SI}><option value="">All records</option><option value="fair">Standard city-wide assessment level</option><option value="differs">Assessment level differs (record check)</option><option value="absentee">Owner likely lives elsewhere</option></select>
+          <select aria-label="Bedrooms" value={fBeds} onChange={e=>setFBeds(e.target.value)} style={SI}><option value="">Any bedrooms</option><option value="0-1">0-1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5+">5+</option></select>
+          <select aria-label="Living area" value={fSqft} onChange={e=>setFSqft(e.target.value)} style={SI}><option value="">Any living area</option><option value="<1000">&lt; 1,000 sq ft</option><option value="1000-1499">1,000-1,499 sq ft</option><option value="1500-1999">1,500-1,999 sq ft</option><option value="2000-2499">2,000-2,499 sq ft</option><option value="2500+">2,500+ sq ft</option></select>
+          <select aria-label="Year built" value={fYear} onChange={e=>setFYear(e.target.value)} style={SI}><option value="">Any year built</option><option value="<1900">Before 1900</option><option value="1900-1939">1900-1939</option><option value="1940-1969">1940-1969</option><option value="1970-1999">1970-1999</option><option value="2000+">2000 or later</option></select>
+          {inventoryStyles.length>0&&<select aria-label="Building style" value={fStyle} onChange={e=>setFStyle(e.target.value)} style={SI}><option value="">Any building style</option>{inventoryStyles.map(style=><option key={style} value={style}>{style}</option>)}</select>}
+          <select aria-label="Sort results" value={sort} onChange={e=>setSort(e.target.value)} style={SI}><option value="address">Sort: address A to Z</option><option value="assessed">Sort: assessed value, high to low</option><option value="fmv-desc">Sort: full-value estimate, high to low</option><option value="fmv-asc">Sort: full-value estimate, low to high</option><option value="land">Sort: land value, high to low</option>{meta?.priorRoll?.assessmentYear&&<><option value="change-desc">{`Sort: biggest increase since ${meta.priorRoll.assessmentYear}`}</option><option value="change-asc">{`Sort: biggest decrease since ${meta.priorRoll.assessmentYear}`}</option></>}<option value="equity">Sort: assessment level %</option></select>
+          <div role="group" aria-label="Result layout" style={{display:"flex",gap:3,marginLeft:"auto"}}>
+            {["grid","table"].map(m=><button key={m} onClick={()=>setView(m)} aria-pressed={view===m} style={{background:view===m?"var(--blue)":"var(--card)",border:"1px solid var(--border2)",color:view===m?"white":"var(--gray)",borderRadius:7,minWidth:56,height:34,cursor:"pointer",fontSize:12}}>{m==="grid"?"Cards":"Table"}</button>)}
           </div>
         </div>}
-        <InfoBox icon="Guide" title="How to Use the Property Browser" color="#3b82f6">
-          Search and filter all parcels in the Albany 2025 Assessment Roll. Use the search box to find a property by street address, owner name, or parcel ID. Apply additional filters to narrow by ZIP code, neighborhood, property class (single-family, commercial, etc.), homestead status, active exemptions, and assessment equity. Click any card to open a full detail panel on the right. Use the <b style={{color:"var(--white)"}}>+ Compare</b> button to queue up to 4 parcels for side-by-side analysis in the Compare tab.
-        </InfoBox>
-        {myHome&&<MyHomeBanner myHome={myHome} onUse={useMyHome} label="Jump to My Home"/>}
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
-          <AddressAutocompleteInput parcels={parcels} value={search} onChange={setSearch} onSelectParcel={p=>{setSearch(p.address);setSel(p);}} placeholder="Address, parcel ID, neighborhood..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 200px",minWidth:180}}/>
-          <input placeholder="Owner name (last, first or company)..." value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)} style={{...SI,flex:"1 1 200px",minWidth:200,borderColor:ownerSearch?"rgba(59,130,246,.6)":"var(--border)",background:ownerSearch?"rgba(37,99,235,.12)":"var(--bg3)"}}/>
-          <select value={fNbr} onChange={e=>setFNbr(e.target.value)} style={SI}><option value="">All Neighborhoods</option>{nbrs.map(n=><option key={n}>{n}</option>)}</select>
-          <select value={fZip} onChange={e=>setFZip(e.target.value)} style={SI}><option value="">All ZIPs</option>{zips.map(z=><option key={z}>{z}</option>)}</select>
-          <select value={fCls} onChange={e=>setFCls(e.target.value)} style={SI}><option value="">All Classes</option>{clss.map(c=><option key={c} value={c}>{formatPropClassOfficialLabel(c, clssDescs?.[c])}</option>)}</select>
-          <select value={fTyp} onChange={e=>setFTyp(e.target.value)} style={SI}><option value="">All Types</option><option value="HOMESTEAD">Homestead</option><option value="NON-HOMESTEAD">Non-Homestead</option></select>
-          {exs.length>0&&<select value={fEx} onChange={e=>setFEx(e.target.value)} style={SI}><option value="">All Exemptions</option>{exs.map(e=><option key={e}>{e}</option>)}</select>}
-          <select value={fEq} onChange={e=>setFEq(e.target.value)} style={SI}><option value="">All Equity</option><option value="under">Under-Assessed</option><option value="fair">Fair Value</option><option value="over">Over-Assessed</option><option value="absentee">Absentee Owner</option></select>
-          <select value={fBeds} onChange={e=>setFBeds(e.target.value)} style={SI}><option value="">Any Beds</option><option value="0-1">0-1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5+">5+</option></select>
-          <select value={fSqft} onChange={e=>setFSqft(e.target.value)} style={SI}><option value="">Any Sq Ft</option><option value="<1000">&lt; 1000</option><option value="1000-1499">1000-1499</option><option value="1500-1999">1500-1999</option><option value="2000-2499">2000-2499</option><option value="2500+">2500+</option></select>
-          <select value={fYear} onChange={e=>setFYear(e.target.value)} style={SI}><option value="">Any Year Built</option><option value="<1900">&lt; 1900</option><option value="1900-1939">1900-1939</option><option value="1940-1969">1940-1969</option><option value="1970-1999">1970-1999</option><option value="2000+">2000+</option></select>
-          {inventoryStyles.length>0&&<select value={fStyle} onChange={e=>setFStyle(e.target.value)} style={SI}><option value="">Any Building Style</option>{inventoryStyles.map(style=><option key={style} value={style}>{style}</option>)}</select>}
-          <select value={sort} onChange={e=>setSort(e.target.value)} style={SI}><option value="fmv-desc">FMV high to low</option><option value="fmv-asc">FMV low to high</option><option value="assessed">Assessed high to low</option><option value="address">Address A to Z</option><option value="equity">Equity %</option><option value="land">Land value high to low</option></select>
-          {hasFilters&&<button onClick={clearAll} style={{...SI,color:"#f87171",borderColor:"rgba(220,38,38,.3)",cursor:"pointer"}}>Clear</button>}
-          <div style={{display:"flex",gap:3,marginLeft:"auto"}}>
-            {["grid","table"].map(m=><button key={m} onClick={()=>setView(m)} style={{background:view===m?"var(--blue)":"var(--card2)",border:"1px solid var(--border)",color:view===m?"white":"var(--gray)",borderRadius:7,width:50,height:32,cursor:"pointer",fontSize:11}}>{m==="grid"?"Grid":"List"}</button>)}
-          </div>
-        </div>
+        {compareLimitNotice&&<div role="status" style={{fontSize:12,color:"#7c2d12",background:"rgba(245,158,11,.14)",border:"1px solid rgba(245,158,11,.35)",borderRadius:10,padding:"9px 12px",marginBottom:12}}>{compareLimitNotice}</div>}
         <div style={{fontSize:11,color:"var(--gray2)",marginBottom:10,display:"flex",alignItems:"center",flexWrap:"wrap",gap:10}}>
-          <span>Showing <b style={{color:"var(--white)"}}>{filtered.length.toLocaleString()}</b> of {parcels.length.toLocaleString()} parcels</span>
+          <span role="status">Showing <b style={{color:"var(--white)"}}>{filtered.length.toLocaleString()}</b> of {parcels.length.toLocaleString()} properties</span>
           {pageCount>1&&<span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
             <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{background:"var(--card2)",border:"1px solid var(--border)",color:page===0?"var(--gray3)":"var(--white)",borderRadius:6,width:28,height:28,cursor:page===0?"default":"pointer",fontSize:15,lineHeight:1}}>{"<"}</button>
             <span style={{fontFamily:"var(--fm)",fontSize:11}}>Page {page+1} / {pageCount}</span>
@@ -5410,11 +5727,20 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
         </div>
         {view==="grid"?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:10}}>
           {pageSlice.map(p=><ParcelMini key={p.parcelId} p={p} onClick={setSel} selected={sel?.parcelId===p.parcelId} onCompare={onCompare} inCompare={compareList.some(x=>x.parcelId===p.parcelId)}/>)}
-          {filtered.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:60,color:"var(--gray2)"}}>No parcels match your filters.</div>}
+          {filtered.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"40px 16px",color:"var(--gray)",lineHeight:1.7}}>
+            <div style={{fontSize:14,fontWeight:700,color:"var(--white)"}}>{search.trim()?`No property found for "${search.trim()}".`:"No properties match these filters."}</div>
+            {similarAddressSuggestions.length>0&&<div style={{marginTop:10}}>
+              <div style={{fontSize:12}}>Did you mean:</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginTop:8}}>
+                {similarAddressSuggestions.map(p=><button key={p.parcelId} onClick={()=>{setSearch(p.address);setSel(p);}} style={{background:"var(--card)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,color:"var(--blue3)",cursor:"pointer"}}>{p.address}</button>)}
+              </div>
+            </div>}
+            <div style={{fontSize:12,marginTop:10}}>Try just the street name (for example "Elk St"), check the spelling, or {hasFilters?<button onClick={clearAll} style={{background:"none",border:"none",color:"var(--blue3)",fontWeight:700,cursor:"pointer",padding:0,fontSize:12,textDecoration:"underline"}}>clear the search and filters</button>:"clear the search"}.</div>
+          </div>}
         </div>:<div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead><tr style={{background:"var(--bg2)",borderBottom:"2px solid var(--border)"}}>
-              {["Parcel ID","Address","Neighborhood","ZIP","Owner","Class","FMV","Assessed","Equity %","Type","Exempt"].map(h=><th key={h} style={{padding:"9px 11px",textAlign:"left",color:"var(--gray2)",fontSize:10,textTransform:"uppercase",letterSpacing:.5,whiteSpace:"nowrap"}}>{h}</th>)}
+              {["Parcel ID","Address","Neighborhood","ZIP","Owner","Class","Full-value est.","Assessed","Level %","Tax class","Exemptions/credits"].map(h=><th key={h} style={{padding:"9px 11px",textAlign:"left",color:"var(--gray2)",fontSize:10,textTransform:"uppercase",letterSpacing:.5,whiteSpace:"nowrap"}}>{h}</th>)}
             </tr></thead>
             <tbody>{pageSlice.map((p,i)=><tr key={p.parcelId} onClick={()=>setSel(p)} style={{background:i%2?"transparent":"var(--card)",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--card2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"transparent":"var(--card)"}>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)",color:"var(--gray)",fontSize:10}}>{p.parcelId}</td>
@@ -5428,16 +5754,16 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
                 </div>
               </td>
               <td style={{padding:"7px 11px"}}><span title={propClassTooltip(p)}><Badge color="#6366f1" small>{propClassDescLabel(p)}</Badge></span></td>
-              <td style={{padding:"7px 11px",fontFamily:"var(--fm)",color:"var(--amber)"}}>{$f(p.fullMarketValue)}</td>
+              <td style={{padding:"7px 11px",fontFamily:"var(--fm)"}}>{$f(p.fullMarketValue)}</td>
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)"}}>{$f(p.assessedValue)}</td>
               <td style={{padding:"7px 11px"}}><span style={{color:FC[eqFlagFast(p)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(p)}%</span></td>
-              <td style={{padding:"7px 11px"}}>{p.parcelType==="HOMESTEAD"?<Badge color="#0d9488" small>H</Badge>:<Badge color="#64748b" small>NH</Badge>}</td>
-              <td style={{padding:"7px 11px"}}>{p.exemptions.map(e=><Badge key={e.code} color="#f59e0b" small>{e.name}</Badge>)}</td>
+              <td style={{padding:"7px 11px"}}>{p.parcelType==="HOMESTEAD"?"Homestead":"Non-homestead"}</td>
+              <td style={{padding:"7px 11px"}}>{p.exemptions.map((e,idx)=><Badge key={`${e.code}-${idx}`} color="#92400e" small>{exemptionInfo(e).label}</Badge>)}</td>
             </tr>)}</tbody>
           </table>
         </div>}
       </div>
-      {sel&&<div style={{position:"sticky",top:20,maxHeight:"90vh",overflowY:"auto"}}><DetailPanel p={sel} onClose={()=>setSel(null)} myHome={myHome} onSaveHome={onSaveHome} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={setSel}/></div>}
+      {sel&&<div ref={detailRef} className="detail-sticky" style={{position:"sticky",top:20,maxHeight:"90vh",overflowY:"auto",scrollMarginTop:16}}><DetailPanel p={sel} onClose={()=>setSel(null)} myHome={myHome} onSaveHome={onSaveHome} ownerPortfolioIndex={ownerPortfolioIndex} onSelectParcel={setSel} onCheckAssessment={onCheckAssessment} onOpenTaxRelief={onOpenTaxRelief} datasetMeta={meta} changeContext={changeContext}/></div>}
     </div>
   );
 };
@@ -5456,11 +5782,13 @@ const Analytics = ({parcels}) => {
   },[parcels]);
   const clsDist=useMemo(()=>{const m={};parcels.forEach(p=>{m[p.propClassDesc]=(m[p.propClassDesc]||0)+1;});return Object.entries(m).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);},[parcels]);
   const avgByZip=useMemo(()=>{const m={};parcels.forEach(p=>{if(!m[p.zip])m[p.zip]={t:0,c:0};m[p.zip].t+=p.fullMarketValue;m[p.zip].c++;});return Object.entries(m).map(([zip,v])=>({zip,avg:Math.round(v.t/v.c)})).sort((a,b)=>b.avg-a.avg);},[parcels]);
-  const exTypes=useMemo(()=>{const m={};parcels.forEach(p=>p.exemptions.forEach(e=>{m[e.name]=(m[e.name]||0)+1;}));return Object.entries(m).map(([name,count])=>({name,count}));},[parcels]);
+  const exTypes=useMemo(()=>{const m={};parcels.forEach(p=>p.exemptions.forEach(e=>{const label=exemptionInfo(e).label;m[label]=(m[label]||0)+1;}));return Object.entries(m).map(([name,count])=>({name,count}));},[parcels]);
   const deedYears=useMemo(()=>{const m={};parcels.forEach(p=>{if(p.deedYear)m[p.deedYear]=(m[p.deedYear]||0)+1;});return Object.entries(m).sort((a,b)=>a[0]-b[0]).map(([year,count])=>({year,count}));},[parcels]);
   const scatterPoints=useMemo(()=>{
     const sampled=downsampleScatterParcels(parcels, 1800);
-    return sampled.map(p=>({fmv:p.fullMarketValue,assessed:p.assessedValue,name:p.address}));
+    // Identical value pairs draw on top of each other and give Recharts duplicate keys, so keep one of each.
+    const seen=new Set();
+    return sampled.filter(p=>{const key=`${p.fullMarketValue}|${p.assessedValue}`;if(seen.has(key))return false;seen.add(key);return true;}).map(p=>({fmv:p.fullMarketValue,assessed:p.assessedValue,name:p.address}));
   },[parcels]);
   const avgLandByClass=useMemo(()=>{
     const m=new Map();
@@ -5490,22 +5818,17 @@ const Analytics = ({parcels}) => {
   return (
     <div className="fi">
       <InfoBox icon="Charts" title="Understanding These Charts" color="#3b82f6">
-        This tab gives you a bird's-eye view of Albany's entire property landscape. Each chart is built directly from the assessment roll data - no estimates or projections. Together they reveal how property values are distributed across the city, whether the assessment roll is fair, what types of properties dominate each area, and how active the real estate market has been over time. Hover over any bar or dot for exact numbers.
+        A citywide view of Albany's properties, built directly from the assessment roll. The charts show how values are distributed, what types of property make up the city, and when properties last changed hands. They do not show whether any single assessment is fair. Hover over or tap a bar for exact numbers.
       </InfoBox>
       <div className="cols-2" style={{display:"grid",gap:14}}>
-        <C title="Full Market Value Distribution"
-           desc="How many properties fall into each price range. A city with healthy housing diversity shows spread across multiple buckets. Heavy concentration in one range can signal affordability pressure or lack of housing variety.">
+        <C title="Properties by full-value estimate"
+           desc="How many properties fall into each range of the City's full-value estimate (assessed value divided by the city-wide assessment level).">
           <ResponsiveContainer width="100%" height={200}><BarChart data={fmvBkts}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis dataKey="range" tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis tick={{fontSize:10,fill:"#94a3b8"}} allowDecimals={false}/><Tooltip {...TT}/><Bar dataKey="count" fill="#3b82f6" radius={[4,4,0,0]} name="Parcels"/></BarChart></ResponsiveContainer>
         </C>
 
-        <C title="Assessment Equity Ratio Distribution"
-           desc="The equity ratio = Assessed Value / Full Market Value x 100. A fair assessment sits between 80-120%. Bars to the left mean properties are under-assessed (paying less than their fair share). Bars to the right mean over-assessed (a candidate for a tax grievance). A perfectly fair city would show all bars in the 80-120% range.">
+        <C title="Assessment level on the roll (record check)"
+           desc={ASSESSMENT_LEVEL_EXPLAINER+" Almost every property falls in the 80-100% bar for that reason. The few outside it usually have partial assessments or data issues, not unfair assessments."}>
           <ResponsiveContainer width="100%" height={200}><BarChart data={eqBkts}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis dataKey="range" tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis tick={{fontSize:10,fill:"#94a3b8"}} allowDecimals={false}/><Tooltip {...TT}/><Bar dataKey="count" fill="#f59e0b" radius={[4,4,0,0]} name="Parcels"/></BarChart></ResponsiveContainer>
-          <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
-            <span style={{fontSize:10,color:"var(--amber)"}}>Under 80% = Under-assessed</span>
-            <span style={{fontSize:10,color:"var(--green2)"}}>80-120% = Fair range</span>
-            <span style={{fontSize:10,color:"var(--red2)"}}>Over 120% = Over-assessed</span>
-          </div>
         </C>
 
         <C title="Property Class Distribution"
@@ -5529,7 +5852,7 @@ const Analytics = ({parcels}) => {
         </C>}
 
         <C title="Assessed Value vs. Full Market Value"
-           desc="Each dot is one parcel. The X-axis is its Full Market Value (what the assessor thinks it's worth). The Y-axis is its Assessed Value (what taxes are calculated on). In a perfectly fair assessment roll, every dot would fall along a straight diagonal line from bottom-left to top-right. Dots below the diagonal = under-assessed. Dots above = over-assessed. Clusters far from the line reveal systemic assessment inequities.">
+           desc="Each dot is one property: the City's full-value estimate (across) and assessed value (up). Because full value on the roll is assessed value divided by the city-wide assessment level, nearly every dot sits on one straight line. That line shows the roll is internally consistent; it cannot show whether assessments match real sale prices. Dots off the line are records to double-check.">
           <ResponsiveContainer width="100%" height={220}><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/><XAxis type="number" dataKey="fmv" name="FMV" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><YAxis type="number" dataKey="assessed" name="Assessed" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:"#94a3b8"}}/><Tooltip {...TT} formatter={(v,n)=>[$f(v),n]}/><Scatter data={scatterPoints} fill="#3b82f6" opacity={.75}/></ScatterChart></ResponsiveContainer>
           {parcels.length>scatterPoints.length&&<div style={{fontSize:10,color:"var(--gray2)",marginTop:6}}>Rendering a sampled subset ({scatterPoints.length.toLocaleString()} of {parcels.length.toLocaleString()} parcels) for chart performance.</div>}
         </C>
@@ -5614,7 +5937,7 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontFamily:"var(--fm)",fontSize:16,fontWeight:600,color:"var(--amber)"}}>{$f(own.totalFMV)}</div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:16,fontWeight:600,color:"var(--amber2)"}}>{$f(own.totalFMV)}</div>
                   <div style={{fontSize:10,color:"var(--gray)",marginTop:2}}>total FMV</div>
                 </div>
               </div>
@@ -5629,15 +5952,15 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
                     return latestSale ? <div style={{fontSize:11,color:"var(--gray2)",marginTop:4,lineHeight:1.6}}>Most recent sale: <b style={{color:"var(--gray)"}}>{formatSalesDate(latestSale.sale_dte || latestSale.deed_dte)} | {formatSaleDisplayPrice(latestSale)}</b>{buyerMatchesOwner ? <> | Buyer matches current roll owner</> : buyerName ? <> | Buyer on sale record: {buyerName}</> : null}</div> : null;
                   })()}
                   <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
-                    <span style={{fontSize:12,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</span>
+                    <span style={{fontSize:12,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</span>
                     <Badge color={FC[eqFlagFast(p)]} small>{eqRFast(p)}%</Badge>
                   </div>
                 </div>)}
                 <div style={{background:"rgba(37,99,235,.08)",borderRadius:8,padding:"10px 12px",border:"1px solid rgba(37,99,235,.2)"}}>
                   <div style={{fontSize:11,color:"var(--gray2)"}}>Portfolio Summary</div>
-                  <div style={{fontSize:12,marginTop:6}}>Land Total: <span style={{color:"var(--amber)",fontFamily:"var(--fm)"}}>{$f(own.totalLand)}</span></div>
+                  <div style={{fontSize:12,marginTop:6}}>Land Total: <span style={{color:"var(--amber2)",fontFamily:"var(--fm)"}}>{$f(own.totalLand)}</span></div>
                   <div style={{fontSize:12,marginTop:3}}>Assessed Total: <span style={{fontFamily:"var(--fm)"}}>{$f(own.totalAssessed)}</span></div>
-                  <div style={{fontSize:12,marginTop:3}}>Market Total: <span style={{color:"var(--amber)",fontFamily:"var(--fm)"}}>{$f(own.totalFMV)}</span></div>
+                  <div style={{fontSize:12,marginTop:3}}>Market Total: <span style={{color:"var(--amber2)",fontFamily:"var(--fm)"}}>{$f(own.totalFMV)}</span></div>
                 </div>
               </div>}
             </div>
@@ -5671,7 +5994,7 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
                     </div>
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                    <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div>
                     <Badge color="#f97316" small>{getAbsenteeLabelFast(p)}</Badge>
                   </div>
                 </div>
@@ -5695,7 +6018,7 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:700,color:"var(--teal2)"}}>{yr.year}</div>
                 <div style={{display:"flex",gap:16}}>
-                  <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{yr.count} sale{yr.count>1?"s":""}</div><div style={{fontSize:10,color:"var(--gray)"}}>transactions</div></div>
+                  <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber2)"}}>{yr.count} sale{yr.count>1?"s":""}</div><div style={{fontSize:10,color:"var(--gray)"}}>transactions</div></div>
                   <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14}}>{$f(yr.totalFMV)}</div><div style={{fontSize:10,color:"var(--gray)"}}>total FMV</div></div>
                 </div>
               </div>
@@ -5734,13 +6057,13 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
                       </div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)"}}>{$f(g.totalFMV)}</div>
+                      <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber2)"}}>{$f(g.totalFMV)}</div>
                       <div style={{fontSize:18,color:"var(--gray2)",fontFamily:"monospace",marginTop:6}}>{openDupes[g.id]?"v":">"}</div>
                     </div>
                   </div>
                   </button>
                 {openDupes[g.id]&&<div style={{padding:"0 16px 16px"}}>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Use the parcel list below to jump into each record. The Application Map link on each address opens that parcel in the map workspace.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Use the parcel list below to jump into each record. The "Show on map" link next to each address opens that property on the map.</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
                     {g.parcels.map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)",minWidth:0}}>
                       <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13,overflowWrap:"anywhere",wordBreak:"break-word"}}>{p.owner1}</div>
@@ -5753,7 +6076,7 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
                         return latestSale ? <div style={{fontSize:11,color:"var(--gray2)",marginTop:4,lineHeight:1.6}}>Most recent sale: <b style={{color:"var(--gray)"}}>{formatSalesDate(latestSale.sale_dte || latestSale.deed_dte)} | {formatSaleDisplayPrice(latestSale)}</b>{buyerMatchesOwner ? <> | Buyer matches current roll owner</> : buyerName ? <> | Buyer on sale record: {buyerName}</> : null}</div> : null;
                       })()}
                       <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:6,alignItems:"center",flexWrap:"wrap"}}>
-                        <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                        <div style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div>
                         <Badge color={FC[eqFlagFast(p)]} small>{eqRFast(p)}%</Badge>
                       </div>
                     </div>)}
@@ -5785,143 +6108,204 @@ function levenSim(a,b){
 }
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ 4. EQUITY & JUSTICE ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
-const Equity = ({parcels, onDrill}) => {
-  const [view,setView]=useState("desert");
+const Equity = ({parcels, onDrill, meta={}}) => {
+  const [view,setView]=useState("coverage");
+  const MIN_ZIP_HOMES = 25;
 
-  // Exemption desert: homestead parcels with no exemptions, grouped by ZIP
-  const desertByZip=useMemo(()=>{
+  // STAR and exemption coverage among homes whose owner appears to be an individual (a rough stand-in for
+  // owner-occupied homes). Businesses, government, and vacant land are excluded because they cannot get STAR.
+  const coverageByZip=useMemo(()=>{
     const m={};
-    parcels.filter(p=>p.parcelType==="HOMESTEAD").forEach(p=>{
-      if(!m[p.zip])m[p.zip]={zip:p.zip,total:0,noExempt:0,parcels:[]};
-      m[p.zip].total++;
-      if(p.exemptions.length===0){m[p.zip].noExempt++;m[p.zip].parcels.push(p);}
+    parcels.filter(p=>isResidentialPropClass(p.propClass) && !ownerLooksLikeEntity(p.owner1) && !isAbsenteeFast(p)).forEach(p=>{
+      if(!m[p.zip])m[p.zip]={zip:p.zip,total:0,withStar:0,withOther:0,noBenefit:0,parcels:[]};
+      const z=m[p.zip];
+      z.total++;
+      if(hasStarBenefitOnRecord(p)) z.withStar++;
+      else { z.noBenefit++; z.parcels.push(p); }
+      if(taxReducingExemptions(p).some(ex=>!["41854","41834"].includes((ex?.code||"").toString()))) z.withOther++;
     });
-    return Object.values(m).map(x=>({...x,pct:Math.round(x.noExempt/x.total*100)})).sort((a,b)=>b.pct-a.pct);
+    return Object.values(m)
+      .filter(x=>x.total>=MIN_ZIP_HOMES)
+      .map(x=>({...x,starPct:Math.round(x.withStar/x.total*100),noBenefitPct:Math.round(x.noBenefit/x.total*100)}))
+      .sort((a,b)=>b.noBenefitPct-a.noBenefitPct);
   },[parcels]);
 
-  // Assessment burden: effective rate = assessed / FMV ratio
-  const burdenByZip=useMemo(()=>{
+  // Typical assessed value by ZIP (for context only; it says nothing about fairness).
+  const valueByZip=useMemo(()=>{
     const m={};
-    parcels.filter(p=>p.fullMarketValue>0).forEach(p=>{
-      if(!m[p.zip])m[p.zip]={zip:p.zip,ratios:[],totalFMV:0,totalAssessed:0};
-      m[p.zip].ratios.push(p.assessedValue/p.fullMarketValue*100);
-      m[p.zip].totalFMV+=p.fullMarketValue;m[p.zip].totalAssessed+=p.assessedValue;
+    parcels.filter(p=>isResidentialPropClass(p.propClass) && p.assessedValue>0).forEach(p=>{
+      if(!m[p.zip])m[p.zip]={zip:p.zip,values:[]};
+      m[p.zip].values.push(p.assessedValue);
     });
-    return Object.values(m).map(x=>({zip:x.zip,avgRatio:(x.ratios.reduce((a,b)=>a+b,0)/x.ratios.length).toFixed(1),count:x.ratios.length})).sort((a,b)=>parseFloat(b.avgRatio)-parseFloat(a.avgRatio));
+    return Object.values(m)
+      .filter(x=>x.values.length>=MIN_ZIP_HOMES)
+      .map(x=>{const sorted=[...x.values].sort((a,b)=>a-b);return {zip:x.zip,count:sorted.length,median:sorted[Math.floor(sorted.length/2)]};})
+      .sort((a,b)=>b.median-a.median);
   },[parcels]);
 
-  // Revenue impact of exemptions
+  // How much taxable value each exemption type removes (the STAR credit is paid by the state, so it is not counted).
   const revenueImpact=useMemo(()=>{
     const m={};
-    parcels.forEach(p=>p.exemptions.forEach(e=>{
-      if(!m[e.name])m[e.name]={name:e.name,count:0,totalCounty:0,totalCity:0,totalSchool:0};
-      m[e.name].count++;m[e.name].totalCounty+=e.countyAmt;m[e.name].totalCity+=e.cityAmt;m[e.name].totalSchool+=e.schoolAmt;
+    parcels.forEach(p=>taxReducingExemptions(p).forEach(e=>{
+      const info=exemptionInfo(e);
+      const key=info.label;
+      if(!m[key])m[key]={name:key,rollNames:new Set(),count:0,totalCounty:0,totalCity:0,totalSchool:0};
+      m[key].rollNames.add(e.name);
+      m[key].count++;m[key].totalCounty+=e.countyAmt;m[key].totalCity+=e.cityAmt;m[key].totalSchool+=e.schoolAmt;
     }));
     return Object.values(m).sort((a,b)=>(b.totalCounty+b.totalCity+b.totalSchool)-(a.totalCounty+a.totalCity+a.totalSchool));
   },[parcels]);
+  const priorYear = parcels.find(p=>priorOf(p))?.prior?.assessmentYear || null;
+  const changeByNeighborhood=useMemo(()=>{
+    if(!priorYear) return {rows:[],citywide:null};
+    const groups=new Map();const all=[];let starDropped=0;
+    for(const p of parcels){
+      if(!isResidentialPropClass(p.propClass)) continue;
+      const change=assessedChangePct(p);
+      const prior=priorOf(p);
+      if(prior && (prior.exemptionCodes||[]).some(code=>["41854","41834","99999"].includes(String(code))) && !hasStarBenefitOnRecord(p)) starDropped++;
+      if(change==null) continue;
+      all.push(change);
+      const key=p.neighborhood||"Unknown";
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push({p,change});
+    }
+    const byChange=(a,b)=>(assessedChangePct(b)??0)-(assessedChangePct(a)??0);
+    const rows=[...groups.entries()].filter(([,items])=>items.length>=MIN_ZIP_HOMES).map(([name,items])=>{
+      const changed=items.filter(x=>x.change!==0);
+      return {name,count:items.length,changed:changed.length,up:changed.filter(x=>x.change>0).length,down:changed.filter(x=>x.change<0).length,medianChanged:medianOf(changed.map(x=>x.change)),changedParcels:changed.map(x=>x.p).sort(byChange)};
+    }).sort((a,b)=>(b.changed/b.count)-(a.changed/a.count)||b.changed-a.changed);
+    const allItems=[...groups.values()].flat();
+    const increases=allItems.filter(x=>x.change>0).map(x=>x.p).sort(byChange);
+    const decreases=allItems.filter(x=>x.change<0).map(x=>x.p).sort((a,b)=>byChange(b,a));
+    return {rows,citywide:medianOf(all),count:all.length,unchanged:all.filter(c=>c===0).length,increases,decreases,starDropped};
+  },[parcels,priorYear]);
+  const moneyShort = amt => amt>=1e9?`$${(amt/1e9).toFixed(1)} billion`:amt>=1e6?`$${(amt/1e6).toFixed(1)} million`:$f(amt);
 
-  const BtnTab=({id,label})=><button onClick={()=>setView(id)} style={{background:view===id?"var(--blue)":"transparent",color:view===id?"white":"var(--gray)",border:"none",borderRadius:7,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{label}</button>;
+  const BtnTab=({id,label})=><button onClick={()=>setView(id)} aria-pressed={view===id} style={{background:view===id?"var(--blue)":"transparent",color:view===id?"white":"var(--gray)",border:"none",borderRadius:7,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36}}>{label}</button>;
 
   return (
     <div className="fi">
-      <SectionTitle>Tax Fairness & Equity</SectionTitle>
-      <Sub>Exemption deserts, assessment burden by ZIP, exemption revenue impact on tax base</Sub>
-      <InfoBox icon="Equity" title="Why Does Property Tax Equity Matter?" color="#22c55e">
-        Property taxes are the primary way Albany funds its schools, city services, and county government. When assessments are unequal - charging some neighborhoods more relative to their actual property values - it creates a hidden tax on those communities. This tab examines three equity dimensions: where homeowners are missing out on exemptions they likely qualify for, which ZIP codes carry a disproportionate share of the tax burden, and how much revenue the city foregoes through exemptions each year. None of this requires any prior knowledge of tax law - the explanations are built in.
+      <SectionTitle>Citywide patterns</SectionTitle>
+      <Sub>Where STAR and other exemptions are recorded, typical assessed values by ZIP code, how much taxable value exemptions remove, and how assessments changed from last year. To check a single home, use Check My Assessment.</Sub>
+      <InfoBox icon="Note" title="Why this page does not rank neighborhoods as over- or under-assessed" color="#1d4ed8">
+        {ASSESSMENT_LEVEL_EXPLAINER} Comparing assessments with actual sale prices is the reliable way to spot uneven assessments; Check My Assessment does that for one home, and Change Signals shows sale-based patterns.
       </InfoBox>
-      <div style={{display:"flex",gap:4,background:"var(--card)",borderRadius:9,padding:4,border:"1px solid var(--border)",width:"fit-content",marginBottom:18}}>
-        <BtnTab id="desert" label="Missing Exemptions"/>
-        <BtnTab id="burden" label="Assessment Burden"/>
-        <BtnTab id="revenue" label="Revenue Impact"/>
+      <div role="group" aria-label="Citywide views" style={{display:"flex",gap:4,background:"var(--card)",borderRadius:9,padding:4,border:"1px solid var(--border)",width:"fit-content",maxWidth:"100%",flexWrap:"wrap",marginBottom:18}}>
+        <BtnTab id="coverage" label="STAR coverage by ZIP"/>
+        <BtnTab id="values" label="Typical assessed values"/>
+        <BtnTab id="revenue" label="Exemption totals"/>
+        {priorYear&&<BtnTab id="change" label={`Change since ${priorYear}`}/>}
       </div>
 
-      {view==="desert"&&<div>
-        <Card style={{marginBottom:16,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.2)"}}>
-          <div style={{fontSize:13,fontWeight:600,color:"var(--amber2)",marginBottom:6}}>What does missing exemptions mean?</div>
-          <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>A zone where homestead property owners are not claiming exemptions they likely qualify for - such as STAR, senior, or veteran exemptions. Owners in lower-income neighborhoods often leave money on the table because they do not know to apply. The table below flags ZIPs with the highest share of homesteads with zero exemptions.</div>
+      {view==="coverage"&&<div>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:"var(--white)",marginBottom:6}}>What this shows</div>
+          <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>For homes whose owner on record appears to be a person who may live there, the share with a STAR exemption or STAR credit recorded on the roll. A home without STAR on record is not necessarily missing out: the owner may not live there, may be over the income limit, or may be newly registered. ZIP codes with fewer than {MIN_ZIP_HOMES} such homes are not shown.</div>
         </Card>
         <div style={{display:"grid",gap:10}}>
-          {desertByZip.map(z=>(
-            <div key={z.zip} style={{background:"var(--card2)",border:`1px solid ${z.pct>60?"rgba(245,158,11,.3)":"var(--border)"}`,borderRadius:11,padding:"14px 18px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          {coverageByZip.map(z=>(
+            <div key={z.zip} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:11,padding:"14px 18px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:10}}>
                 <div>
-                  <span style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:700,color:"var(--white)"}}>{z.zip}</span>
-                  <span style={{fontSize:12,color:"var(--gray)",marginLeft:12}}>{z.total} homestead parcel{z.total>1?"s":""} | {z.noExempt} with no exemptions</span>
+                  <span style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:700,color:"var(--white)"}}>ZIP {z.zip}</span>
+                  <span style={{fontSize:13,color:"var(--gray)",marginLeft:12}}>{z.total.toLocaleString()} homes | {z.withStar.toLocaleString()} with STAR recorded</span>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:700,color:z.pct>60?"var(--amber)":z.pct>30?"#f97316":"var(--green2)"}}>{z.pct}%</span>
-                  {z.pct>60&&<Badge color="#f59e0b">Warning: high missed-savings risk</Badge>}
-                </div>
+                <span style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:700,color:"var(--white)"}}>{z.starPct}% with STAR</span>
               </div>
-              <div style={{height:6,background:"var(--bg)",borderRadius:3,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${z.pct}%`,background:z.pct>60?"var(--amber)":z.pct>30?"#f97316":"var(--green2)",borderRadius:3}}></div>
+              <div role="img" aria-label={`${z.starPct}% of homes in ZIP ${z.zip} have STAR recorded`} style={{height:8,background:"var(--bg3)",borderRadius:4,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${z.starPct}%`,background:"var(--blue)",borderRadius:4}}></div>
               </div>
-              {z.pct>50&&<div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:5}}>
-                {z.parcels.slice(0,3).map(p=><div key={p.parcelId} style={{background:"rgba(245,158,11,.08)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"var(--amber2)"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink> - {p.owner1}</div>)}
-                {z.parcels.length>3&&onDrill&&<button onClick={e=>{e.stopPropagation();onDrill({title:`ZIP ${z.zip} - Homesteads Without Exemptions (${z.noExempt})`,parcels:z.parcels});}} style={{background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.3)",color:"var(--amber2)",borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",fontWeight:600}}>View all {z.parcels.length} properties -&gt;</button>}
-              </div>}
+              {onDrill&&z.parcels.length>0&&<button onClick={()=>onDrill({title:`ZIP ${z.zip}: homes without STAR recorded (${z.parcels.length})`,parcels:z.parcels})} style={{marginTop:10,background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:7,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:600}}>List the {z.parcels.length.toLocaleString()} homes without STAR recorded</button>}
             </div>
           ))}
         </div>
       </div>}
 
-      {view==="burden"&&<div>
+      {view==="values"&&<div>
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Average Assessment Equity Ratio by ZIP</div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={burdenByZip}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/>
-              <XAxis dataKey="zip" tick={{fontSize:11,fill:"#94a3b8"}}/>
-              <YAxis tick={{fontSize:10,fill:"#94a3b8"}} domain={[0,150]} tickFormatter={v=>v+"%"}/>
-              <Tooltip {...TT} formatter={v=>[v+"%","Avg Equity Ratio"]}/>
-              <Bar dataKey="avgRatio" radius={[4,4,0,0]}>
-                {burdenByZip.map((entry,i)=><Cell key={i} fill={parseFloat(entry.avgRatio)>110?"#dc2626":parseFloat(entry.avgRatio)<90?"#f59e0b":"#22c55e"}/>)}
-              </Bar>
+          <div style={{fontSize:14,fontWeight:700,color:"var(--white)",marginBottom:4}}>Median assessed value of residential properties by ZIP</div>
+          <div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6,marginBottom:12}}>Context for comparing areas. Higher values reflect larger or more valuable homes, not unfair assessments. ZIP codes with fewer than {MIN_ZIP_HOMES} homes are not shown.</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={valueByZip}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(15,23,42,.08)"/>
+              <XAxis dataKey="zip" tick={{fontSize:11,fill:"#475569"}}/>
+              <YAxis tick={{fontSize:11,fill:"#475569"}} tickFormatter={v=>`$${Math.round(v/1000)}k`}/>
+              <Tooltip {...TT} formatter={v=>[$f(v),"Median assessed value"]}/>
+              <Bar dataKey="median" fill="#1d4ed8" radius={[4,4,0,0]}/>
             </BarChart>
           </ResponsiveContainer>
-          <div style={{fontSize:10,color:"var(--gray2)",marginTop:6}}>Red = over-assessed (paying too much tax relative to market). Amber = under-assessed. Green = fair range (90-110%).</div>
         </Card>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
-          {burdenByZip.map(z=>{const r=parseFloat(z.avgRatio);const color=r>110?"var(--red2)":r<90?"var(--amber)":"var(--green2)";return(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+          {valueByZip.map(z=>(
             <Card key={z.zip}>
-              <div style={{fontFamily:"var(--fm)",fontSize:22,fontWeight:700,color}}>{z.avgRatio}%</div>
-              <div style={{fontSize:13,fontWeight:600,marginTop:2}}>ZIP {z.zip}</div>
-              <div style={{fontSize:11,color:"var(--gray2)",marginTop:4}}>
-                {r>110?"Over-assessed":r<90?"Under-assessed":"Fair value"}
-              </div>
-              {onDrill&&<button onClick={()=>onDrill({title:`ZIP ${z.zip} - All ${z.count} Parcels (Avg Ratio: ${z.avgRatio}%)`,parcels:parcels.filter(p=>p.zip===z.zip&&p.fullMarketValue>0)})} style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",color:"var(--blue3)",borderRadius:5,padding:"3px 9px",fontSize:11,cursor:"pointer",marginTop:6,fontWeight:600}}>View {z.count} parcels -&gt;</button>}
-              <div style={{fontSize:10,color,marginTop:8,fontWeight:500}}>{r>110?"Warning: owners here may have grounds for assessment grievance":r<90?"Info: land here carries lighter relative tax burden":"Assessment aligned with market values"}</div>
+              <div style={{fontSize:13,fontWeight:700}}>ZIP {z.zip}</div>
+              <div style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:700,color:"var(--white)",marginTop:4}}>{$f(z.median)}</div>
+              <div style={{fontSize:12,color:"var(--gray)",marginTop:2}}>median of {z.count.toLocaleString()} residential properties</div>
+              {onDrill&&<button onClick={()=>onDrill({title:`ZIP ${z.zip}: residential properties`,parcels:parcels.filter(p=>p.zip===z.zip&&isResidentialPropClass(p.propClass))})} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",marginTop:8,fontWeight:600}}>List properties</button>}
             </Card>
-          );})}
+          ))}
         </div>
       </div>}
 
+      {view==="change"&&priorYear&&(()=>{
+        const c=changeByNeighborhood;
+        const pct=n=>c.count?Math.round(n/c.count*1000)/10:0;
+        const levelNote=levelShiftNote(parcels.find(p=>priorOf(p))?.prior?.uniformPercentOfValue, meta?.uniformPercentOfValue);
+        return <div>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:"var(--white)",marginBottom:6}}>How residential assessments changed since {priorYear}</div>
+          <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>Of {c.count.toLocaleString()} residential properties on both rolls, <b style={{color:"var(--white)"}}>{c.unchanged.toLocaleString()} ({pct(c.unchanged)}%) kept the same assessed value</b>. {c.increases.length.toLocaleString()} went up and {c.decreases.length.toLocaleString()} went down. Changes usually follow a sale, new construction or demolition, a split or merged lot, a class change, or a grievance or correction.</div>
+          {levelNote&&<div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7,marginTop:8}}>{levelNote}</div>}
+          {c.starDropped>0&&<div style={{fontSize:12,color:"var(--gray)",marginTop:8}}>{c.starDropped.toLocaleString()} residential properties had a STAR benefit recorded in {priorYear} but not this year (often a sale, a move, or a switch from the exemption to the state credit).</div>}
+          {onDrill&&(c.increases.length>0||c.decreases.length>0)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+            {c.increases.length>0&&<button onClick={()=>onDrill({title:`Residential assessments that went up since ${priorYear}`,parcels:c.increases})} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:600,minHeight:32}}>List increases ({c.increases.length.toLocaleString()})</button>}
+            {c.decreases.length>0&&<button onClick={()=>onDrill({title:`Residential assessments that went down since ${priorYear}`,parcels:c.decreases})} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:600,minHeight:32}}>List decreases ({c.decreases.length.toLocaleString()})</button>}
+          </div>}
+        </Card>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <caption style={{textAlign:"left",fontSize:12,color:"var(--gray)",padding:"0 0 8px"}}>Neighborhoods with at least {MIN_ZIP_HOMES} residential properties on both rolls, sorted by share of assessments that changed</caption>
+            <thead><tr style={{background:"var(--bg2)"}}>{["Neighborhood","Properties","Changed","Went up","Went down","Median change (changed only)",""].map(h=><th key={h} scope="col" style={{padding:"9px 11px",textAlign:"left",color:"var(--gray)",fontSize:12}}>{h}</th>)}</tr></thead>
+            <tbody>{c.rows.map((row,i)=><tr key={row.name} style={{background:i%2?"transparent":"var(--card)"}}>
+              <th scope="row" style={{padding:"8px 11px",textAlign:"left",fontWeight:600}}>{row.name}</th>
+              <td style={{padding:"8px 11px",fontFamily:"var(--fm)"}}>{row.count.toLocaleString()}</td>
+              <td style={{padding:"8px 11px",fontFamily:"var(--fm)",fontWeight:700}}>{row.changed.toLocaleString()} ({(row.changed/row.count*100).toFixed(1)}%)</td>
+              <td style={{padding:"8px 11px",fontFamily:"var(--fm)"}}>{row.up.toLocaleString()}</td>
+              <td style={{padding:"8px 11px",fontFamily:"var(--fm)"}}>{row.down.toLocaleString()}</td>
+              <td style={{padding:"8px 11px",fontFamily:"var(--fm)"}}>{row.changed?formatChangePct(row.medianChanged):"-"}</td>
+              <td style={{padding:"8px 11px"}}>{onDrill&&row.changed>0&&<button onClick={()=>onDrill({title:`${row.name}: assessments that changed since ${priorYear}`,parcels:row.changedParcels})} aria-label={`List changed assessments in ${row.name}`} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:600,minHeight:32}}>List</button>}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>;})()}
+
       {view==="revenue"&&<div>
-        <InfoBox icon="Revenue" title="What Is Revenue Impact - And Why Does It Matter to the City?" color="#22c55e">
-          Every property tax exemption reduces the amount of assessed value that can be taxed - meaning the city, county, and school district collect less revenue. The numbers here show exactly how much taxable value has been removed from the base by each exemption type. This is not waste - exemptions like STAR and Senior Citizen exemptions are deliberate policy choices to reduce the burden on homeowners and veterans. But understanding the scale of these reductions helps explain why tax rates must remain high enough to fund services: fewer dollars in the taxable base means each remaining dollar is taxed more heavily.
+        <InfoBox icon="Revenue" title="How much taxable value exemptions remove" color="#15803d">
+          Each exemption lowers the value that can be taxed, so the remaining taxpayers share more of the levy. That is a deliberate policy choice: exemptions like STAR, senior, and veterans exemptions exist to lower the burden on qualifying homeowners. The STAR credit is paid by New York State and is not included here.
         </InfoBox>
         <div className="cols-3" style={{display:"grid",gap:12,marginBottom:18}}>
-          <StatCard label="Total County Exemptions" value={"$"+(revenueImpact.reduce((s,e)=>s+e.totalCounty,0)/1000).toFixed(0)+"K"} icon="County" color="#3b82f6" sub="Removed from county tax base"/>
-          <StatCard label="Total City Exemptions" value={"$"+(revenueImpact.reduce((s,e)=>s+e.totalCity,0)/1000).toFixed(0)+"K"} icon="City" color="#0d9488" sub="Removed from city tax base"/>
-          <StatCard label="Total School Exemptions" value={"$"+(revenueImpact.reduce((s,e)=>s+e.totalSchool,0)/1000).toFixed(0)+"K"} icon="School" color="#a78bfa" sub="Removed from school tax base"/>
+          <StatCard label="County taxable value removed" value={moneyShort(revenueImpact.reduce((s,e)=>s+e.totalCounty,0))} color="#1d4ed8"/>
+          <StatCard label="City taxable value removed" value={moneyShort(revenueImpact.reduce((s,e)=>s+e.totalCity,0))} color="#0f766e"/>
+          <StatCard label="School taxable value removed" value={moneyShort(revenueImpact.reduce((s,e)=>s+e.totalSchool,0))} color="#6d28d9"/>
         </div>
         <Card>
-          <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:14}}>Exemption Impact on Tax Base by Type</div>
+          <div style={{fontSize:14,fontWeight:700,fontFamily:"var(--fd)",marginBottom:14}}>By exemption type</div>
           <div style={{display:"grid",gap:10}}>
-            {revenueImpact.map((ex,i)=>(
+            {revenueImpact.map(ex=>(
               <div key={ex.name} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:9,padding:"12px 16px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
                   <div>
-                    <span style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:15,color:COLORS[i%COLORS.length]}}>{ex.name}</span>
-                    <span style={{fontSize:11,color:"var(--gray)",marginLeft:10}}>{onDrill?<button onClick={()=>onDrill({title:`${ex.name} Exemption Holders`,parcels:parcels.filter(p=>p.exemptions.some(e=>e.name===ex.name))})} style={{background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",color:"var(--blue3)",borderRadius:5,padding:"2px 8px",fontSize:11,cursor:"pointer",fontFamily:"var(--fm)",fontWeight:600}}>{ex.count} parcel{ex.count>1?"s":""}</button>:<span style={{fontSize:11,color:"var(--gray)",marginLeft:10}}>{ex.count} parcel{ex.count>1?"s":""}</span>}</span>
+                    <span style={{fontWeight:700,fontSize:14,color:"var(--white)"}}>{ex.name}</span>
+                    <span style={{fontSize:12,color:"var(--gray)",marginLeft:10}}>{onDrill?<button onClick={()=>onDrill({title:`Properties with ${ex.name}`,parcels:parcels.filter(p=>taxReducingExemptions(p).some(e=>exemptionInfo(e).label===ex.name))})} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:5,padding:"2px 8px",fontSize:12,cursor:"pointer",fontWeight:600}}>{ex.count.toLocaleString()} properties</button>:`${ex.count.toLocaleString()} properties`}</span>
                   </div>
-                  <div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)"}}>{$f(ex.totalCounty+ex.totalCity+ex.totalSchool)} total</div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--white)"}}>{$f(ex.totalCounty+ex.totalCity+ex.totalSchool)} total</div>
                 </div>
                 <div className="cols-3" style={{display:"grid",gap:8}}>
-                  {[["County",ex.totalCounty,"#3b82f6"],["City",ex.totalCity,"#0d9488"],["School",ex.totalSchool,"#a78bfa"]].map(([jx,amt,color])=>(
+                  {[["County",ex.totalCounty,"#1d4ed8"],["City",ex.totalCity,"#0f766e"],["School",ex.totalSchool,"#6d28d9"]].map(([jx,amt,color])=>(
                     <div key={jx} style={{background:`${color}11`,border:`1px solid ${color}22`,borderRadius:7,padding:"8px 10px",textAlign:"center"}}>
                       <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color}}>{$f(amt)}</div>
-                      <div style={{fontSize:10,color:"var(--gray)",marginTop:2}}>{jx} base reduction</div>
+                      <div style={{fontSize:11,color:"var(--gray)",marginTop:2}}>{jx} taxable value removed</div>
                     </div>
                   ))}
                 </div>
@@ -5992,14 +6376,14 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
   return (
     <div className="fi">
       <SectionTitle>Neighborhood Change & Opportunity</SectionTitle>
-      <Sub>Underused land, neighborhood pressure, under-assessed parcels, and class anomalies</Sub>
+      <Sub>Underused land, rising land values, records that differ from the city-wide assessment level, and unusual property uses</Sub>
       <InfoBox icon="Land" title="What Are We Looking For Here?" color="#0d9488">
-        This tab helps residents, advocates, and researchers spot neighborhood change, underused land, and parcels whose assessments look out of step with the market. It surfaces four different types of insights: underutilized lots where the land is worth more than what is built on it; signs of rising land prices that can precede displacement; properties whose assessments have not kept up with their market value (a potential buyer advantage); and parcels whose use type does not match the surrounding street - which may reflect an error, a holdover use, or a coming change. No real estate experience needed - each section explains what the numbers mean in plain English.
+        This tab helps residents, advocates, and researchers spot neighborhood change, underused land, and parcels whose assessments look out of step with the market. It surfaces four different types of insights: underutilized lots where the land is worth more than what is built on it; signs of rising land prices that can precede displacement; records whose assessed-to-full-value ratio differs from the city-wide level (usually partial assessments or data issues); and parcels whose use type does not match the surrounding street, which may reflect an error, a holdover use, or a coming change. These are leads for further research, not conclusions.
       </InfoBox>
       <div style={{display:"flex",gap:4,background:"var(--card)",borderRadius:9,padding:4,border:"1px solid var(--border)",width:"fit-content",marginBottom:18,flexWrap:"wrap"}}>
         <BtnTab id="lots" label="Lot Opportunities"/>
-        <BtnTab id="gentrifi" label="Neighborhood Pressure"/>
-        <BtnTab id="arb" label="Under-Assessed Parcels"/>
+        <BtnTab id="gentrifi" label="Land value share"/>
+        <BtnTab id="arb" label="Record checks"/>
         <BtnTab id="anomaly" label="Class Anomalies"/>
         <BtnTab id="sales" label="Sales-backed Signals"/>
       </div>
@@ -6022,7 +6406,7 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
                       <div style={{fontSize:10,color:"var(--gray)"}}>Lot Size</div>
                     </div>
                     <div style={{background:"rgba(245,158,11,.12)",borderRadius:7,padding:"6px 10px",textAlign:"center"}}>
-                      <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color:"var(--amber)"}}>${p.landPerSqFt.toFixed(2)}/sq ft</div>
+                      <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color:"var(--amber2)"}}>${p.landPerSqFt.toFixed(2)}/sq ft</div>
                       <div style={{fontSize:10,color:"var(--gray)"}}>Land $/sqft</div>
                     </div>
                     <div style={{background:"rgba(37,99,235,.12)",borderRadius:7,padding:"6px 10px",textAlign:"center"}}>
@@ -6032,7 +6416,7 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:600,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div>
                   <div style={{fontSize:10,color:"var(--gray)",marginTop:2}}>FMV</div>
                   {p.buildingRatio<0.3&&<Badge color="#0d9488" small>High Opportunity</Badge>}
                 </div>
@@ -6044,14 +6428,14 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
 
       {view==="gentrifi"&&<div>
         <Card style={{marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Gentrification Pressure Index by Parcel</div>
+          <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Land value as a share of total assessed value</div>
           <div style={{fontSize:11,color:"var(--gray2)",marginBottom:12}}>Land-to-total assessed value ratio. Rising land values outpacing building values = displacement pressure signal. Index above 50% = elevated risk.</div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={gentriParcels.slice(0,12).map(p=>({address:p.address.split(" ").slice(0,2).join(" "),idx:p.gIdx}))}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)"/>
               <XAxis dataKey="address" tick={{fontSize:9,fill:"#94a3b8"}}/>
               <YAxis tick={{fontSize:10,fill:"#94a3b8"}} tickFormatter={v=>v+"%"} domain={[0,100]}/>
-              <Tooltip {...TT} formatter={v=>[v+"%","Gentrifi. Index"]}/>
+              <Tooltip {...TT} formatter={v=>[v+"%","Land share of assessed value"]}/>
               <Bar dataKey="idx" radius={[4,4,0,0]}>
                 {gentriParcels.slice(0,12).map((p,i)=><Cell key={i} fill={p.gIdx>60?"#dc2626":p.gIdx>40?"#f59e0b":"#22c55e"}/>) }
               </Bar>
@@ -6083,8 +6467,8 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
 
       {view==="arb"&&<div>
         <Card style={{marginBottom:14,background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.2)"}}>
-          <div style={{fontSize:12,color:"var(--green2)",fontWeight:600,marginBottom:4}}>Assessment Arbitrage - What This Means</div>
-          <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>Parcels where assessed value is significantly below full market value. The owner effectively pays taxes on a smaller base than the property's true worth. These represent hidden value - for buyers, lower carrying costs; for policy makers, potential tax base leakage.</div>
+          <div style={{fontSize:12,color:"var(--green2)",fontWeight:600,marginBottom:4}}>What this list shows</div>
+          <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>Records whose assessed value is well below the roll's full-value figure. Because Albany assesses every property at the same level, a gap like this usually means a partial assessment (for example, new construction or a split parcel) or a data issue, not a hidden bargain. Check with the Assessor's Office before drawing conclusions.</div>
         </Card>
         {arbitrage.length>0?<div style={{display:"grid",gap:10}}>
           {arbitrage.slice(0,showAllArb?arbitrage.length:OPP_LIMIT).map(p=>(
@@ -6099,7 +6483,7 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
                       <div style={{fontSize:10,color:"var(--gray)"}}>Value gap (FMV - Assessed)</div>
                     </div>
                     <div style={{background:"rgba(245,158,11,.1)",borderRadius:7,padding:"6px 10px"}}>
-                      <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color:"var(--amber)"}}>{p.ratio.toFixed(1)}%</div>
+                      <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color:"var(--amber2)"}}>{p.ratio.toFixed(1)}%</div>
                       <div style={{fontSize:10,color:"var(--gray)"}}>Equity ratio (under 85%)</div>
                     </div>
                   </div>
@@ -6108,13 +6492,13 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
                   <div style={{fontSize:11,color:"var(--gray)"}}>Assessed</div>
                   <div style={{fontFamily:"var(--fm)",fontSize:14}}>{$f(p.assessedValue)}</div>
                   <div style={{fontSize:11,color:"var(--gray)",marginTop:6}}>FMV</div>
-                  <div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div>
                 </div>
               </div>
             </div>
           ))}
           {arbitrage.length>OPP_LIMIT&&<button onClick={()=>setShowAllArb(x=>!x)} style={{background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray2)",borderRadius:8,padding:"10px",fontSize:12,cursor:"pointer",width:"100%"}}>{showAllArb?`Show top ${OPP_LIMIT}`:`Show all ${arbitrage.length.toLocaleString()} arbitrage candidates`}</button>}
-        </div>:<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No strong arbitrage candidates in current sample. Upload full roll to discover hidden opportunities.</div>}
+        </div>:<div style={{textAlign:"center",padding:40,color:"var(--gray2)"}}>No records differ from the city-wide assessment level by this much.</div>}
       </div>}
 
       {view==="anomaly"&&<div>
@@ -6133,7 +6517,7 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
                     <div><span style={{fontSize:11,color:"var(--gray)"}}>Street mode: </span><Badge color="#22c55e">{formatPropClassLabel(p.expectedClass, p.expectedClassDesc)}</Badge></div>
                   </div>
                 </div>
-                <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
+                <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div></div>
               </div>
             </div>
           ))}
@@ -6165,7 +6549,7 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div>
                   <div style={{fontSize:10,color:"var(--gray)",marginTop:2}}>current FMV</div>
                 </div>
               </div>
@@ -6179,9 +6563,9 @@ const Opportunity = ({parcels, onDrill, salesByParcelId=null}) => {
 };
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ 6. TAX TOOLS ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
-const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByParcelId=null, parcelGeometry=null, dataSource="sample", autoloadPhase="idle", uploading=false}) => {
+const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByParcelId=null, parcelGeometry=null, dataSource="sample", autoloadPhase="idle", uploading=false, mode="relief", focusRequest=null, onOpenTaxRelief=null, onCheckAssessment=null}) => {
   const grievanceHelperLinks = grievanceResourceUrls;
-  const [view,setView]=useState("estimator");
+  const [view,setView]=useState(mode==="assessment" ? "neighbor" : "estimator");
   const [query,setQuery]=useState("");
   const [found,setFound]=useState(null);
   const [neighborAddr,setNeighborAddr]=useState("");
@@ -6408,10 +6792,26 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   }, []);
   const openSavingsEstimator = useCallback(() => {
     if(!effectiveNeighborResult?.p) return;
+    if(typeof onOpenTaxRelief==="function"){
+      onOpenTaxRelief(effectiveNeighborResult.p);
+      return;
+    }
     setView("estimator");
     setQuery(effectiveNeighborResult.p.address || "");
     setFound(effectiveNeighborResult.p);
-  }, [effectiveNeighborResult]);
+  }, [effectiveNeighborResult, onOpenTaxRelief]);
+  const lastFocusTokenRef = useRef(null);
+  useEffect(()=>{
+    if(!focusRequest?.parcel || focusRequest.token===lastFocusTokenRef.current) return;
+    lastFocusTokenRef.current = focusRequest.token;
+    if(mode==="assessment"){
+      focusNeighborParcel(focusRequest.parcel);
+    }else{
+      setView("estimator");
+      setQuery(focusRequest.parcel.address || "");
+      setFound(focusRequest.parcel);
+    }
+  }, [focusNeighborParcel, focusRequest, mode]);
   const runBroadenedSearch = useCallback(() => {
     if(!neighborResult?.p) return;
     const subject = neighborResult.p;
@@ -6444,6 +6844,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
     return buildNeighborhoodBenchmark(effectiveNeighborResult.p, effectiveNeighborResult.subjectProfile || buildComparableProfile(effectiveNeighborResult.p), parcels);
   }, [effectiveNeighborResult, parcels]);
   const equityUniformityNotice = useMemo(() => buildEquityUniformityNotice(parcels), [parcels]);
+  const assessmentChangeContext = useMemo(() => buildAssessmentChangeContext(parcels), [parcels]);
   const appealReadiness = useMemo(() => {
     if(!effectiveNeighborResult?.p) return null;
     return buildAppealReadiness({
@@ -6484,6 +6885,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   }, [autoloadPhase, neighborResult, uploading, view, workflowAnalysisReady]);
   const availableWorkflowStepIds = useMemo(() => {
     const ids = new Set([GRIEVANCE_WORKFLOW_STEPS[0].id]);
+    ids.add("step-1-how-to-read");
     ids.add("step-2-terminology");
     ids.add("step-3-find-property");
     if(workflowAnalysisReady){
@@ -6593,13 +6995,18 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
 
   useEffect(()=>{
     const requestedSnapshot = requestedSnapshotRef.current;
+    if(mode!=="assessment"){
+      hydratedSnapshotRef.current = true;
+      return;
+    }
     if(requestedSnapshot?.tool==="neighbor") setView("neighbor");
     if(hydratedSnapshotRef.current) return;
     if(!requestedSnapshot?.hasSnapshot){
       hydratedSnapshotRef.current = true;
       return;
     }
-    const waitingForAutoload = dataSource==="sample" && (uploading || autoloadPhase==="idle" || autoloadPhase==="running");
+    // Wait for every autoload file (including sales) so a shared link is scored once, with the full evidence.
+    const waitingForAutoload = uploading || autoloadPhase==="idle" || autoloadPhase==="running";
     if(!parcels.length || waitingForAutoload) return;
     if(!requestedSnapshot.subjectId){
       hydratedSnapshotRef.current = true;
@@ -6617,7 +7024,22 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
       exactCompIds: requestedSnapshot.compIds,
       snapshotDatasetKey: requestedSnapshot.datasetKey,
     });
-  }, [autoloadPhase, dataSource, focusNeighborParcel, parcels, uploading]);
+  }, [autoloadPhase, dataSource, focusNeighborParcel, mode, parcels, uploading]);
+
+  // If sales records finish loading after a lookup, rebuild the comparison so the default package and
+  // recommendation use the same evidence a fresh lookup would (otherwise the verdict silently changes).
+  const neighborSalesSourceRef = useRef(salesByParcelId);
+  useEffect(()=>{
+    if(neighborSalesSourceRef.current===salesByParcelId) return;
+    neighborSalesSourceRef.current = salesByParcelId;
+    if(!neighborResult?.p) return;
+    const subject = parcels.find(parcel=>parcel.parcelId===neighborResult.p.parcelId) || neighborResult.p;
+    const nextResult = buildNeighborResult(subject, {
+      exactCompIds: (neighborResult.neighbors||[]).map(parcel=>normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl)).filter(Boolean),
+      snapshotDatasetKey: datasetKey,
+    });
+    setNeighborResult(nextResult);
+  }, [buildNeighborResult, datasetKey, neighborResult, parcels, salesByParcelId]);
 
   useEffect(()=>{
     if(view!=="neighbor" || !displayNeighborResult?.p) return;
@@ -6908,69 +7330,80 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
   },[neighborResult, parcels, salesByParcelId]);
   const schoolBurden=useMemo(()=>[...parcels].map(p=>({...p,schoolBurden:p.fullMarketValue>0?(p.schoolTaxable/p.fullMarketValue*100).toFixed(1):"-",schoolGap:p.assessedValue-p.schoolTaxable})).sort((a,b)=>parseFloat(b.schoolBurden||0)-parseFloat(a.schoolBurden||0)),[parcels]);
 
-  const BtnTab=({id,label})=><button onClick={()=>setView(id)} style={{background:view===id?"var(--purple)":"transparent",color:view===id?"white":"var(--gray)",border:"none",borderRadius:7,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{label}</button>;
+  const BtnTab=({id,label})=><button onClick={()=>setView(id)} aria-pressed={view===id} style={{background:view===id?"var(--purple)":"transparent",color:view===id?"white":"var(--gray)",border:"none",borderRadius:7,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36}}>{label}</button>;
   const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"var(--fb)"};
+  const foundOwnerIsEntity = found ? ownerLooksLikeEntity(found.owner1) : false;
+  const foundIsHome = found ? isResidentialPropClass(found.propClass) : false;
+  const foundCodes = new Set((found?.exemptions||[]).map(e=>(e?.code||"").toString().trim()));
+  const foundHasStar = foundCodes.has("41854") || foundCodes.has("41834") || foundCodes.has("99999");
+  const foundHasSenior = foundCodes.has("41800") || foundCodes.has("41834");
+  const foundHasVeteran = [...foundCodes].some(code=>/^41(00|1[2-4])\d$/.test(code));
+  const foundHasDisability = [...foundCodes].some(code=>/^4193\d$/.test(code));
 
   return (
     <div className="fi">
-      <SectionTitle>Tax Tools</SectionTitle>
-      <Sub>Tax savings estimator, neighbor value comparison, school tax burden analysis</Sub>
-      <InfoBox icon="Tax" title="How Albany Property Taxes Work - The Basics" color="#a78bfa">
-        Albany property owners pay taxes to three separate entities: the <b style={{color:"var(--white)"}}>County</b>, the <b style={{color:"var(--white)"}}>City</b>, and the <b style={{color:"var(--white)"}}>Albany City School District</b>. Each calculates your tax bill using its own tax rate multiplied by your taxable assessed value. Exemptions can reduce your taxable value separately for each entity - which is why you might see three different "taxable" numbers on your record. This tab helps you estimate what you could be saving, compare your assessment to your neighbors', and understand the school tax burden specifically.
-      </InfoBox>
-      <div style={{display:"flex",gap:4,background:"var(--card)",borderRadius:9,padding:4,border:"1px solid var(--border)",width:"fit-content",marginBottom:18}}>
-        <BtnTab id="estimator" label="Savings Estimator"/>
-        <BtnTab id="neighbor" label="Neighbor Compare"/>
-        <BtnTab id="school" label="School Tax Burden"/>
-      </div>
+      {mode==="assessment" ? <>
+        <SectionTitle>Check my assessment</SectionTitle>
+        <Sub>See how your assessment compares with similar nearby homes and recent sales, and whether filing a grievance may be worth considering.</Sub>
+      </> : <>
+        <SectionTitle>Lower my taxes</SectionTitle>
+        <Sub>See the exemptions and credits recorded for a property, and which programs an owner may be able to apply for.</Sub>
+        <InfoBox icon="Tax" title="How Albany property taxes work" color="#6d28d9">
+          Three governments tax Albany property: the <b style={{color:"var(--white)"}}>County</b>, the <b style={{color:"var(--white)"}}>City</b>, and the <b style={{color:"var(--white)"}}>Albany City School District</b>. Each one multiplies its own tax rate by your <b style={{color:"var(--white)"}}>taxable value</b> (assessed value minus exemptions). That is why a record can show three different taxable values. This app does not have the current tax rates, so it cannot show your actual bill.
+        </InfoBox>
+        <div role="group" aria-label="Tax relief tools" style={{display:"flex",gap:4,background:"var(--card)",borderRadius:9,padding:4,border:"1px solid var(--border)",width:"fit-content",maxWidth:"100%",flexWrap:"wrap",marginBottom:18}}>
+          <BtnTab id="estimator" label="Exemptions and credits"/>
+          <BtnTab id="school" label="School tax share"/>
+        </div>
+      </>}
 
       {view==="estimator"&&<div>
-        <InfoBox icon="Relief" title="Tax Savings Estimator - What Exemptions Could You Be Missing?" color="#a78bfa">
-          Many Albany homeowners qualify for exemptions they have never applied for. The most common is <b style={{color:"var(--white)"}}>STAR (School Tax Assessment Relief)</b> - a New York State program that reduces the school-taxable portion of your assessed value by up to $30,000, saving most homeowners $600-$1,000/year. Senior homeowners (65+) may qualify for the <b style={{color:"var(--white)"}}>Enhanced STAR</b> or <b style={{color:"var(--white)"}}>Senior Citizen Exemption</b>, which can cut the taxable value in half. Veterans have their own exemption too. Look up your address below - if exemptions are missing from your record that you likely qualify for, the tool will flag them.
-        </InfoBox>
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Look Up a Property</div>
-          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setQuery(myHome.address.split(" ").slice(0,3).join(" "));setFound(myHome.parcel||null);}}} label="Load My Home"/>
-          <div style={{display:"flex",gap:10,marginBottom:14}}>
-            <AddressAutocompleteInput parcels={parcels} value={query} onChange={setQuery} onSelectParcel={p=>{setQuery(p.address);setFound(p);}} onEnter={lookup} placeholder="Enter address or parcel ID..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:1}}/>
-            <button onClick={lookup} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Look Up</button>
+          <div style={{fontSize:14,fontWeight:700,fontFamily:"var(--fd)",marginBottom:6}}>Look up a property</div>
+          <div style={{fontSize:12,color:"var(--gray)",lineHeight:1.7,marginBottom:12}}>This shows what is recorded on the assessment roll. It cannot tell whether an owner is eligible for a program, because eligibility depends on age, income, military service, and whether the owner lives there.</div>
+          <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setQuery(myHome.address);setFound(myHome.parcel||null);}}} label="Use my home"/>
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            <AddressAutocompleteInput id="relief-search" ariaLabel="Property address for exemptions and credits" parcels={parcels} value={query} onChange={setQuery} onSelectParcel={p=>{setQuery(p.address);setFound(p);}} onEnter={lookup} placeholder="Address, e.g. 470 Elk St" inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 240px"}}/>
+            <button onClick={lookup} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13,minHeight:38}}>Look up</button>
           </div>
           {found&&<div className="fi">
             <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:10}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood} parcelId={found.parcelId}>{found.address}</AddrLink></div>
             <div className="cols-2" style={{display:"grid",gap:10,marginBottom:14}}>
-              <div style={{background:"var(--card)",borderRadius:9,padding:"12px 14px",border:"1px solid var(--border)"}}>
-                <div style={{fontSize:11,color:"var(--gray)",marginBottom:4}}>Current Exemptions on Record</div>
-                {found.exemptions.length>0?found.exemptions.map(e=><div key={e.code} style={{fontSize:12,marginBottom:3}}><Badge color="#f59e0b" small>{e.name}</Badge> - saves up to {$f(e.schoolAmt||e.countyAmt||e.cityAmt)}</div>):<div style={{fontSize:12,color:"var(--gray2)"}}>None on file</div>}
+              <div style={{background:"var(--card)",borderRadius:9,padding:"12px 14px",border:"1px solid var(--border2)"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--white)",marginBottom:6}}>Recorded on the roll</div>
+                {found.exemptions.length>0?found.exemptions.map((e,idx)=>{const info=exemptionInfo(e);return <div key={`${e.code}-${idx}`} style={{fontSize:12,marginBottom:6,lineHeight:1.6}}><b>{info.label}</b>{isStarCreditRecord(e)?" - paid by New York State, not shown as a reduction here":` - lowers taxable value by up to ${$f(Math.max(e.schoolAmt||0,e.countyAmt||0,e.cityAmt||0))}`}</div>;}):<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>No exemptions or STAR credit recorded on this roll.</div>}
               </div>
-              <div style={{background:"rgba(34,197,94,.07)",borderRadius:9,padding:"12px 14px",border:"1px solid rgba(34,197,94,.2)"}}>
-                <div style={{fontSize:11,color:"var(--green2)",marginBottom:4}}>Potential Opportunities Worth Exploring</div>
-                {found.parcelType==="HOMESTEAD"&&!found.exemptions.some(e=>e.name.includes("STAR"))&&<div style={{fontSize:12,marginBottom:5,color:"var(--white)"}}>Recommended: <b>STAR Exemption</b> - up to $30,000 off school taxable value (~$600-900/yr savings). Apply at NYS Tax Dept.</div>}
-                {found.parcelType==="HOMESTEAD"&&!found.exemptions.some(e=>e.name.includes("SR"))&&<div style={{fontSize:12,marginBottom:5,color:"var(--gray2)"}}>Info: <b>Senior Citizen Exemption</b> - if owner 65+, may reduce assessed value 10-50%.</div>}
-                {found.parcelType==="HOMESTEAD"&&!found.exemptions.some(e=>e.name.includes("VET"))&&<div style={{fontSize:12,marginBottom:5,color:"var(--gray2)"}}>Info: <b>Veteran Exemption</b> - if owner served, up to $30,000 off. Apply at city assessor's office.</div>}
-                {found.parcelType!=="HOMESTEAD"&&<div style={{fontSize:12,color:"var(--gray2)"}}>Non-homestead parcels have limited exemption options. Commercial and rental properties generally do not qualify for residential exemptions.</div>}
-                {found.exemptions.length>1&&<div style={{fontSize:12,color:"var(--green2)"}}>This property already has multiple exemptions and appears well-optimized.</div>}
+              <div style={{background:"rgba(37,99,235,.05)",borderRadius:9,padding:"12px 14px",border:"1px solid rgba(37,99,235,.18)"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--white)",marginBottom:6}}>Programs an owner may want to check</div>
+                {!foundIsHome&&<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>Most homeowner programs (STAR, senior, veterans) apply to homes where the owner lives. This property is recorded as {propClassLabel(found)}, so they may not apply.</div>}
+                {foundIsHome&&foundOwnerIsEntity&&<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>The owner on record ({found.owner1}) appears to be a business or organization. STAR, senior, and veterans programs require an individual owner who lives in the home as a primary residence.</div>}
+                {foundIsHome&&!foundOwnerIsEntity&&<>
+                  {!foundHasStar&&<div style={{fontSize:12,marginBottom:8,lineHeight:1.6,color:"var(--white)"}}><b>STAR credit:</b> if you own and live here as your primary residence and meet the income limit, you can register for the STAR credit with New York State. The STAR exemption is no longer open to new homeowners, and the credit will not appear on this record. <a href={STAR_REGISTRATION_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>Register for STAR (NYS Tax &amp; Finance)</a></div>}
+                  {foundHasStar&&<div style={{fontSize:12,marginBottom:8,lineHeight:1.6,color:"var(--gray)"}}><b style={{color:"var(--white)"}}>STAR:</b> a STAR benefit is already recorded for this property.</div>}
+                  {!foundHasSenior&&<div style={{fontSize:12,marginBottom:8,lineHeight:1.6,color:"var(--gray)"}}><b style={{color:"var(--white)"}}>Senior citizens exemption:</b> owners 65 or older with limited income may qualify for up to a 50% reduction in assessed value. Apply to the City Assessor's Office.</div>}
+                  {!foundHasVeteran&&<div style={{fontSize:12,marginBottom:8,lineHeight:1.6,color:"var(--gray)"}}><b style={{color:"var(--white)"}}>Veterans exemption:</b> veterans who served in wartime or a combat zone, or who have a service-connected disability, may qualify for a partial exemption from city and county taxes. Apply to the City Assessor's Office.</div>}
+                  {!foundHasDisability&&!foundCodes.has("41800")&&<div style={{fontSize:12,marginBottom:8,lineHeight:1.6,color:"var(--gray)"}}><b style={{color:"var(--white)"}}>Disability and limited-income exemption:</b> owners with a disability who meet the income limit may qualify (this cannot be combined with the senior citizens exemption). Apply to the City Assessor's Office.</div>}
+                  <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6,marginTop:4}}>Application deadlines and income limits change. Confirm with the <a href={ALBANY_ASSESSOR_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>City of Albany Assessor's Office</a> before applying.</div>
+                </>}
               </div>
             </div>
             <div style={{background:"var(--card)",borderRadius:9,padding:"14px 16px",border:"1px solid var(--border)"}}>
-              <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Your Current Tax Reduction vs. Full Assessed Value</div>
-              <div style={{fontSize:11,color:"var(--gray2)",marginBottom:10}}>These figures show how much your taxable value is already reduced below the assessed value - your existing tax relief. A value of $0 means you are paying taxes on the full assessed amount with no reduction for that jurisdiction.</div>
-              {[["County",found.assessedValue-found.countyTaxable,"#3b82f6"],["City",found.assessedValue-found.cityTaxable,"#0d9488"],["School District",found.assessedValue-found.schoolTaxable,"#a78bfa"]].map(([jx,sav,color])=>(
+              <div style={{fontSize:12,fontWeight:700,marginBottom:4}}>How much the recorded exemptions lower taxable value</div>
+              <div style={{fontSize:11,color:"var(--gray)",marginBottom:10,lineHeight:1.6}}>Assessed value minus taxable value for each tax. "No reduction" means that tax is based on the full assessed value.</div>
+              {[["County",found.assessedValue-found.countyTaxable,"#1d4ed8"],["City",found.assessedValue-found.cityTaxable,"#0f766e"],["School district",found.assessedValue-found.schoolTaxable,"#6d28d9"]].map(([jx,sav,color])=>(
                 <div key={jx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <span style={{fontSize:12,color:"var(--gray)"}}>{jx} tax reduction</span>
-                  <span style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color:sav>0?color:"var(--gray3)"}}>{sav>0?$f(sav):"No reduction"}</span>
+                  <span style={{fontSize:12,color:"var(--gray)"}}>{jx}</span>
+                  <span style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:600,color:sav>0?color:"var(--gray)"}}>{sav>0?`-${$f(sav)}`:"No reduction"}</span>
                 </div>
               ))}
             </div>
+            {typeof onCheckAssessment==="function"&&<button onClick={()=>onCheckAssessment(found)} style={{marginTop:12,background:"var(--card2)",color:"var(--blue3)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Compare this assessment with similar homes</button>}
           </div>}
-          {query&&!found&&<div style={{fontSize:12,color:"var(--gray2)",marginTop:8}}>No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".</div>}
+          {query&&!found&&<div role="status" style={{fontSize:12,color:"var(--gray)",marginTop:8}}>No property found. Pick an address from the suggestions, or try just the street name, like "Academy Rd", or a parcel ID like "75.44-2-50".</div>}
         </Card>
       </div>}
 
       {view==="neighbor"&&<div>
-        <InfoBox icon="Compare" title="Comparable Homes for an Assessment Grievance" color="#a78bfa">
-          This tool ranks <b style={{color:"var(--white)"}}>physically similar homes</b> and now creates a <b style={{color:"var(--white)"}}>shareable snapshot link</b> that opens the same parcel and the same comparable set on GitHub Pages or locally. Each comparable card shows value, home details, absentee context, and owner-portfolio context so residents can evaluate the evidence without leaving this view.
-          <div style={{fontSize:10,color:"var(--gray3)",marginTop:10}}>Document URLs are managed in <b style={{color:"var(--gray2)"}}>grievance-settings.json</b>.</div>
-        </InfoBox>
         <Card style={{marginBottom:16}}>
           <div className="workflow-shell">
             <div className="workflow-rail">
@@ -6983,58 +7416,18 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               />
             </div>
             <div className="workflow-main" style={{paddingBottom:isWorkflowNavMobile ? 92 : 0}}>
-              <section id="step-1-how-to-read" className="workflow-step-anchor" data-workflow-step-id="step-1-how-to-read" style={{marginBottom:14}}>
-                <WorkflowStepCard step="Step 1 - How to read these numbers" title="How to read the comparison numbers" subtitle="This step explains how the app evaluates fairness so you can interpret comp results correctly.">
-                  <div style={{display:"grid",gap:8}}>
-                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>
-                      <TermWithHelp termKey="comparableHome" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Comparable homes</b></TermWithHelp> are the strongest matches for your parcel's class, location, and home details. Each comp card shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> so you can see similarity and fairness together.
-                    </div>
-                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>
-                      <TermWithHelp termKey="equityRatio" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Equity %</b></TermWithHelp> = <TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed value</TermWithHelp> / <TermWithHelp termKey="fmv" tone="var(--gray2)">FMV</TermWithHelp> x 100. Lower assessed value alone is not enough. The app also checks equity ratio and assessed value per sq ft so the comparison is apples-to-apples.
-                    </div>
-                    <div style={{display:"grid",gap:6,marginTop:2,padding:"10px 12px",background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:8}}>
-                      <div style={{fontSize:11,fontWeight:700,color:"var(--blue3)"}}>Example: lower assessed value, but still not strong evidence</div>
-                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Just because a comp has a lower assessed value than your home does not mean the assessor was more generous with it. What matters is how the assessed value compares to the home&apos;s full market value. That ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same.</div>
-                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp&apos;s assessed value might be lower simply because it is a smaller or lower-value home overall, not because it got a better deal from the assessor.</div>
-                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>For a comp to be strong grievance evidence, you want to see that it was assessed at a <i>lower proportion</i> of its market value than your home, meaning the assessor undervalued it relative to what it is actually worth, compared to how they valued yours.</div>
-                    </div>
-                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Albany style codes use historic assessment terminology. Style labels (for example, "Mansion" or "Colonial") describe architecture, not home size or value.</div>
-                    {equityUniformityNotice&&<div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}>
-                      <div style={{fontSize:11,fontWeight:700,color:"var(--amber2)"}}>Equity % warning</div>
-                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{equityUniformityNotice.detail}</div>
-                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>Average {equityUniformityNotice.average}% | Standard deviation {equityUniformityNotice.stdDev}%</div>
-                    </div>}
-                  </div>
-                </WorkflowStepCard>
-              </section>
-              <section id="step-2-terminology" className="workflow-step-anchor" data-workflow-step-id="step-2-terminology" style={{marginBottom:14}}>
-                <WorkflowStepCard step="Step 2 - Terminology" title="Key terms used in this app" subtitle="These are the exact terms used across the grievance workflow and comp cards.">
-                  <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(2,minmax(0,1fr))",gap:10}}>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="fmv" tone="var(--gray2)">FMV (Fair Market Value)</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Estimated market value of the property.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed Value</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Taxable value used by the assessor.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="equityRatio" tone="var(--gray2)">Equity Ratio Percentage</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Assessed value divided by FMV, expressed as a percent.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="rp524" tone="var(--gray2)">RP-524</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>New York assessment grievance form.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Neighborhood Fairness</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Comparison against neighborhood medians/percentiles to see if your parcel is unusually high.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Normalized Metrics</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Fairness checks that adjust for size/value differences, especially equity ratio and assessed value per sq ft.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Data confidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>How complete and reliable the comp inputs are for analysis, including assessed value, FMV, equity ratio, living area, class, location, and core home details. A score like 100.0 means the app found full usable coverage for those checks; lower scores mean missing or weaker data reduced certainty.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="cod" tone="var(--gray2)">COD (Coefficient of Dispersion)</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A consistency measure for neighborhood assessment ratios. Lower COD usually means nearby properties are being assessed more uniformly.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="iaaoStandard" tone="var(--gray2)">IAAO standard</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>The usual residential COD benchmark from the International Association of Assessing Officers. In this app, COD at or below 15.0 is treated as meeting that uniformity benchmark.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="methodA" tone="var(--gray2)">Comp-based value estimate</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="methodB" tone="var(--gray2)">Equity-ratio value estimate</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate overassessment check</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Even aside from the comps, does your assessment look too high compared with your FMV and the municipal equalization rate?</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>ORPTS data</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>ORPTS stands for the New York State Office of Real Property Tax Services. In this app, ORPTS Municipal Data Portal sales records are used for sale history and arm's-length market evidence. They help check whether FMV looks supported by real sale prices, but they do not by themselves choose which comparable homes are selected.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="armLengthSale" tone="var(--gray2)">Arm's-length sale</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A normal market sale between unrelated parties. The tool uses these sales as stronger FMV evidence.</div></div>
-                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Non-arm's-length transfer</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A transfer such as family/gift/related-party deal. The tool shows it in history but does not treat its price as reliable market value evidence.</div></div>
-                  </div>
-                </WorkflowStepCard>
-              </section>
               <section id="step-3-find-property" className="workflow-step-anchor" data-workflow-step-id="step-3-find-property" style={{marginBottom:14}}>
-                <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 3 - Find your property</div><div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:6}}>Enter Your Address to Compare</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12}}>Search by address or parcel ID to start the tax appeal assistant workflow for a specific property.</div>
-                <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address.split(" ").slice(0,3).join(" "));setNeighborResult(null);setCompareSnapshotMessage("");setCopiedNarrative(false);setPrintMessage("");setBroadenedComparables([]);setBroadenedSearchRan(false);setBroadenedSearchTier(0);setShowBroadenedResults(false);setShowNeighborhoodSales(false);setSubjectCardExpanded(true);setExpandedComparableIds({});setExpandedBroadenedIds({});}}} label="Load My Home"/>
+                <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 1 - Find your property</div><div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:6}}>Enter the address you want to check</div><div style={{fontSize:12,color:"var(--gray)",lineHeight:1.7,marginBottom:12}}>The app finds similar homes nearby and recent sales, then summarizes whether the assessment looks high compared with them. It is a starting point for your own review, not proof of over-assessment or legal advice. <button type="button" onClick={()=>scrollToWorkflowStep("step-1-how-to-read")} style={{background:"none",border:"none",padding:0,color:"var(--blue3)",fontWeight:700,cursor:"pointer",fontSize:12,textDecoration:"underline"}}>How this works</button></div>
+                {requestedSnapshotRef.current?.hasSnapshot && displayNeighborResult?.p && normalizeParcelId(displayNeighborResult.p.parcelId)===requestedSnapshotRef.current.subjectId && <div role="status" style={{fontSize:12,color:"var(--gray)",lineHeight:1.6,background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.2)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+                  <b style={{color:"var(--white)"}}>You opened a shared comparison for {displayNeighborResult.p.address}.</b> It shows the same property and comparable homes the sender saw. You can review the summary below, change which homes are included, or search a different address.
+                </div>}
+                {workflowDataLoading&&<div role="status" style={{fontSize:12,color:"#7c2d12",lineHeight:1.6,background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.3)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>Loading Albany property and sales records... the summary will appear when all data is ready.</div>}
+                <MyHomeBanner myHome={myHome} onUse={()=>{if(myHome){setNeighborAddr(myHome.address);const homeParcel=lookupParcel(myHome.address)||myHome.parcel||null;if(homeParcel) focusNeighborParcel(homeParcel);}}} label="Use my home"/>
                 <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-                  <AddressAutocompleteInput parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Enter your address..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
-                  <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Compare</button>
+                  <AddressAutocompleteInput id="assessment-search" ariaLabel="Address to compare with similar homes" parcels={parcels} value={neighborAddr} onChange={setNeighborAddr} onSelectParcel={parcel=>{setNeighborAddr(parcel.address);focusNeighborParcel(parcel);}} onEnter={lookupNeighbor} placeholder="Address, e.g. 470 Elk St" inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 320px"}}/>
+                  <button onClick={lookupNeighbor} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13,minHeight:38}}>Compare</button>
                 </div>
+                {compareSnapshotMessage&&<div role="status" style={{fontSize:12,color:"#7c2d12",lineHeight:1.6,marginBottom:12}}>{compareSnapshotMessage}</div>}
               </section>
           {neighborResult&&(()=>{
             const subject = effectiveNeighborResult.p;
@@ -7056,15 +7449,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   {copiedShareLink&&<span style={{fontSize:11,color:"var(--green2)",fontWeight:700,marginTop:8}}>Link copied</span>}
                   <button onClick={copyShareLink} disabled={!shareLink} style={{background:shareLink?"var(--blue)":"rgba(148,163,184,.18)",color:shareLink?"white":"var(--gray3)",border:"none",borderRadius:8,padding:"8px 14px",cursor:shareLink?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Copy share link</button>
                   <div style={{display:"grid",gap:4}}>
-                    <button onClick={downloadComparableExplainabilityReport} disabled={!neighborResult?.p} style={{background:"rgba(15,23,42,.06)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download Admin Explainability Report</button>
-                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Internal report for why each visible comp was treated the way it was</div>
+                    <button onClick={()=>downloadGrievancePacket(false)} disabled={!neighborResult?.p} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download my grievance packet</button>
+                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Only the homes you included</div>
                   </div>
                   <div style={{display:"grid",gap:4}}>
-                    <button onClick={()=>downloadGrievancePacket(false)} disabled={!neighborResult?.p} style={{background:"var(--purple)",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download My Grievance Packet</button>
-                    <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Current grievance package only - downloadable HTML packet</div>
-                  </div>
-                  <div style={{display:"grid",gap:4}}>
-                    <button onClick={()=>downloadGrievancePacket(true)} disabled={!neighborResult?.p} style={{background:"rgba(139,92,246,.12)",color:"var(--purple)",border:"1px solid rgba(139,92,246,.24)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download with context comps</button>
+                    <button onClick={()=>downloadGrievancePacket(true)} disabled={!neighborResult?.p} style={{background:"rgba(139,92,246,.12)",color:"var(--purple2)",border:"1px solid rgba(139,92,246,.24)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download with context comps</button>
                     <div style={{fontSize:10,color:"var(--gray2)",textAlign:"center"}}>Optional packet with added context comps</div>
                   </div>
                   <div style={{display:"grid",gap:4}}>
@@ -7077,6 +7466,13 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   </div>
                 </div>
               </div>
+              <details style={{marginTop:6}}>
+                <summary style={{fontSize:11,fontWeight:700,color:"var(--gray)",cursor:"pointer"}}>For researchers: how each comparable home was scored</summary>
+                <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
+                  <button onClick={downloadComparableExplainabilityReport} disabled={!neighborResult?.p} style={{background:"rgba(15,23,42,.06)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 14px",cursor:neighborResult?.p?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>Download scoring report</button>
+                  <span style={{fontSize:11,color:"var(--gray)"}}>Explains why each visible home was or was not included in the default package.</span>
+                </div>
+              </details>
             </div>;
             const renderComparableCard = (parcel, idx, options={}) => {
               const compProfile = parcel._compProfile || buildComparableProfile(parcel);
@@ -7180,7 +7576,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 <div style={{display:"grid",gap:10,alignContent:"start",background:"rgba(248,250,252,.72)",border:"1px solid rgba(148,163,184,.18)",borderRadius:12,padding:"12px",minWidth:142,flex:"0 0 150px"}}>
                   <div style={{background:"rgba(99,102,241,.10)",border:"1px solid rgba(99,102,241,.18)",borderRadius:10,padding:"10px 11px",display:"grid",gap:3}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:.45,textTransform:"uppercase",color:"var(--gray2)"}}>Comparable</div>
-                    <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:"#6366f1"}}>{options.compLabel || ("Comp " + (idx+1))}</div>
+                    <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:"#4338ca"}}>{options.compLabel || ("Comp " + (idx+1))}</div>
                   </div>
                   {grievanceToggleControl}
                   {packageDecisionBox}
@@ -7236,7 +7632,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 <div style={{display:"grid",gap:10,flex:"1 1 320px",minWidth:260}}>
                   <StreetViewPreview address={parcel.address} zip={parcel.zip} neighborhood={parcel.neighborhood} streetViewLatLng={streetViewLatLngForParcel(parcel)} />
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-                    <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber)",fontWeight:700}}>{$f(parcel.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV</div></div>
+                    <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--amber2)",fontWeight:700}}>{$f(parcel.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp FMV</div></div>
                     <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700}}>{$f(parcel.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp assessed</div></div>
                     <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.18)",borderRadius:8,padding:"8px 10px",textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:FC[eqFlagFast(parcel)]}}>{eqRFast(parcel)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Comp equity</div></div>
                   </div>
@@ -7349,11 +7745,11 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
             return <>
               <div ref={compareResultRef} className="fi" style={{display:"grid",gap:14}}>
               {appealSummary&&appealReadiness&&<div id="step-4-appeal-summary" className="workflow-step-anchor" data-workflow-step-id="step-4-appeal-summary">
-                <WorkflowStepCard step="Step 4 - See your appeal summary" title="Should you file a grievance?" subtitle="This summary uses the current comparable package, including any comp overrides you have selected.">
+                <WorkflowStepCard step="Step 2 - See the summary" title="What the comparison suggests" subtitle="Based on the comparable homes currently included (you can change them in Step 4). This is a decision aid for your own review, not legal advice or proof of over-assessment.">
                 <div style={{display:"grid",gap:12}}>
                   <div style={{background:recommendationTheme?.background || "rgba(148,163,184,.12)",border:`1px solid ${recommendationTheme?.border || "rgba(148,163,184,.18)"}`,borderRadius:12,padding:"14px 16px",display:"grid",gap:12}}>
                     <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Recommendation</div><div style={{fontSize:20,fontWeight:800,color:recommendationTheme?.color || "var(--gray2)"}}>{appealSummary.recommendation}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Suggested next step</div><div style={{fontSize:20,fontWeight:800,color:recommendationTheme?.color || "var(--gray2)"}}>{appealSummary.recommendation}</div></div>
                       <div>
                         <div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Case strength</div>
                         <div style={{display:"grid",gap:3}}>
@@ -7361,18 +7757,46 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                           <div style={{fontSize:12,fontWeight:700,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel),lineHeight:1.35}}>{appealReadiness.complaintReasonGuidance.displayLabel}</div>
                         </div>
                       </div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Potential assessed value reduction</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.potentialReduction!=null ? $f(appealSummary.potentialReduction) : '-'}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Possible reduction in assessed value</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.potentialReduction!=null ? $f(appealSummary.potentialReduction) : '-'}</div></div>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Supporting comparable homes found</div><div style={{fontSize:20,fontWeight:800,color:"var(--gray)"}}>{appealSummary.supportingComparableHomes}</div></div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Evidence status</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray2)"}}>{effectiveNeighborResult?.evidenceSufficiency?.label || '-'}</div></div>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Sale-backed market estimate</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray)"}}>{Number.isFinite(effectiveNeighborResult?.marketEvidenceModel?.estimatedSubjectFmv) ? $f(effectiveNeighborResult.marketEvidenceModel.estimatedSubjectFmv) : '-'}</div></div>
                       <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}>Requested assessed value</div><div style={{fontSize:18,fontWeight:800,color:"var(--gray)"}}>{Number.isFinite(effectiveNeighborResult?.suggestedRequestedAssessedValue) ? $f(effectiveNeighborResult.suggestedRequestedAssessedValue) : '-'}</div></div>
-                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate overassessment check</TermWithHelp></div><div style={{fontSize:18,fontWeight:800,color:effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)"}}>{effectiveNeighborResult?.overvaluationFlag?.active ? "Yes" : "No"}</div></div>
+                      <div><div style={{fontSize:10,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:.7,fontWeight:700}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate market-value check</TermWithHelp></div><div style={{fontSize:15,fontWeight:800,color:effectiveNeighborResult?.overvaluationFlag?.active ? "var(--green2)" : "var(--gray)"}}>{effectiveNeighborResult?.overvaluationFlag?.active ? "Also flags a possible overvaluation" : "Does not flag an overvaluation on its own"}</div></div>
                     </div>
                     {effectiveNeighborResult?.scarWarning && <div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"var(--amber2)",lineHeight:1.6}}>{effectiveNeighborResult.scarWarning}</div>}
                     {effectiveNeighborResult?.evidenceSufficiency?.reason && <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(148,163,184,.22)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.6}}><b style={{color:"var(--gray2)"}}>Sale-backed evidence:</b> {effectiveNeighborResult.evidenceSufficiency.reason}</div>}
                     <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}><b style={{color:"var(--gray2)"}}>Key reason:</b> {appealSummary.keyReason}</div>
+                    {(()=>{
+                      const subject = effectiveNeighborResult?.p;
+                      const subjectPrior = priorOf(subject);
+                      const subjectChange = assessedChangePct(subject);
+                      if(!subjectPrior || subjectChange==null) return null;
+                      const compChanges = (displayNeighborResult?.neighbors||[]).map(assessedChangePct).filter(v=>v!=null);
+                      const compMedian = medianOf(compChanges);
+                      const compsUnchanged = compChanges.filter(v=>v===0).length;
+                      const nb = assessmentChangeContext.byNeighborhood.get(subject.neighborhood || "") || null;
+                      const reference = compMedian ?? nb?.median ?? assessmentChangeContext.citywideMedian;
+                      const gap = reference!=null ? subjectChange - reference : null;
+                      const priorLevel = Number(subjectPrior.uniformPercentOfValue), currentLevel = Number(meta?.uniformPercentOfValue);
+                      const levelChanged = priorLevel>0 && currentLevel>0 && priorLevel!==currentLevel;
+                      const valuationLabel = formatIsoDate(meta?.valuationDate);
+                      return <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(148,163,184,.22)",borderRadius:10,padding:"10px 12px",fontSize:12,color:"var(--gray)",lineHeight:1.7}}>
+                        <b style={{color:"var(--white)"}}>Change since {subjectPrior.assessmentYear}:</b> {subjectChange===0
+                          ? <>this assessment is the same as last year ({$f(subject.assessedValue)}).</>
+                          : <>this assessment went from {$f(subjectPrior.assessedValue)} to {$f(subject.assessedValue)} ({formatChangePct(subjectChange)}).</>}
+                        {compChanges.length>0&&(compsUnchanged===compChanges.length
+                          ? <> {compChanges.length===1?"The similar home shown also kept its value.":`All ${compChanges.length} similar homes shown also kept their values.`}</>
+                          : compMedian!=null&&<> The similar homes shown changed a median {formatChangePct(compMedian)} ({compsUnchanged} of {compChanges.length} unchanged).</>)}
+                        {nb?.median!=null&&(nb.median===0&&Number.isFinite(nb.unchangedShare)
+                          ? <> In {subject.neighborhood}, {Math.round(nb.unchangedShare)}% of homes kept the same assessment.</>
+                          : <> Homes in {subject.neighborhood} changed a median {formatChangePct(nb.median)}.</>)}
+                        {gap!=null&&Math.abs(gap)>=5&&<> Your change is {Math.abs(gap).toFixed(1)} points {gap>0?"higher":"lower"} than {compMedian!=null?"the similar homes":"the neighborhood"}{gap>0?", which is worth mentioning in a grievance alongside the evidence below":""}.</>}
+                        {levelChanged&&subjectPrior.fullMarketValue>0&&subject.fullMarketValue>0&&<> Because the City's uniform percentage went from {priorLevel}% to {currentLevel}%, the City's full-value estimate for this property {subject.fullMarketValue>subjectPrior.fullMarketValue?"rose":"fell"} from {$f(subjectPrior.fullMarketValue)} to {$f(subject.fullMarketValue)}. A grievance asks whether the property would have sold for less than {$f(subject.fullMarketValue)}{valuationLabel?` on ${valuationLabel}`:""}.</>}
+                      </div>;
+                    })()}
                     <div style={{background:"rgba(255,255,255,.72)",border:"1px solid rgba(255,255,255,.24)",borderRadius:10,padding:"12px 14px",display:"grid",gap:6}}>
                       <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Recommended RP-524 complaint reason</div>
                       <div style={{fontSize:13,fontWeight:800,color:"var(--gray2)"}}>{appealReadiness.complaintReasonGuidance.selectionLabel}</div>
@@ -7386,7 +7810,8 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                           <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)"}}>Case assessment score</div>
                           <div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:800,color:appealCaseStrengthColor(appealReadiness.caseStrengthLabel)}}>{appealReadiness.score} / 100</div>
                         </div>
-                        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>75-100 usually supports filing, 58-74 suggests filing with caution, 40-57 needs manual review, and 0-39 usually does not support filing. Downgrade rules can still lower the final recommendation. This is a decision aid, not a guarantee.</div>
+                        <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>The score measures how closely the included homes match yours and how strongly they point the same way. 75-100 usually supports filing, 58-74 suggests caution, 40-57 needs your own review, and 0-39 usually does not support filing. This is a decision aid, not a guarantee.</div>
+                        {Array.isArray(appealReadiness.downgradeReasons) && appealReadiness.downgradeReasons.length>0 && <div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.28)",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#7c2d12",lineHeight:1.6}}><b>Why the suggested next step is more cautious than the score:</b> {appealReadiness.downgradeReasons.map(reason=>reason.replace(/.$/,"")).join("; ")}.</div>}
                         <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)"}}>Why this score?</div>
                         <div style={{display:"grid",gap:6}}>
                           {appealReadiness.why.map((item, idx)=><div key={`score-why-${idx}`} style={{fontSize:11,color:"var(--gray)",lineHeight:1.55}}>- {item}</div>)}
@@ -7405,7 +7830,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               </div>}
 
               {appealEvidence&&<div id="step-5-review-evidence" className="workflow-step-anchor" data-workflow-step-id="step-5-review-evidence">
-                <WorkflowStepCard step="Step 5 - Review evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
+                <WorkflowStepCard step="Step 3 - Review the evidence" title="Evidence for and against your grievance" subtitle="This section shows both the facts that help your argument and the facts the assessor may use in response.">
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:20,marginBottom:18}}>
                   <div style={{background:"rgba(22,163,74,.08)",border:"1px solid rgba(22,163,74,.18)",borderRadius:10,padding:"12px 14px",display:"grid",gap:8}}>
                     <div style={{fontSize:11,fontWeight:800,color:"var(--green2)"}}>Evidence that supports your grievance</div>
@@ -7463,7 +7888,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               </div>}
 
               <section id="step-6-build-grievance" className="workflow-step-anchor" data-workflow-step-id="step-6-build-grievance">
-              <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 6 - Build your grievance</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Selected comparable evidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use selected comps, narrative context, and side-by-side table evidence to build the <TermWithHelp termKey="grievancePackage" tone="var(--gray2)">grievance package</TermWithHelp> you may use when filing.</div>
+              <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 4 - Choose comparable homes</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Selected comparable evidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use selected comps, narrative context, and side-by-side table evidence to build the <TermWithHelp termKey="grievancePackage" tone="var(--gray2)">grievance package</TermWithHelp> you may use when filing.</div>
 
               <div className="cols-2" style={{display:"grid",gap:14,marginBottom:14}}>
                 <div style={{background:"rgba(37,99,235,.1)",border:"1px solid rgba(37,99,235,.25)",borderRadius:10,padding:"14px 16px",minWidth:0,display:"grid",gap:12}}>
@@ -7484,7 +7909,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                       {subjectSaleBadge&&<Badge color={subjectSaleBadge.color} small title={subjectSaleBadge.title}>{subjectSaleBadge.label}</Badge>}
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginTop:4}}>
-                      <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,color:"var(--amber)",fontWeight:700}}>{$f(subject.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your FMV</div></div>
+                      <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.18)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,color:"var(--amber2)",fontWeight:700}}>{$f(subject.fullMarketValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your FMV</div></div>
                       <div style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:700}}>{$f(subject.assessedValue)}</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Assessed</div></div>
                       <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.18)",borderRadius:8,padding:"8px 10px",minWidth:0}}><div style={{fontFamily:"var(--fm)",fontSize:15,fontWeight:700,color:FC[eqFlagFast(subject)]}}>{eqRFast(subject)}%</div><div style={{fontSize:10,color:"var(--gray)"}}>Your Equity %</div></div>
                     </div>
@@ -7554,7 +7979,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                     </button>
                   </div>
                   <div>
-                    <div style={{fontSize:11,fontWeight:700,color:"var(--purple)",marginBottom:5}}>Side-by-Side Grievance Table</div>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--purple2)",marginBottom:5}}>Side-by-Side Grievance Table</div>
                     <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Subject parcel plus the comps currently included in the grievance package. This table updates live when you include or remove comps.</div>
                   </div>
                 </div>
@@ -7593,14 +8018,14 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                 </div>
               </div>}
               {(displayNeighborResult?.neighbors?.length || 0)>0 ? (
-                <div style={{display:"grid",gap:48,padding:"12px 4px"}}>
-                  <div className="print-hide" style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
+                <div style={{display:"grid",gap:20,padding:"12px 4px"}}>
+                  <details className="print-hide" style={{background:"rgba(15,23,42,.04)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px"}}>
+                    <summary style={{fontSize:12,fontWeight:700,color:"var(--gray)",cursor:"pointer"}}>For researchers: scoring table for all {comparableExplainabilityEntries.length} homes</summary>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0 8px"}}>
                       <div>
-                        <div style={{fontSize:11,fontWeight:700,color:"var(--gray2)",marginBottom:4}}>Admin explainability</div>
-                        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,maxWidth:820}}>This internal table explains why each visible comp made the top list and whether it passed the default package gates. Use the detailed comparable cards below for the full engine trace on any one property.</div>
+                        <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,maxWidth:820}}>This table explains why each visible home made the list and whether it passed the checks for the default package. Use the detailed comparable cards below for the full engine trace on any one property.</div>
                       </div>
-                      <button onClick={downloadComparableExplainabilityReport} style={{background:"rgba(15,23,42,.06)",border:"1px solid var(--border)",color:"var(--gray)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Download admin report</button>
+                      <button onClick={downloadComparableExplainabilityReport} style={{background:"rgba(15,23,42,.06)",border:"1px solid var(--border)",color:"var(--gray)",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Download scoring report</button>
                     </div>
                     <div style={{overflowX:"auto"}}>
                       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -7624,12 +8049,24 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  </details>
                   <div style={{display:"grid",gap:4}}>
                     <div style={{fontSize:12,fontWeight:800,color:"var(--gray2)"}}>Detailed comparables</div>
                   <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}} title="These cards provide full detail for each visible comparable parcel and remain available even when not in the default grievance package.">{effectiveNeighborResult?.analysisState==="research_only" ? `Research-only comparable parcels (${displayNeighborResult?.neighbors?.length || 0} comps)` : `Best Comparable Parcels (${displayNeighborResult?.neighbors?.length || 0} comps)`}</div>
                 </div>
-                  {displayNeighborResult.neighbors.map((parcel, idx)=>renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? idx===0, onToggle: toggleComparableCard }))}
+                  {(()=>{
+                    const indexed = displayNeighborResult.neighbors.map((parcel, idx)=>({parcel, idx}));
+                    const included = indexed.filter(entry=>isParcelIncludedInGrievance(entry.parcel));
+                    const others = indexed.filter(entry=>!isParcelIncludedInGrievance(entry.parcel));
+                    const renderEntry = ({parcel, idx}, position) => renderComparableCard(parcel, idx, { collapsible: true, expanded: expandedComparableIds[parcel.parcelId] ?? position===0, onToggle: toggleComparableCard });
+                    return <>
+                      {included.length>0 ? included.map((entry, position)=>renderEntry(entry, position)) : <div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>No homes are included yet. Open the list below and check "Include in grievance" on the homes you want to use.</div>}
+                      {others.length>0&&<details open={included.length===0} style={{border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",background:"var(--card2)"}}>
+                        <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"var(--blue3)"}}>Show the other {others.length} similar {others.length===1?"home":"homes"} (not included; useful for context, and you can include any of them)</summary>
+                        <div style={{display:"grid",gap:20,marginTop:12}}>{others.map(entry=>renderEntry(entry, 1))}</div>
+                      </details>}
+                    </>;
+                  })()}
                 </div>
               ) : (
                 <div style={{fontSize:12,color:"var(--gray2)",textAlign:"center",padding:20}}>{displayNeighborResult?.noPackageReasonText || "No suitable comparable homes were found in the current dataset for this parcel. Try another address or load a fuller roll and inventory file set."}</div>
@@ -7722,12 +8159,12 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
               </div>}
               </section>
               <section id="step-7-print-packet" className="workflow-step-anchor" data-workflow-step-id="step-7-print-packet">
-              <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 7 - Print packet</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Share, download, and print your packet</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use these actions to share this comparable set, download your packet, or print it for filing and review.</div>
-              {renderPacketActions({ title: "Shareable comparable snapshot", description: "Use this link to reopen the same subject parcel and this same comparable set on another device or in GitHub Pages.", note: "These print and download actions are grouped here as their own workflow step." })}
+              <div style={{fontSize:12,fontWeight:800,color:"var(--blue3)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 5 - Share, save, or print</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>Share, download, and print your packet</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use these actions to share this comparable set, download your packet, or print it for filing and review.</div>
+              {renderPacketActions({ title: "Share or keep a copy", description: "The share link reopens this property with the same comparable homes on any device. The packet is a printable summary you can attach to your RP-524 complaint." })}
               {(compareSnapshotMessage || printMessage)&&<div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.24)",borderRadius:10,padding:"11px 13px",fontSize:11,color:"var(--amber2)",lineHeight:1.6,marginBottom:12,display:"grid",gap:6}}>{compareSnapshotMessage&&<div>{compareSnapshotMessage}</div>}{printMessage&&<div>{printMessage}</div>}</div>}
               </section>
               <section id="step-8-file" className="workflow-step-anchor" data-workflow-step-id="step-8-file">
-              <div style={{fontSize:12,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 8 - File</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>RP-524 guidance and next steps</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use this section to gather the form details the app can provide, track what you still need to do, and prepare to file before Grievance Day.</div><div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:800,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.9,marginBottom:4}}>Step 6 - How to file</div><div style={{fontSize:14,fontWeight:800,color:"var(--gray)",marginBottom:8}}>RP-524 guidance and next steps</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:12,maxWidth:920}}>Use this section to gather the form details the app can provide, track what you still need to do, and prepare to file before Grievance Day.</div><div style={{background:"linear-gradient(180deg,rgba(22,163,74,.18) 0%,rgba(22,163,74,.10) 100%)",border:"1px solid rgba(21,128,61,.30)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><div style={{fontSize:12,fontWeight:800,color:"var(--green2)"}}>RP-524 filing helper</div><InlineInfoIcon text={TERM_HELP.rp524} tone="var(--green2)" small /></div>
@@ -7735,7 +8172,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   </div>
                 </div>
                 <div style={{background:"rgba(245,158,11,.16)",border:"1px solid rgba(245,158,11,.30)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-                  <div style={{fontSize:11,fontWeight:800,color:"var(--amber2)",marginBottom:4}}>Filing Deadline: Grievance Day - 4th Tuesday of May</div>
+                  <div style={{fontSize:11,fontWeight:800,color:"var(--amber2)",marginBottom:4}}>Filing deadline</div>
                   <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6}}>{grievanceHelper.grievanceDayDeadline}</div>{grievanceHelper.grievanceDayWarning&&<div style={{fontSize:10,color:"var(--amber2)",lineHeight:1.55,marginTop:6}}>{grievanceHelper.grievanceDayWarning}</div>}
                 </div>
                 <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.65,maxWidth:920,marginBottom:10}}>{customGrievanceSelectionActive ? "This grievance helper is now using your custom comp selection. The filing helper, narrative, suggested value, and table below all update live from the comps you included." : "Based on the RP-524 form and the New York grievance booklet, the app can supply the roll values, parcel identity, and the default grievance package below. That package keeps only comps that clear the support, quality, and confidence checks. Extra visible comps remain available for research or manual inclusion."}</div>
@@ -7745,7 +8182,12 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
                   <a href={grievanceHelperLinks.grievanceBookletUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>Open grievance booklet</a>
                   <a href={grievanceHelperLinks.exemptionFaqUrl} target="_blank" rel="noreferrer" style={{background:"rgba(21,128,61,.10)",border:"1px solid rgba(21,128,61,.22)",color:"var(--green2)",textDecoration:"none",borderRadius:999,padding:"8px 12px",fontSize:11,fontWeight:700}}>{grievanceHelperLinks.exemptionFaqLabel}</a>
                 </div>
-                <div style={{fontSize:10,color:"var(--gray2)",marginBottom:12}}>These links are included here because this is the section the homeowner will use to complete RP-524. Document URLs are managed in <b style={{color:"var(--gray)"}}>grievance-settings.json</b>.</div>
+                <div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6,marginBottom:12}}>Forms and the grievance booklet come from NYS Tax &amp; Finance. Confirm where and how to file with the <a href={ALBANY_ASSESSOR_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>City of Albany Assessor's Office</a>.</div>
+                <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.65,marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>If the Board denies your grievance</div>
+                  Owners of an owner-occupied one-, two-, or three-family home can ask for Small Claims Assessment Review (SCAR), a low-cost hearing. Other owners, including businesses and landlords who do not live in the property, would need a tax certiorari proceeding in court.
+                  {(ownerLooksLikeEntity(subject?.owner1) || isAbsenteeFast(subject)) && <div style={{marginTop:6,color:"#7c2d12"}}><b>Note:</b> the owner on record {ownerLooksLikeEntity(subject?.owner1) ? "appears to be a business or organization" : "may not live at this property"}, so SCAR may not be available for it.</div>}
+                </div>
                 {grievanceHelper.narrative ? <div style={{background:"rgba(255,255,255,.86)",border:"1px solid rgba(21,128,61,.18)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"var(--gray)",lineHeight:1.65,marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:700,color:"var(--green2)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8}}>Auto-generated grievance narrative</div>
                   <div>{grievanceHelper.narrative}</div>
@@ -7806,7 +8248,55 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
 
             </>;
           })()}
-          {neighborAddr&&!neighborResult&&<div style={{fontSize:12,color:"var(--gray2)",marginTop:8}}>No parcel found. Try a partial address like "Academy" or a parcel ID like "75.44-2-50".</div>}
+          {neighborAddr&&!neighborResult&&!workflowDataLoading&&<div role="status" style={{fontSize:12,color:"var(--gray)",marginTop:8}}>No property found yet. Pick an address from the suggestions, or try just the street name, like "Elk St".</div>}
+              <div id="grievance-reference" style={{marginTop:22,paddingTop:16,borderTop:"1px dashed var(--border2)"}}>
+                <div style={{fontSize:12,fontWeight:800,color:"var(--gray)",textTransform:"uppercase",letterSpacing:.9,marginBottom:10}}>Reference: how this comparison works</div>
+              <section id="step-1-how-to-read" className="workflow-step-anchor" data-workflow-step-id="step-1-how-to-read" style={{marginBottom:14}}>
+                <WorkflowStepCard step="Reference - How to read these numbers" title="How to read the comparison numbers" subtitle="This step explains how the app evaluates fairness so you can interpret comp results correctly.">
+                  <div style={{display:"grid",gap:8}}>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>
+                      <TermWithHelp termKey="comparableHome" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Comparable homes</b></TermWithHelp> are the strongest matches for your parcel's class, location, and home details. Each comp card shows <b style={{color:"var(--gray2)"}}>You</b>, <b style={{color:"var(--gray2)"}}>Comp</b>, and <b style={{color:"var(--gray2)"}}>Delta</b> so you can see similarity and fairness together.
+                    </div>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.65}}>
+                      <TermWithHelp termKey="equityRatio" tone="var(--gray2)"><b style={{color:"var(--gray2)"}}>Equity %</b></TermWithHelp> = <TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed value</TermWithHelp> / <TermWithHelp termKey="fmv" tone="var(--gray2)">FMV</TermWithHelp> x 100. Lower assessed value alone is not enough. The app also checks equity ratio and assessed value per sq ft so the comparison is apples-to-apples.
+                    </div>
+                    <div style={{display:"grid",gap:6,marginTop:2,padding:"10px 12px",background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.16)",borderRadius:8}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--blue3)"}}>Example: lower assessed value, but still not strong evidence</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Just because a comp has a lower assessed value than your home does not mean the assessor was more generous with it. What matters is how the assessed value compares to the home&apos;s full market value. That ratio (called the equity ratio) tells you whether the assessor treated that property more favorably than yours, or about the same.</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>If a comp has a similar equity ratio and a similar assessed value per square foot as your home, the assessor was essentially treating both properties the same way. The comp&apos;s assessed value might be lower simply because it is a smaller or lower-value home overall, not because it got a better deal from the assessor.</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>For a comp to be strong grievance evidence, you want to see that it was assessed at a <i>lower proportion</i> of its market value than your home, meaning the assessor undervalued it relative to what it is actually worth, compared to how they valued yours.</div>
+                    </div>
+                    <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>Albany style codes use historic assessment terminology. Style labels (for example, "Mansion" or "Colonial") describe architecture, not home size or value.</div>
+                    {equityUniformityNotice&&<div style={{background:"rgba(245,158,11,.10)",border:"1px solid rgba(245,158,11,.22)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--amber2)"}}>Equity % warning</div>
+                      <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6}}>{equityUniformityNotice.detail}</div>
+                      <div style={{fontSize:10,color:"var(--gray2)",lineHeight:1.5}}>Average {equityUniformityNotice.average}% | Standard deviation {equityUniformityNotice.stdDev}%</div>
+                    </div>}
+                  </div>
+                </WorkflowStepCard>
+              </section>
+              <section id="step-2-terminology" className="workflow-step-anchor" data-workflow-step-id="step-2-terminology" style={{marginBottom:14}}>
+                <WorkflowStepCard step="Reference - Key terms" title="Key terms used in this app" subtitle="These are the exact terms used across the grievance workflow and comp cards.">
+                  <div style={{display:"grid",gridTemplateColumns:isWorkflowNavMobile ? "1fr" : "repeat(2,minmax(0,1fr))",gap:10}}>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="fmv" tone="var(--gray2)">FMV (full-value estimate)</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>The roll's full value: assessed value divided by the city-wide assessment level. Not a separate appraisal.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="assessedValue" tone="var(--gray2)">Assessed Value</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>The value the City uses for property taxes, before exemptions. Taxable value is assessed value minus exemptions.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="equityRatio" tone="var(--gray2)">Equity Ratio Percentage</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Assessed value divided by FMV. The same for almost every Albany home, so on its own it says little about fairness.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="rp524" tone="var(--gray2)">RP-524</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>New York assessment grievance form.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Neighborhood Fairness</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Comparison against neighborhood medians/percentiles to see if your parcel is unusually high.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Normalized Metrics</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Fairness checks that adjust for size/value differences, especially equity ratio and assessed value per sq ft.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Data confidence</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>How complete and reliable the comp inputs are for analysis, including assessed value, FMV, equity ratio, living area, class, location, and core home details. A score like 100.0 means the app found full usable coverage for those checks; lower scores mean missing or weaker data reduced certainty.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="cod" tone="var(--gray2)">COD (Coefficient of Dispersion)</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A consistency measure for neighborhood assessment ratios. Lower COD usually means nearby properties are being assessed more uniformly.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="iaaoStandard" tone="var(--gray2)">IAAO standard</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>The usual residential COD benchmark from the International Association of Assessing Officers. In this app, COD at or below 15.0 is treated as meeting that uniformity benchmark.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="methodA" tone="var(--gray2)">Comp-based value estimate</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>If we look at the best qualifying comparable homes, what assessed value do they suggest you should ask for?</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="methodB" tone="var(--gray2)">Equity-ratio value estimate</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>If your home were assessed at about the same percentage of market value as the comps, what assessed value would that imply for you?</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="independentOvervaluation" tone="var(--gray2)">Separate overassessment check</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>Even aside from the comps, does your assessment look too high compared with your FMV and the municipal equalization rate?</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>ORPTS data</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>ORPTS stands for the New York State Office of Real Property Tax Services. In this app, ORPTS Municipal Data Portal sales records are used for sale history and arm's-length market evidence. They help check whether FMV looks supported by real sale prices, but they do not by themselves choose which comparable homes are selected.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}><TermWithHelp termKey="armLengthSale" tone="var(--gray2)">Arm's-length sale</TermWithHelp></div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A normal market sale between unrelated parties. The tool uses these sales as stronger FMV evidence.</div></div>
+                    <div style={{background:"rgba(255,255,255,.04)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 12px",display:"grid",gap:5}}><div style={{fontSize:11,fontWeight:800,color:"var(--gray2)"}}>Non-arm's-length transfer</div><div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.55}}>A transfer such as family/gift/related-party deal. The tool shows it in history but does not treat its price as reliable market value evidence.</div></div>
+                  </div>
+                </WorkflowStepCard>
+              </section>
+              </div>
             </div>
           </div>
           {isWorkflowNavMobile && <StickyStepNavigator
@@ -8511,7 +9001,7 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
                 <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}>{tooltip.address||"Address unavailable"}{parcelAreaSummary(tooltip)?` | ${parcelAreaSummary(tooltip)}`:""}</div>
                 <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{tooltip.parcelId}{tooltip.zip?` | ${tooltip.zip}`:""}</div>
                 <div style={{marginTop:8,display:"grid",gap:3}}>
-                  <div style={{fontSize:12}}>FMV: <span style={{color:"var(--amber)",fontFamily:"var(--fm)",fontWeight:600}}>{$f(tooltip.fullMarketValue)}</span></div>
+                  <div style={{fontSize:12}}>FMV: <span style={{color:"var(--amber2)",fontFamily:"var(--fm)",fontWeight:600}}>{$f(tooltip.fullMarketValue)}</span></div>
                   <div style={{fontSize:12}}>Assessed: <span style={{fontFamily:"var(--fm)"}}>{$f(tooltip.assessedValue)}</span></div>
                   <div style={{fontSize:12}}>Equity: <span style={{color:FC[eqFlagFast(tooltip)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(tooltip)}%</span></div>
                   <div style={{fontSize:12}}>Owner: <span style={{color:"var(--gray2)"}}>{tooltip.owner1||"Unknown"}</span></div>
@@ -8753,8 +9243,8 @@ const DataQuality = ({parcels, meta, onDrill}) => {
     <div className="fi">
       <SectionTitle>Data Quality Scorecard</SectionTitle>
       <Sub>Field completeness, county joins, geometry coverage, and parcel-level warnings</Sub>
-      <InfoBox icon="DQ" title="What this scorecard now checks" color="#3b82f6">
-        This panel no longer stops at blank-field percentages. It also tracks whether each parcel joins to the Albany County parcel reference, whether it matches the parcel geometry layer, and whether the record carries structural warning flags such as impossible value relationships or missing market value. That makes it much easier to tell the difference between a true policy signal and a thin-data artifact.
+      <InfoBox icon="DQ" title="What this scorecard checks" color="#1d4ed8">
+        How complete each field is, whether each property matches the Albany County parcel reference and the map boundaries, and whether a record has warning signs such as impossible value relationships or a missing full value. Use it to tell a real pattern from a gap in the data before drawing conclusions. Note: the roll has no property ZIP field, so ZIP codes come from owners' mailing addresses; when an owner mails from outside the area, the ZIP is estimated from nearby owner-occupied homes on the same street.
       </InfoBox>
       <div className="summary-grid" style={{marginBottom:18}}>
         <Card>
@@ -8834,7 +9324,7 @@ const DataQuality = ({parcels, meta, onDrill}) => {
                       <div style={{fontSize:11,color:"var(--gray2)",marginTop:2}}>{p.propClassDesc} | Parcel {p.parcelId}</div>
                       <div style={{fontSize:11,marginTop:6}}>Street avg: <span style={{fontFamily:"var(--fm)",color:"var(--gray)"}}>{$f(p.streetAvg)}</span> | Deviation: <span style={{fontFamily:"var(--fm)",color:p.deviation>0?"var(--red2)":"var(--amber)"}}>{p.deviation>0?"+":""}{$f(p.deviation)}</span></div>
                     </div>
-                    <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber)"}}>{$f(p.fullMarketValue)}</div></div>
+                    <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fm)",fontSize:14,color:"var(--amber2)"}}>{$f(p.fullMarketValue)}</div></div>
                   </div>
                 </div>
               ))}
@@ -8869,73 +9359,79 @@ const DataQuality = ({parcels, meta, onDrill}) => {
   );
 };
 
-const Compare = ({parcels,compareList,onRemove,onAdd}) => {
+const Compare = ({parcels,compareList,onRemove,onAdd,onFindProperties}) => {
   const [pick,setPick]=useState("");
+  const [message,setMessage]=useState("");
+  const addParcel=p=>{
+    if(!p) return;
+    if(compareList.some(x=>x.parcelId===p.parcelId)){ setMessage(`${p.address} is already in the comparison.`); setPick(""); return; }
+    if(compareList.length>=4){ setMessage(`You can compare up to 4 properties. Remove one below to add ${p.address}.`); setPick(p.address); return; }
+    if(typeof onAdd==="function") onAdd(null,p);
+    setMessage(`Added ${p.address}.`);
+    setPick("");
+  };
   const addBySearch=()=>{
     const p=findBestAddressMatch(parcels, pick);
-    if(p && !compareList.some(x=>x.parcelId===p.parcelId) && compareList.length<4){
-      if(typeof onAdd==="function") onAdd(null,p);
-      setPick("");
-    }
+    if(p) addParcel(p);
+    else setMessage(pick.trim()?`No property found for "${pick.trim()}". Pick an address from the suggestions.`:"Type an address to add.");
   };
   const fields=[
-    {label:"Address",v:p=>p.address},{label:"Parcel ID",v:p=>p.parcelId,mono:true},
-    {label:"Owner",v:p=>p.owner1},{label:"Class",v:p=>propClassLabel(p)},
+    {label:"Owner on record",v:p=>p.owner1},{label:"Property type",v:p=>propClassLabel(p)},
     {label:"Neighborhood",v:p=>p.neighborhood||"-"},
-    {label:"Building Style",v:p=>inventoryStyle(p)||"-"},
-    {label:"Year Built",v:p=>inventoryYearBuilt(p)||"-",mono:true},
-    {label:"Living Area",v:p=>inventorySqft(p)!=null?`${inventorySqft(p).toLocaleString()} sq ft`:"-",num:p=>inventorySqft(p)||0},
+    {label:"Building style",v:p=>inventoryStyle(p)||"-"},
+    {label:"Year built",v:p=>inventoryYearBuilt(p)||"-",mono:true},
+    {label:"Living area",v:p=>inventorySqft(p)!=null?`${inventorySqft(p).toLocaleString()} sq ft`:"-"},
     {label:"Bedrooms",v:p=>inventoryBedrooms(p)!=null?inventoryBedrooms(p):"-",mono:true},
-    {label:"Baths",v:p=>inventoryBathText(p),mono:true},
-    {label:"Full Market Value",v:p=>$f(p.fullMarketValue),hi:true,num:p=>p.fullMarketValue},
-    {label:"Assessed Value",v:p=>$f(p.assessedValue),num:p=>p.assessedValue},
-    {label:"Land Value",v:p=>$f(p.landValue),num:p=>p.landValue},
-    {label:"Equity Ratio",v:p=>eqRFast(p)+"%",hi:true,num:p=>parseFloat(eqRFast(p))||0},
-    {label:"County Taxable",v:p=>$f(p.countyTaxable)},{label:"City Taxable",v:p=>$f(p.cityTaxable)},{label:"School Taxable",v:p=>$f(p.schoolTaxable)},
-    {label:"Lot Size",v:p=>p.frontage?`${p.frontage}x${p.depth} ft`:"-"},
-    {label:"Gentrifi. Index",v:p=>gentriIdx(p)+"%"},{label:"Absentee?",v:p=>isAbsenteeFast(p)?"Yes":"No"},
-    {label:"Exemptions",v:p=>p.exemptions.map(e=>e.name).join(", ")||"None"},
-    {label:"Last Sale Year",v:p=>p.deedYear||"-"},
+    {label:"Baths",v:p=>inventoryBathText(p)||"-",mono:true},
+    {label:"Assessed value",v:p=>$f(p.assessedValue),mono:true},
+    {label:"Assessed value last year",v:p=>priorOf(p)?`${$f(priorOf(p).assessedValue)} (${priorOf(p).assessmentYear})`:"Not on the prior roll",mono:true},
+    {label:"Change from last year",v:p=>formatChangePct(assessedChangePct(p)),mono:true},
+    {label:"Assessed value per sq ft",v:p=>inventorySqft(p)?`$${(p.assessedValue/inventorySqft(p)).toFixed(0)}`:"-",mono:true},
+    {label:"Land portion",v:p=>$f(p.landValue),mono:true},
+    {label:"City's full-value estimate",v:p=>$f(p.fullMarketValue),mono:true},
+    {label:"County taxable value",v:p=>$f(p.countyTaxable),mono:true},{label:"City taxable value",v:p=>$f(p.cityTaxable),mono:true},{label:"School taxable value",v:p=>$f(p.schoolTaxable),mono:true},
+    {label:"Exemptions and credits",v:p=>exemptionSummaryLabel(p)||"None recorded"},
+    {label:"Lot size",v:p=>p.frontage?`${p.frontage} x ${p.depth} ft`:"-"},
+    {label:"Owner likely lives elsewhere?",v:p=>isAbsenteeFast(p)?"Likely":"No sign"},
+    {label:"Last sale year",v:p=>p.deedYear||"-"},
   ];
-  const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"7px 11px",fontSize:12,fontFamily:"var(--fb)"};
+  const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"8px 11px",fontSize:13,fontFamily:"var(--fb)"};
   return (
     <div className="fi">
-      <SectionTitle>Side-by-Side Comparison</SectionTitle>
-      <Sub>Compare up to 4 parcels. Add via Browse tab or search below. Highest values highlighted in amber.</Sub>
-      <InfoBox icon="Compare" title="How to Use the Comparison Tool" color="#3b82f6">
-        Select up to four properties to view every key data field side-by-side in a single table. This is useful for verifying whether similar properties on the same street have consistent assessments, evaluating investment options against each other, or preparing for an assessment grievance by documenting disparities between comparable parcels. The <b style={{color:"var(--amber2)"}}>amber highlight</b> shows whichever property has the highest value for each numeric field - helping you quickly spot outliers. Add properties from the Browse tab using the "+ Compare" button on any card, or search directly here.
+      <SectionTitle>Compare properties</SectionTitle>
+      <Sub>Put up to 4 properties side by side. Similar homes on the same street with very different assessed values per square foot may be worth a closer look.</Sub>
+      <InfoBox icon="Compare" title="Tips" color="#1d4ed8">
+        Add properties here or with the <b style={{color:"var(--white)"}}>+ Compare</b> button on any property card in Find a Property. A difference between two homes is a reason to look closer, not proof of an unfair assessment. For a comparison built from similar homes and recent sales, use <b style={{color:"var(--white)"}}>Check My Assessment</b>.
       </InfoBox>
-      <div style={{display:"flex",gap:8,marginBottom:18}}>
-        <AddressAutocompleteInput parcels={parcels} value={pick} onChange={setPick} onSelectParcel={p=>{if(!compareList.some(x=>x.parcelId===p.parcelId) && compareList.length<4){if(typeof onAdd==="function") onAdd(null,p);setPick("");}else{setPick(p.address);}}} onEnter={addBySearch} placeholder="Search address or parcel ID to add..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:1}}/>
-        <button onClick={addBySearch} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"7px 16px",cursor:"pointer",fontSize:12,fontWeight:600}}>+ Add</button>
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <AddressAutocompleteInput id="compare-search" ariaLabel="Address to add to the comparison" parcels={parcels} value={pick} onChange={value=>{setPick(value);setMessage("");}} onSelectParcel={addParcel} onEnter={addBySearch} placeholder="Add an address, e.g. 470 Elk St" inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 260px",maxWidth:480}}/>
+        <button onClick={addBySearch} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:38}}>Add</button>
+        <span style={{alignSelf:"center",fontSize:12,color:"var(--gray)"}}>{compareList.length} of 4 added</span>
       </div>
-      {compareList.length===0?<div style={{textAlign:"center",padding:60,color:"var(--gray2)"}}>
-        <div style={{fontSize:40,marginBottom:12}}>Compare</div>
-        Search above or go to Browse, then click "+ Compare" on any property card to begin comparing.
+      {message&&<div role="status" style={{fontSize:12,color:"var(--gray)",marginBottom:14}}>{message}</div>}
+      {compareList.length===0?<div style={{textAlign:"center",padding:"40px 16px",color:"var(--gray)",lineHeight:1.7}}>
+        <div style={{fontSize:15,fontWeight:700,color:"var(--white)",marginBottom:6}}>No properties added yet</div>
+        Add an address above, or use <b>+ Compare</b> on property cards in Find a Property.
+        {typeof onFindProperties==="function"&&<div style={{marginTop:12}}><button onClick={onFindProperties} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:8,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Go to Find a Property</button></div>}
       </div>:<div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <caption style={{textAlign:"left",fontSize:12,color:"var(--gray)",padding:"0 0 8px"}}>Side-by-side comparison of {compareList.length} {compareList.length===1?"property":"properties"}</caption>
           <thead><tr>
-            <th style={{padding:"10px 14px",textAlign:"left",color:"var(--gray2)",fontSize:11,textTransform:"uppercase",letterSpacing:.5,width:160,background:"var(--bg2)"}}>Field</th>
+            <th scope="col" style={{padding:"10px 14px",textAlign:"left",color:"var(--gray)",fontSize:12,width:180,background:"var(--bg2)"}}>Property</th>
             {compareList.map(p=>(
-              <th key={p.parcelId} style={{padding:"10px 14px",textAlign:"left",borderLeft:"1px solid var(--border)",background:"var(--bg2)"}}>
-                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
-                <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:2}}>{p.parcelId}</div>
-                <button onClick={()=>onRemove(p)} style={{marginTop:6,background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.3)",color:"#f87171",borderRadius:4,padding:"2px 8px",fontSize:10,cursor:"pointer"}}>Remove</button>
+              <th scope="col" key={p.parcelId} style={{padding:"10px 14px",textAlign:"left",borderLeft:"1px solid var(--border)",background:"var(--bg2)",minWidth:170}}>
+                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:14}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></div>
+                <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)",marginTop:2}}>Parcel {p.parcelId}</div>
+                <button onClick={()=>{onRemove(p);setMessage(`Removed ${p.address}.`);}} aria-label={`Remove ${p.address} from the comparison`} style={{marginTop:6,background:"rgba(185,28,28,.08)",border:"1px solid rgba(185,28,28,.3)",color:"var(--red2)",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontWeight:600}}>Remove</button>
               </th>
             ))}
           </tr></thead>
           <tbody>{fields.map((f,i)=>(
             <tr key={f.label} style={{background:i%2===0?"var(--card)":"transparent"}}>
-              <td style={{padding:"9px 14px",color:"var(--gray2)",fontSize:11}}>{f.label}</td>
-              {compareList.map(p=>{
-                const val=f.v(p);
-                const nums=f.num?compareList.map(x=>f.num(x)):[];
-                const myNum=f.num?f.num(p):null;
-                const isMax=f.hi&&myNum!==null&&myNum===Math.max(...nums);
-                return <td key={p.parcelId} style={{padding:"9px 14px",borderLeft:"1px solid var(--border)",fontFamily:f.mono?"var(--fm)":"inherit",color:isMax?"var(--amber)":"var(--white)",fontWeight:isMax?600:400}}>
-                  {f.label==="Address" ? <AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId} stopPropagation={false}>{val}</AddrLink> : val}
-                </td>;
-              })}
+              <th scope="row" style={{padding:"9px 14px",color:"var(--gray)",fontSize:12,fontWeight:600,textAlign:"left"}}>{f.label}</th>
+              {compareList.map(p=>(
+                <td key={p.parcelId} style={{padding:"9px 14px",borderLeft:"1px solid var(--border)",fontFamily:f.mono?"var(--fm)":"inherit",color:"var(--white)"}}>{f.v(p)}</td>
+              ))}
             </tr>
           ))}</tbody>
         </table>
@@ -8950,71 +9446,76 @@ const HomebuyerGuide = ({parcels, myHome}) => {
   const [found,setFound]=useState(null);
   const lookup=()=>{const p=findBestAddressMatch(parcels, address);setFound(p||null);};
 
-  // Auto-load myHome if available
   const loadMyHome=()=>{
     if(!myHome)return;
-    setAddress(myHome.address.split(" ").slice(0,3).join(" "));
-    setFound(myHome.parcel||null);
+    setAddress(myHome.address);
+    setFound(findBestAddressMatch(parcels, myHome.address)||myHome.parcel||null);
   };
   const terms=[
-    {term:"Full Market Value (FMV)",def:"The assessor's estimate of what the property would sell for on the open market today. This is NOT necessarily what you'd pay for it - actual sale prices can differ."},
-    {term:"Assessed Value",def:"The value the city officially uses to calculate your property tax bill. In New York, this is typically a percentage of the Full Market Value - set by the municipality's equalization rate."},
-    {term:"Equity Ratio",def:"Assessed Value / Full Market Value x 100. A fair ratio is roughly 80-120%. If your ratio is too high, you may be paying more than your fair share of taxes and have grounds for an assessment grievance."},
-    {term:"Land Value",def:"The assessed value of the land only - not counting the building. High land value relative to total value means the location itself is what's valuable. Useful for spotting infill development potential."},
-    {term:"Homestead Parcel",def:"A property used as a primary residence. Homestead parcels often qualify for more exemptions than non-homestead (investment, rental, commercial) properties."},
-    {term:"STAR Exemption (41854)",def:"School Tax Assessment Relief - New York's Basic STAR reduces the school-taxable value by up to $30,000 for owner-occupied homes. Enhanced STAR is available for seniors and offers even greater relief. Apply at NYS Tax Department if you do not see it on your record."},
-    {term:"Senior Citizen Exemption (41801)",def:"If you're 65 or older and meet income limits, you may qualify for a reduction of 10-50% on your assessed value. This applies to county, city, AND school taxes."},
-    {term:"Veteran Exemption (41834)",def:"Veterans and certain family members can receive a reduction in assessed value based on military service. Must be applied for at the city assessor's office."},
-    {term:"CHG LVL CT (41001)",def:"Challenge Level Court - this indicates the owner successfully challenged their assessment through the legal system and won a reduction. The exemption reflects the court-ordered reduction."},
-    {term:"SWIS Code",def:"A 6-digit code identifying the municipality (Albany = 010100). Used by the state to categorize and track assessment rolls across New York."},
-    {term:"Frontage x Depth",def:"The physical dimensions of the lot. Frontage is how wide the lot is at the street. Depth is how far back it goes. Multiply them together to get approximate square footage."},
-    {term:"Deed Book / Page",def:"The legal reference to where the last recorded sale of the property is documented at the county clerk's office. The year embedded in the deed number often tells you when the property last changed hands."},
-    {term:"County / City / School Taxable",def:"Three separate taxable values - one for each taxing jurisdiction. They can differ because some exemptions only apply to specific jurisdictions (for example, STAR only reduces school taxable value)."},
-    {term:"Absentee Owner",def:"A scored signal for likely off-site ownership. The app combines mailing-address differences with stronger evidence such as LLC/trust ownership, repeated ownership across multiple Albany parcels, and owner-occupancy exemptions like STAR before flagging a parcel."},
+    {term:"Assessed value",def:"The value the City uses to calculate property taxes. Albany sets every assessment at the same percentage of the City's full-value estimate (the uniform percent of value, which changes each year; see About this data). It is not an appraisal or a sale price."},
+    {term:"Full-value estimate (full market value)",def:"The assessed value divided by the City's uniform assessment percentage. On this roll it is a conversion of the assessment, not a separate appraisal, so it moves only when the assessment does."},
+    {term:"Assessment level (equity ratio)",def:"Assessed value divided by the full-value estimate. In Albany this is the same for almost every property, so it cannot show whether one assessment is fair. A record that differs from the city-wide level usually has a partial assessment or a data issue."},
+    {term:"Taxable value (county, city, school)",def:"Assessed value minus any exemptions. There are three because some exemptions apply only to certain taxes. For example, STAR lowers only school taxable value, and the veterans exemption does not usually lower school taxes."},
+    {term:"Tax bill",def:"Each taxable value multiplied by that government's tax rate, plus any special charges. This app does not have tax rates, so it cannot show a bill."},
+    {term:"Land value",def:"The part of the assessed value that comes from the land alone, not the building."},
+    {term:"Change from last year",def:"Where a property is on both rolls, the app compares this year's assessed value with last year's. Compare assessed values, not full-value estimates: the City's uniform percentage changes each year (96% on the 2025 roll, 91.17% on the 2026 roll), so the same assessment can imply a different full value."},
+    {term:"Homestead and non-homestead tax class",def:"Albany taxes two classes of property at different rates. The homestead class covers one- to three-family homes, residential condos, and residential vacant land; the non-homestead class covers everything else, such as commercial buildings, apartment buildings with four or more units, parking lots, and utilities. It is a tax-rate category, not a statement about whether the owner lives there."},
+    {term:"STAR exemption (codes 41854 and 41834)",def:"Basic STAR (41854) and Enhanced STAR for seniors (41834) lower school taxable value for an owner-occupied primary residence. The STAR exemption has been closed to new applicants since 2016; homeowners who still have it can keep it."},
+    {term:"STAR credit (code 99999, shown as \"STAR Check\")",def:"The STAR benefit for newer homeowners. New York State pays it by check or direct deposit, so it does not lower taxable value on the roll. New homeowners register with NYS Tax & Finance."},
+    {term:"Senior citizens exemption (code 41800)",def:"For owners 65 or older who meet the income limit. It can lower assessed value by up to 50%. Apply to the City Assessor's Office."},
+    {term:"Veterans exemptions (codes 41120, 41130, 41140)",def:"Alternative veterans' exemptions for wartime service (41120), combat-zone service (41130), and service-connected disability (41140). They lower city and county taxable value. Apply to the City Assessor's Office."},
+    {term:"Veterans eligible-funds exemption (code 41001)",def:"A veterans' exemption for property bought with pension or other eligible funds, adjusted for changes in the assessment level. Ask the Assessor's Office about a specific record."},
+    {term:"Disability and limited-income exemption (codes 41930-41934)",def:"For owners with a disability who meet the income limit. Apply to the City Assessor's Office."},
+    {term:"Grievance (RP-524)",def:"A formal request to lower an assessment, filed with the Board of Assessment Review by Grievance Day (usually the fourth Tuesday in May). You can file on your own; there is no fee."},
+    {term:"Small Claims Assessment Review (SCAR)",def:"If the Board denies a grievance, owners of an owner-occupied one-, two-, or three-family home can ask for a low-cost SCAR hearing. For homes with an equalized value above $450,000, the requested reduction must be 25% or less."},
+    {term:"SWIS code",def:"A 6-digit state code for the municipality (Albany is 010100)."},
+    {term:"Frontage and depth",def:"Lot width along the street (frontage) and how far back it goes (depth). Multiply them for an approximate lot size."},
+    {term:"Deed book year",def:"The year of the last recorded deed, which is often when the property last changed hands."},
+    {term:"Owner likely lives elsewhere (absentee)",def:"An estimate, not a fact. The app combines a mailing address that differs from the property, business or trust ownership, owning several Albany properties, and the absence of owner-occupancy exemptions like STAR."},
   ];
   const SI={background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--white)",borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"var(--fb)"};
+  const foundStar = found ? hasStarBenefitOnRecord(found) : false;
   return (
     <div className="fi">
-      <SectionTitle>First-Time Homebuyer Guide</SectionTitle>
-      <Sub>Plain-English explanations of every field in the Albany assessment roll</Sub>
-      <InfoBox icon="Guide" title="Who Is This Guide For?" color="#f59e0b">
-        The Albany assessment roll is a public document - but it was designed for government administrators, not homeowners. This guide exists to bridge that gap. Whether you just bought your first home, are thinking about buying, or have lived in Albany for decades and never quite understood your tax bill, this tab explains every field, every number, and every code in language that makes sense. Look up any address to get a plain-English walkthrough of that specific property's record, or scroll down for the complete glossary.
-      </InfoBox>
-      <Card style={{marginBottom:18,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.2)"}}>
-        <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:10,color:"var(--amber2)"}}>Look Up Any Address - We'll Explain Everything in Plain English</div>
-        <MyHomeBanner myHome={myHome} onUse={loadMyHome} label="Look Up My Home"/>
-        <div style={{display:"flex",gap:10}}>
-          <AddressAutocompleteInput parcels={parcels} value={address} onChange={setAddress} onSelectParcel={p=>{setAddress(p.address);setFound(p);}} onEnter={lookup} placeholder="Enter an address or parcel ID..." inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:1}}/>
-          <button onClick={lookup} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13}}>Look Up</button>
+      <SectionTitle>Help and glossary</SectionTitle>
+      <Sub>Plain-English explanations of an Albany property record, and of every term used in this app.</Sub>
+      <Card style={{marginBottom:18}}>
+        <div style={{fontSize:14,fontWeight:700,fontFamily:"var(--fd)",marginBottom:10}}>Explain a property record in plain English</div>
+        <MyHomeBanner myHome={myHome} onUse={loadMyHome} label="Explain my home"/>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <AddressAutocompleteInput id="guide-search" ariaLabel="Address to explain" parcels={parcels} value={address} onChange={setAddress} onSelectParcel={p=>{setAddress(p.address);setFound(p);}} onEnter={lookup} placeholder="Address, e.g. 470 Elk St" inputStyle={{...SI,width:"100%",cursor:"text"}} wrapperStyle={{flex:"1 1 240px"}}/>
+          <button onClick={lookup} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontWeight:600,fontSize:13,minHeight:38}}>Explain</button>
         </div>
         {found&&<div className="fi" style={{marginTop:16}}>
-          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:14}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood} parcelId={found.parcelId}>{found.address}</AddrLink> - Here's What It All Means</div>
+          <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:700,marginBottom:14}}><AddrLink address={found.address} zip={found.zip} neighborhood={found.neighborhood} parcelId={found.parcelId}>{found.address}</AddrLink>: what the record means</div>
           {[
-            ["What is the Full Market Value?",`The city assessor estimates this property is worth ${$f(found.fullMarketValue)} on the open market. This is their professional opinion of what a willing buyer and seller would agree on today.`],
-            ["What is the Assessed Value?",`The city uses ${$f(found.assessedValue)} to calculate the property tax bill - not the full market value. Albany uses a specific percentage of market value for assessments.`],
-            ["Is this assessment fair?",`The equity ratio is ${eqRFast(found)}%. ${eqFlagFast(found)==="fair"?"This falls in the fair range (80-120%) and the assessment appears proportional to market value.":eqFlagFast(found)==="under"?"Warning: this is below 80%, meaning the property may be under-assessed. The owner pays taxes on less than the standard share of market value.":"Alert: this is above 120%, meaning the owner may be paying more than their fair share. They may have grounds to file an assessment grievance."}`],
-            ["Who owns this property?",`${found.owner1}${found.owner2?` and ${found.owner2}`:""}. ${getAbsenteeLabelFast(found)}: ${getAbsenteeReasonFast(found)}.`],
-            ["What tax exemptions are active?",found.exemptions.length>0?`This property has ${found.exemptions.length} active exemption(s): ${found.exemptions.map(e=>`${e.name} (code ${e.code})`).join(", ")}. These reduce the taxable value, lowering the annual tax bill.`:`No active exemptions were found on this record. If this is a homestead, the owner may qualify for STAR (up to $30,000 off school taxes) and should check with the city assessor.`],
-            ["How big is the lot?",found.frontage&&found.depth?`The lot is ${found.frontage} feet wide (frontage) by ${found.depth} feet deep - approximately ${nf(found.frontage*found.depth)} square feet total.`:"Lot dimensions are not available in this record."],
-            ["When did it last sell?",found.deedYear?`According to the deed book reference, this property last changed ownership around ${found.deedYear}.`:"No deed year information is available for this parcel."],
+            ["What is the assessed value?",`${$f(found.assessedValue)}. This is the value the City uses for property taxes. It is not an appraisal or what the home would sell for.`],
+            ["What is the full-value estimate?",`${$f(found.fullMarketValue)}. On this roll it is simply the assessed value divided by the City's uniform assessment percentage, not a separate appraisal.`],
+            ["Is this assessment fair?",`The record alone cannot tell you. ${ASSESSMENT_LEVEL_EXPLAINER}`],
+            ["What is the taxable value?",`County ${$f(found.countyTaxable)}, city ${$f(found.cityTaxable)}, school ${$f(found.schoolTaxable)}. These are the assessed value minus exemptions; each tax uses its own rate.`],
+            ["Which exemptions or credits are recorded?",found.exemptions.length>0?`${found.exemptions.map(e=>exemptionInfo(e).label).join(", ")}.${foundStar?"":" No STAR benefit is recorded."}`:`None recorded on this roll. If an owner lives here as a primary residence, they may be able to register for the STAR credit with New York State; senior, veterans, and disability exemptions are applied for at the City Assessor's Office.`],
+            ["Who owns this property?",`${found.owner1}${found.owner2?` and ${found.owner2}`:""} (as of the roll's taxable status date). ${getAbsenteeLabelFast(found)}: ${getAbsenteeReasonFast(found)}.`],
+            ["How big is the lot?",found.frontage&&found.depth?`About ${found.frontage} feet wide by ${found.depth} feet deep, roughly ${nf(Math.round(found.frontage*found.depth))} square feet.`:"Lot dimensions are not on this record."],
+            ["When did it last sell?",found.deedYear?`The last recorded deed is from about ${found.deedYear}.`:"No deed year is on this record."],
           ].map(([q,a],i)=>(
             <div key={i} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px",marginBottom:10}}>
-              <div style={{fontFamily:"var(--fd)",fontSize:13,fontWeight:700,color:"var(--blue3)",marginBottom:6}}>Q: {q}</div>
-              <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.8}}>{a}</div>
+              <h3 style={{fontFamily:"var(--fd)",fontSize:14,fontWeight:700,color:"var(--blue3)",marginBottom:6}}>{q}</h3>
+              <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.8}}>{a}</div>
             </div>
           ))}
         </div>}
-        {address&&!found&&<div style={{fontSize:12,color:"var(--gray2)",marginTop:10}}>No parcel found. Try partial address like "Academy" or "Willett".</div>}
+        {address&&!found&&<div role="status" style={{fontSize:12,color:"var(--gray)",marginTop:10}}>No property found. Pick an address from the suggestions, or try just the street name.</div>}
       </Card>
-      <div style={{fontSize:13,fontWeight:600,fontFamily:"var(--fd)",marginBottom:12}}>Assessment Roll Glossary - Every Term Explained</div>
-      <div style={{display:"grid",gap:10}}>
+      <h2 style={{fontSize:16,fontWeight:700,fontFamily:"var(--fd)",marginBottom:12}}>Glossary</h2>
+      <dl style={{display:"grid",gap:10}}>
         {terms.map((t,i)=>(
           <div key={i} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:10,padding:"14px 16px"}}>
-            <div style={{fontFamily:"var(--fd)",fontSize:13,fontWeight:700,color:"var(--amber2)",marginBottom:6}}>{t.term}</div>
-            <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.8}}>{t.def}</div>
+            <dt style={{fontFamily:"var(--fd)",fontSize:14,fontWeight:700,color:"var(--white)",marginBottom:6}}>{t.term}</dt>
+            <dd style={{fontSize:13,color:"var(--gray)",lineHeight:1.8,margin:0}}>{t.def}</dd>
           </div>
         ))}
-      </div>
+      </dl>
+      <div style={{fontSize:12,color:"var(--gray)",marginTop:14,lineHeight:1.7}}>Sources: NYS Department of Taxation and Finance (STAR, exemption codes, grievance and SCAR rules) and the City of Albany Assessor's Office. Rules, deadlines, and income limits change; confirm with the <a href={ALBANY_ASSESSOR_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>Assessor's Office</a> before acting.</div>
     </div>
   );
 };
@@ -9045,25 +9546,44 @@ export default function App() {
   const mode="app";
   const initialUrlSnapshotRef = useRef(parseComparableSnapshotSearch(typeof window!=="undefined" ? window.location.search : ""));
   const requestedUrlTab = initialUrlSnapshotRef.current?.tab || "";
-  const [tab,setTab]=useState(()=>{
-    if(APP_TAB_IDS.has(requestedUrlTab)) return requestedUrlTab;
-    try{
-      const savedVersion = localStorage.getItem("albany_app_ui_version");
-      if(savedVersion!==APP_UI_VERSION) return "home";
-      return localStorage.getItem("albany_app_tab") || "home";
-    }catch{
-      return "home";
-    }
-  });
+  // The URL is the source of truth for the open section, so Back, Refresh, and copied links all work.
+  const [tab,setTab]=useState(()=>APP_TAB_IDS.has(requestedUrlTab) ? requestedUrlTab : "home");
   const [compareList,setCompareList]=useState([]);
+  const [compareLimitNotice,setCompareLimitNotice]=useState("");
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
-  const [pendingScrollTab,setPendingScrollTab]=useState("");
+  const [pendingScroll,setPendingScroll]=useState(null);
+  const [focusRequest,setFocusRequest]=useState(null);
   const contentTopRef=useRef(null);
   const navigateToTab = useCallback((nextTab, options={})=>{
+    if(!APP_TAB_IDS.has(nextTab)) return;
     const shouldScroll = options.scroll !== false;
     setTab(nextTab);
     setMobileNavOpen(false);
-    if(shouldScroll) setPendingScrollTab(nextTab);
+    if(shouldScroll) setPendingScroll({tab:nextTab, focusId:options.focusId || "", token:Date.now()});
+    if(typeof window!=="undefined" && options.history !== false){
+      try{
+        const url = new URL(window.location.href);
+        const current = url.searchParams.get("tab") || "home";
+        // Leaving the comparison drops its shared-link parameters so the URL describes the page actually shown.
+        if(nextTab!=="assessment") COMPARE_SNAPSHOT_QUERY_KEYS.forEach(key=>url.searchParams.delete(key));
+        if(nextTab==="home") url.searchParams.delete("tab");
+        else url.searchParams.set("tab", nextTab);
+        if(current!==nextTab || url.toString()!==window.location.href){
+          window.history.pushState({tab:nextTab}, "", url.toString());
+        }
+      }catch{}
+    }
+  },[]);
+  useEffect(()=>{
+    if(typeof window==="undefined") return;
+    const onPopState = () => {
+      const next = parseComparableSnapshotSearch(window.location.search).tab || "home";
+      setTab(APP_TAB_IDS.has(next) ? next : "home");
+      setMobileNavOpen(false);
+      setPendingScroll({tab:APP_TAB_IDS.has(next) ? next : "home", focusId:"", token:Date.now()});
+    };
+    window.addEventListener("popstate", onPopState);
+    return ()=>window.removeEventListener("popstate", onPopState);
   },[]);
   const [uploading,setUploading]=useState(false);
   const [myHome,setMyHome]=useState(()=>{try{const s=localStorage.getItem("albany_my_home");return s?JSON.parse(s):null;}catch{return null;}});
@@ -9102,6 +9622,7 @@ export default function App() {
   setTimeout(()=>{
     const finish=(nextParcels, sourceType, nextMeta)=>{
       const datasetMeta = normalizeDatasetMeta(nextMeta||{}, nextParcels, exactName || lowerName);
+      setActiveUniformPercent(datasetMeta?.uniformPercentOfValue);
       setParcels(preprocessParcels(nextParcels, datasetMeta));
       setMeta(datasetMeta||{});
       setDataSource(sourceType||"json");
@@ -9168,7 +9689,7 @@ export default function App() {
             done(true);
             return;
           }
-          const arr=payload.parcels||payload;
+          const arr=parcelsFromRollPayload(payload);
           if(Array.isArray(arr)&&arr.length>0) finish(arr,"json",extractPayloadMeta(payload));
           else fail("JSON/GeoJSON file does not contain a parcels array (or supported parcel/street geometry payload).");
         }catch(err){ fail("Could not parse JSON: "+err.message); }
@@ -9308,8 +9829,22 @@ const handleFile=useCallback(e=>{
     })();
     return ()=>{ cancelled=true; };
   },[loadDataFromText]);
-  const toggleCompare=p=>{if(!p)return;setCompareList(prev=>prev.some(x=>x.parcelId===p.parcelId)?prev.filter(x=>x.parcelId!==p.parcelId):prev.length<4?[...prev,p]:prev);};
-  const removeCompare=p=>{if(p)setCompareList(prev=>prev.filter(x=>x.parcelId!==p.parcelId));};
+  const toggleCompare=p=>{
+    if(!p) return;
+    const already = compareList.some(x=>x.parcelId===p.parcelId);
+    if(!already && compareList.length>=4){
+      setCompareLimitNotice(`You can compare up to 4 properties at a time. Remove one in the Compare tab (or click "In comparison" on its card) to add ${p.address}.`);
+      return;
+    }
+    setCompareLimitNotice("");
+    setCompareList(prev=>prev.some(x=>x.parcelId===p.parcelId)?prev.filter(x=>x.parcelId!==p.parcelId):prev.length<4?[...prev,p]:prev);
+  };
+  const removeCompare=p=>{if(p){setCompareLimitNotice("");setCompareList(prev=>prev.filter(x=>x.parcelId!==p.parcelId));}};
+  useEffect(()=>{
+    if(!compareLimitNotice) return;
+    const id=setTimeout(()=>setCompareLimitNotice(""),8000);
+    return ()=>clearTimeout(id);
+  },[compareLimitNotice]);
   const addToCompare=(p1,p2)=>{if(p2)toggleCompare(p2);};
   const saveHome=p=>{
     const next=p?{address:p.address,parcelId:p.parcelId,parcel:p}:null;
@@ -9335,16 +9870,27 @@ const handleFile=useCallback(e=>{
     const nextAddress=nextParcel?.address || rawAddress;
     if(!nextAddress && !directParcelId) return;
     navigateToTab("mapview");
-    try{
-      localStorage.setItem("albany_app_tab","mapview");
-      localStorage.setItem("albany_app_ui_version", APP_UI_VERSION);
-    }catch{}
     setMapJumpRequest({
       token:Date.now(),
       address:nextAddress || "",
       parcelId:nextParcel?.parcelId || directParcelId || "",
     });
-  },[APP_UI_VERSION,navigateToTab,parcels]);
+  },[navigateToTab,parcels]);
+  const openPropertyDetails=useCallback(parcel=>{
+    if(!parcel) return;
+    setFocusRequest({parcel, token:Date.now(), target:"browse"});
+    navigateToTab("browse",{scroll:false});
+  },[navigateToTab]);
+  const checkAssessmentForParcel=useCallback(parcel=>{
+    if(!parcel) return;
+    setFocusRequest({parcel, token:Date.now(), target:"assessment"});
+    navigateToTab("assessment",{scroll:false});
+  },[navigateToTab]);
+  const openTaxReliefForParcel=useCallback(parcel=>{
+    if(!parcel) return;
+    setFocusRequest({parcel, token:Date.now(), target:"relief"});
+    navigateToTab("taxtools",{focusId:"relief-search"});
+  },[navigateToTab]);
 
   useEffect(()=>{
     const handler=ev=>openApplicationMapForParcel(ev?.detail||{});
@@ -9356,213 +9902,213 @@ const handleFile=useCallback(e=>{
     };
   },[openApplicationMapForParcel]);
 
-  const stats=useMemo(()=>(
-    {
+  const stats=useMemo(()=>{
+    const homes = parcels.filter(p=>isResidentialPropClass(p.propClass));
+    return {
       total:parcels.length,
-      totalFMV:parcels.reduce((s,p)=>s+p.fullMarketValue,0),
-      avgFMV:parcels.length>0?Math.round(parcels.reduce((s,p)=>s+p.fullMarketValue,0)/parcels.length):0,
-      exemptCount:parcels.filter(p=>p.exemptions.length>0).length,
-      homesteadPct:parcels.length>0?Math.round(parcels.filter(p=>p.parcelType==="HOMESTEAD").length/parcels.length*100):0,
+      homes:homes.length,
+      homesWithStar:homes.filter(p=>hasStarBenefitOnRecord(p)).length,
       absenteeCount:parcels.filter(p=>isAbsenteeFast(p)).length,
-      overAssessedCount:parcels.filter(p=>eqFlagFast(p)==="over").length,
-      missingExemptionCount:parcels.filter(p=>p.parcelType==="HOMESTEAD" && (!p.exemptions || p.exemptions.length===0)).length,
-      underusedLotCount:parcels.filter(p=>p.frontage&&p.depth&&p.assessedValue>0&&((p.assessedValue-p.landValue)/Math.max(p.assessedValue,1))<0.4).length,
-      publicOwnershipCount:parcels.filter(p=>/city of albany|county of albany|state of new york|albany housing authority/i.test(`${p.owner1||""} ${p.owner2||""}`)).length,
-    }
-  ),[parcels]);
+      levelDiffersCount:parcels.filter(p=>{const band=eqFlagFast(p);return band==="over"||band==="under";}).length,
+    };
+  },[parcels]);
 
-  const moneyCompact = amt => amt>=1e9?`$${(amt/1e9).toFixed(1)}B`:amt>=1e6?`$${(amt/1e6).toFixed(1)}M`:amt>=1e3?`$${(amt/1e3).toFixed(0)}K`:`$${amt}`;
   const rollDescriptor = [meta?.assessmentYear, meta?.rollType ? `${meta.rollType.charAt(0).toUpperCase()}${meta.rollType.slice(1)}` : null].filter(Boolean).join(" ");
+  const valuationDateLabel = formatIsoDate(meta?.valuationDate);
+  const levelPercentLabel = Number.isFinite(Number(meta?.uniformPercentOfValue)) && Number(meta.uniformPercentOfValue)>0 ? `${Number(meta.uniformPercentOfValue)}%` : "a uniform percentage";
   const heroSubtitle = rollDescriptor
-    ? `${rollDescriptor} Assessment Roll | City of Albany property assessment records`
-    : "City of Albany property assessment records";
-  const dataStatusLabel = uploading && dataSource==="sample"
-    ? "Checking local Albany data files..."
+    ? `${rollDescriptor} Assessment Roll | City of Albany, NY`
+    : "City of Albany, NY property assessment records";
+  const dataLoading = autoloadState.phase==="running" || autoloadState.phase==="idle" || (uploading && dataSource==="sample");
+  const dataFailed = !dataLoading && dataSource==="sample";
+  const dataStatusLabel = dataLoading
+    ? "Loading Albany property records..."
     : dataSource==="roll"
-      ? `${rollDescriptor || "Albany assessment"} roll loaded | ${parcels.length.toLocaleString()} parcels`
+      ? `${rollDescriptor || "Albany assessment"} roll | ${parcels.length.toLocaleString()} properties`
       : dataSource==="json" || dataSource==="csv"
-        ? `${rollDescriptor ? `${rollDescriptor} dataset` : "Custom dataset"} | ${parcels.length.toLocaleString()} parcels loaded`
-        : `Sample data only | ${parcels.length.toLocaleString()} parcels`;
-  const dataStatusColor = uploading && dataSource==="sample" ? "#2563eb" : dataSource==="sample" ? "#f59e0b" : "#22c55e";
+        ? `${rollDescriptor ? `${rollDescriptor} roll` : "Custom dataset"} | ${parcels.length.toLocaleString()} properties`
+        : `Sample data only | ${parcels.length.toLocaleString()} properties`;
+  const dataStatusColor = dataLoading ? "#1d4ed8" : dataFailed ? "#b45309" : "#15803d";
   const autoloadEntries = autoloadState.entries || [];
   const autoloadSummary = autoloadState.phase==="running"
-    ? "Autoload is checking the Albany files in this folder."
+    ? "Checking for the Albany data files."
     : autoloadEntries.some(entry=>entry.status==="loaded")
-      ? `Autoload loaded ${autoloadEntries.filter(entry=>entry.status==="loaded").map(entry=>entry.kind).join(", ")} from local files.`
+      ? `Loaded ${autoloadEntries.filter(entry=>entry.status==="loaded").map(entry=>entry.kind).join(", ")}.`
       : dataSource==="sample"
-        ? "Autoload did not find a usable Albany parcel file, so the app stayed on sample data."
-        : "The current dataset did not come from startup autoload.";
+        ? "The Albany roll could not be loaded, so only a small sample of properties is available."
+        : "The current data was loaded manually.";
   const autoloadStatusTone = status => ({
-    checking:"#2563eb",
-    fetched:"#2563eb",
-    parsing:"#0d9488",
-    loaded:"#22c55e",
-    skipped:"#64748b",
-    not_found:"#f59e0b",
-    fetch_error:"#dc2626",
-    parse_failed:"#dc2626",
-  }[status]||"var(--gray2)");
+    checking:"#1d4ed8",
+    fetched:"#1d4ed8",
+    parsing:"#0f766e",
+    loaded:"#15803d",
+    skipped:"#475569",
+    not_found:"#b45309",
+    fetch_error:"#b91c1c",
+    parse_failed:"#b91c1c",
+  }[status]||"var(--gray)");
   const autoloadStatusLabel = status => ({
     checking:"Checking",
     fetched:"Fetched",
-    parsing:"Parsing",
+    parsing:"Reading",
     loaded:"Loaded",
     skipped:"Skipped",
     not_found:"Not found",
-    fetch_error:"Fetch failed",
-    parse_failed:"Parse failed",
+    fetch_error:"Failed",
+    parse_failed:"Could not read",
   }[status]||status);
-  const tabs=[
+  const primaryTabs=[
     {id:"home",label:"Home"},
-    {id:"browse",label:"Property Search"},
-    {id:"mapview",label:"Application Map"},
-    {id:"equity",label:"Fairness"},
-    {id:"taxtools",label:"Tax Relief"},
+    {id:"browse",label:"Find a Property"},
+    {id:"assessment",label:"Check My Assessment"},
+    {id:"taxtools",label:"Lower My Taxes"},
+    {id:"mapview",label:"Map"},
     {id:"compare",label:`Compare${compareList.length>0?` (${compareList.length})`:""}`},
+    {id:"guide",label:"Help & Glossary"},
+  ];
+  const researchTabs=[
+    {id:"equity",label:"Citywide Patterns"},
     {id:"ownership",label:"Ownership"},
     {id:"analytics",label:"Analytics"},
     {id:"opportunity",label:"Change Signals"},
     {id:"dataquality",label:"Data Quality"},
-    {id:"guide",label:"Guide"},
   ];
+  const tabs=[...primaryTabs,...researchTabs];
   const currentTabMeta = tabs.find(t=>t.id===tab) || tabs[0];
+  const [aboutDataOpen,setAboutDataOpen]=useState(false);
+  const [heroQuery,setHeroQuery]=useState("");
+  const [heroMessage,setHeroMessage]=useState("");
+  const heroInputRef=useRef(null);
   useEffect(()=>{
-    try{
-      const savedVersion = localStorage.getItem("albany_app_ui_version");
-      if(savedVersion!==APP_UI_VERSION){
-        localStorage.setItem("albany_app_ui_version", APP_UI_VERSION);
-        if(APP_TAB_IDS.has(requestedUrlTab)){
-          localStorage.setItem("albany_app_tab", requestedUrlTab);
-          setTab(requestedUrlTab);
-        }else{
-          localStorage.setItem("albany_app_tab","home");
-          setTab("home");
-        }
-      }else if(APP_TAB_IDS.has(requestedUrlTab)){
-        localStorage.setItem("albany_app_tab", requestedUrlTab);
-        setTab(requestedUrlTab);
-      }
-    }catch{}
-    setShowWhatsNew(false);
-  },[APP_UI_VERSION,requestedUrlTab]);
-
-  useEffect(()=>{ try{localStorage.setItem("albany_app_tab",tab);}catch{} },[tab]);
+    if(typeof document==="undefined") return;
+    document.title = currentTabMeta && currentTabMeta.id!=="home" ? `${currentTabMeta.label.replace(/\s*\(\d+\)$/,"")} | Albany Property Tax Explorer` : "Albany Property Tax Explorer";
+  },[currentTabMeta]);
   useEffect(()=>{
-    const allowed = new Set(tabs.map(t=>t.id));
-    if(!allowed.has(tab)) setTab("home");
-  },[tab,tabs]);
-  useEffect(()=>{
-    if(!pendingScrollTab || pendingScrollTab!==tab) return;
-    const runner = ()=>contentTopRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
-    const id = typeof window!=="undefined" && window.requestAnimationFrame ? window.requestAnimationFrame(runner) : setTimeout(runner,0);
-    setPendingScrollTab("");
-    return ()=>{
-      if(typeof id==="number" && typeof window!=="undefined" && window.cancelAnimationFrame) window.cancelAnimationFrame(id);
-      else clearTimeout(id);
+    if(!pendingScroll || pendingScroll.tab!==tab || typeof window==="undefined") return;
+    const request = pendingScroll;
+    const run = ()=>{
+      if(request.tab==="home") window.scrollTo({top:0,behavior:"smooth"});
+      else contentTopRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+      const focusTarget = request.focusId ? document.getElementById(request.focusId) : null;
+      if(focusTarget) focusTarget.focus({preventScroll:true});
+      else if(request.tab!=="home") contentTopRef.current?.focus({preventScroll:true});
+      setPendingScroll(prev=>prev && prev.token===request.token ? null : prev);
     };
-  },[pendingScrollTab,tab]);
-
-  const dismissWhatsNew = () => {
-    setShowWhatsNew(false);
-    try{localStorage.setItem("albany_app_ui_whats_new_dismissed", APP_UI_VERSION);}catch{}
+    // Run after the new section has rendered; do not cancel on cleanup, or clearing pendingScroll would cancel the scroll itself.
+    if(window.requestAnimationFrame) window.requestAnimationFrame(run); else setTimeout(run,0);
+  },[pendingScroll,tab]);
+  const submitHeroSearch=()=>{
+    const match = heroQuery.trim() ? findBestAddressMatch(parcels, heroQuery) : null;
+    if(match){
+      setHeroMessage("");
+      openPropertyDetails(match);
+      return;
+    }
+    const similar = heroQuery.trim() ? suggestSimilarAddresses(parcels, heroQuery, 1)[0] : null;
+    setHeroMessage(heroQuery.trim()
+      ? (similar ? `No exact match for "${heroQuery.trim()}". Did you mean ${similar.address}? Pick it from the suggestions.` : `No property found for "${heroQuery.trim()}". Try just the street name, like "Elk St".`)
+      : "Type an address to search, like 470 Elk St.");
+    heroInputRef.current?.focus();
   };
 
-  const appQuickActions = [
-    {id:"browse", title:"Search a property", body:"Look up an address, parcel ID, or owner and open the full parcel record."},
-    {id:"mapview", title:"Open the application map", body:"Inspect parcel boundaries, neighborhoods, ownership patterns, and thematic layers in one map."},
-    {id:"equity", title:"Check tax fairness", body:"Review equity ratios, over-assessment signals, and comparable parcels."},
-    {id:"taxtools", title:"Find tax relief", body:"Check exemptions, missed savings, and homeowner tax-relief opportunities."},
-    {id:"ownership", title:"Study ownership", body:"Find absentee owners, duplicate owners, and larger property portfolios."},
-    {id:"analytics", title:"See citywide patterns", body:"Review class mix, market values, and trend summaries across Albany."},
-    {id:"dataquality", title:"Check data quality", body:"Review joins, missing geometry, and record issues before drawing conclusions."},
-    {id:"guide", title:"Understand the roll", body:"Use the glossary and parcel explainer to make sense of assessment fields."},
+  const researchCards = [
+    {id:"mapview", title:"Map", body:"See parcel boundaries, neighborhoods, and property types on a map."},
+    {id:"equity", title:"Citywide patterns", body:"Where STAR and other exemptions are recorded, and how much taxable value exemptions remove."},
+    {id:"ownership", title:"Ownership", body:"Owners with several properties, and properties whose owners likely live elsewhere."},
+    {id:"analytics", title:"Analytics", body:"Charts of property values, types, and sales across Albany."},
+    {id:"opportunity", title:"Change signals", body:"Vacant or underused lots, rising land values, and sales that differ from assessments."},
+    {id:"dataquality", title:"Data quality", body:"How complete the records are and which ones have known issues."},
+  ];
+  const residentActions = [
+    {key:"lookup", step:"1", title:"Look up a property", body:"See its assessed value, taxable value, and any exemptions on record.", action:()=>{ window.scrollTo({top:0,behavior:"smooth"}); heroInputRef.current?.focus({preventScroll:true}); }, cta:"Search an address"},
+    {key:"assessment", step:"2", title:"Check my assessment", body:"Compare your assessment with similar nearby homes and recent sales before deciding whether to file a grievance.", action:()=>navigateToTab("assessment",{focusId:"assessment-search"}), cta:"Compare my home"},
+    {key:"relief", step:"3", title:"Lower my taxes", body:"See exemptions and credits on record, and programs an owner may apply for, like STAR, senior, and veterans exemptions.", action:()=>navigateToTab("taxtools",{focusId:"relief-search"}), cta:"Check exemptions"},
   ];
   const renderHome = () => (
     <div className="fi">
-      <div className="summary-grid" style={{marginBottom:18}}>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Likely Over-Assessed</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--red2)"}}>{nf(stats.overAssessedCount)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Parcels above the fair 120% threshold</div>
-          <button onClick={()=>navigateToTab("equity")} style={{marginTop:10,background:"rgba(220,38,38,.12)",border:"1px solid rgba(220,38,38,.25)",color:"var(--red2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Review fairness -&gt;</button>
-        </Card>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Missing Exemptions</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--amber2)"}}>{nf(stats.missingExemptionCount)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Homestead parcels with no exemption on record</div>
-          <button onClick={()=>navigateToTab("taxtools")} style={{marginTop:10,background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.25)",color:"var(--amber2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Find savings -&gt;</button>
-        </Card>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Absentee Owners</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"#f97316"}}>{nf(stats.absenteeCount)}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>Parcels flagged for likely off-site ownership</div>
-          <button onClick={()=>navigateToTab("ownership")} style={{marginTop:10,background:"rgba(249,115,22,.12)",border:"1px solid rgba(249,115,22,.25)",color:"#c2410c",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>See owners -&gt;</button>
-        </Card>
-        <Card>
-          <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Parcel Geometry</div>
-          <div style={{fontFamily:"var(--fd)",fontSize:30,fontWeight:800,marginTop:6,color:"var(--teal2)"}}>{geomCoverage?`${geomCoverage.pct}%`:"None"}</div>
-          <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>{geomCoverage?`${geomCoverage.matched.toLocaleString()} parcels linked to boundaries`:"Parcel boundaries are not loaded yet"}</div>
-          <button onClick={()=>navigateToTab("mapview")} style={{marginTop:10,background:"rgba(13,148,136,.12)",border:"1px solid rgba(13,148,136,.25)",color:"var(--teal2)",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:700}}>Open map -&gt;</button>
-        </Card>
-      </div>
+      <section aria-labelledby="home-actions-heading" style={{marginBottom:22}}>
+        <h2 id="home-actions-heading" style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:800,marginBottom:10}}>What you can do here</h2>
+        <div className="resident-grid-3">
+          {residentActions.map(card=>(
+            <Card key={card.key} style={{display:"flex",flexDirection:"column",justifyContent:"space-between",gap:12}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:800,color:"var(--blue3)",letterSpacing:.8,textTransform:"uppercase"}}>Step {card.step}</div>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,margin:"4px 0 6px"}}>{card.title}</h3>
+                <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>{card.body}</div>
+              </div>
+              <button onClick={card.action} style={{alignSelf:"flex-start",background:card.key==="lookup"?"var(--blue)":"var(--card2)",color:card.key==="lookup"?"white":"var(--blue3)",border:card.key==="lookup"?"none":"1px solid var(--border2)",borderRadius:9,padding:"10px 14px",fontSize:13,fontWeight:700,cursor:"pointer",minHeight:40}}>{card.cta}</button>
+            </Card>
+          ))}
+        </div>
+      </section>
 
-      {currentHome ? (
-        <Card style={{marginBottom:18,background:"linear-gradient(135deg,rgba(34,197,94,.08) 0%,rgba(37,99,235,.06) 100%)",border:"1px solid rgba(34,197,94,.22)"}}>
+      {currentHome&&(
+        <Card style={{marginBottom:22,background:"linear-gradient(135deg,rgba(21,128,61,.07) 0%,rgba(37,99,235,.05) 100%)",border:"1px solid rgba(21,128,61,.25)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
             <div>
-              <div style={{fontSize:11,color:"var(--green2)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Saved property snapshot</div>
-              <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:800,marginTop:6}}>{currentHome.address}</div>
-              <div style={{fontSize:12,color:"var(--gray2)",marginTop:4}}>{parcelAreaSummary(currentHome)} | Parcel {currentHome.parcelId}</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
-                <Badge color={eqFlagFast(currentHome)==="over"?"#dc2626":eqFlagFast(currentHome)==="under"?"#f59e0b":"#22c55e"}>{FL[eqFlagFast(currentHome)]}</Badge>
-                <Badge color="#3b82f6">FMV {$f(currentHome.fullMarketValue)}</Badge>
-                <Badge color="#a78bfa">{currentHome.exemptions.length} exemption{currentHome.exemptions.length===1?"":"s"}</Badge>
-                {isAbsenteeFast(currentHome)&&<><Badge color="#f97316">Absentee flag</Badge><AbsenteeExplain parcel={currentHome} compact /></>}
-              </div>
+              <div style={{fontSize:11,color:"var(--green2)",fontWeight:800,textTransform:"uppercase",letterSpacing:1}}>My home</div>
+              <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:800,marginTop:4}}>{currentHome.address}</div>
+              <div style={{fontSize:13,color:"var(--gray)",marginTop:4}}>Assessed value {$f(currentHome.assessedValue)}{currentHome.exemptions?.length?` | ${exemptionSummaryLabel(currentHome)}`:" | No exemptions or STAR credit on record"}</div>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>navigateToTab("browse")} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Open saved property</button>
-              <button onClick={()=>openApplicationMapForParcel({ parcel: currentHome })} style={{background:"var(--card2)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Open on map</button>
-              <button onClick={()=>saveHome(null)} style={{background:"rgba(220,38,38,.12)",color:"var(--red2)",border:"1px solid rgba(220,38,38,.22)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear saved property</button>
+              <button onClick={()=>openPropertyDetails(currentHome)} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>View details</button>
+              <button onClick={()=>checkAssessmentForParcel(currentHome)} style={{background:"var(--card)",color:"var(--blue3)",border:"1px solid var(--border2)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Check my assessment</button>
+              <button onClick={()=>openApplicationMapForParcel({ parcel: currentHome })} style={{background:"var(--card)",color:"var(--gray)",border:"1px solid var(--border2)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Show on map</button>
+              <button onClick={()=>saveHome(null)} style={{background:"none",color:"var(--red2)",border:"1px solid rgba(185,28,28,.3)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Forget my home</button>
             </div>
-          </div>
-        </Card>
-      ) : (
-        <Card style={{marginBottom:18,border:"1px solid rgba(37,99,235,.22)",background:"linear-gradient(135deg,rgba(37,99,235,.08) 0%,rgba(13,148,136,.05) 100%)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
-            <div>
-              <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:800}}>Save a property once</div>
-              <div style={{fontSize:12,color:"var(--gray2)",marginTop:6,maxWidth:620}}>Save a home or target property once, then reuse it across search, fairness checks, tax tools, comparison, and the map.</div>
-            </div>
-            <button onClick={()=>setShowHomeSetup(true)} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:10,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Save a Property</button>
           </div>
         </Card>
       )}
 
-      <div className="quick-grid" style={{marginBottom:18}}>
-        {appQuickActions.map(card=>(
-          <Card key={card.id} style={{display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
-            <div>
-              <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:6}}>{card.title}</div>
-              <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.7}}>{card.body}</div>
-            </div>
-            <button onClick={()=>navigateToTab(card.id)} style={{marginTop:14,alignSelf:"flex-start",background:"var(--card2)",border:"1px solid var(--border)",color:"var(--blue3)",borderRadius:9,padding:"8px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>Open -&gt;</button>
+      <section aria-labelledby="home-numbers-heading" style={{marginBottom:22}}>
+        <h2 id="home-numbers-heading" style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:800,marginBottom:10}}>What the numbers mean</h2>
+        <div className="resident-grid-3">
+          <Card>
+            <h3 style={{fontSize:14,fontWeight:800,marginBottom:6}}>Assessed value</h3>
+            <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>The value the City uses for property taxes. Albany sets it at {levelPercentLabel} of the City's full-value estimate{valuationDateLabel?` as of ${valuationDateLabel}`:""}. It is not an appraisal or a sale price.</div>
           </Card>
-        ))}
-      </div>
+          <Card>
+            <h3 style={{fontSize:14,fontWeight:800,marginBottom:6}}>Taxable value</h3>
+            <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>Assessed value minus exemptions (such as STAR, senior, or veterans). County, city, and school taxes can each have a different taxable value.</div>
+          </Card>
+          <Card>
+            <h3 style={{fontSize:14,fontWeight:800,marginBottom:6}}>Your tax bill</h3>
+            <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>Each taxable value times that government's tax rate. Tax rates are not in this app, so it cannot show your bill. A similar home with a lower assessment is a reason to look closer, not proof you are over-assessed.</div>
+          </Card>
+        </div>
+      </section>
 
-      <InfoBox icon="Guide" title="How to use this application" color="#2563eb">
-        Start with <b style={{color:"var(--white)"}}>Property Search</b> if you know an address. Use <b style={{color:"var(--white)"}}>Application Map</b> when you want to inspect parcels, neighborhoods, and ownership spatially. Use <b style={{color:"var(--white)"}}>Fairness</b> and <b style={{color:"var(--white)"}}>Tax Relief</b> for homeowner questions, then move to <b style={{color:"var(--white)"}}>Analytics</b>, <b style={{color:"var(--white)"}}>Change Signals</b>, and <b style={{color:"var(--white)"}}>Data Quality</b> when you need deeper citywide analysis.
-      </InfoBox>
+      <section aria-labelledby="home-research-heading">
+        <h2 id="home-research-heading" style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:800,marginBottom:4}}>Explore Albany</h2>
+        <div style={{fontSize:13,color:"var(--gray)",marginBottom:10}}>Research tools for advocates, reporters, and anyone curious about citywide patterns.</div>
+        <div className="summary-grid" style={{marginBottom:12}}>
+          <Card><div style={{fontSize:12,color:"var(--gray)",fontWeight:700}}>Properties on the roll</div><div style={{fontFamily:"var(--fd)",fontSize:26,fontWeight:800,marginTop:4}}>{nf(stats.total)}</div></Card>
+          <Card><div style={{fontSize:12,color:"var(--gray)",fontWeight:700}}>Homes with a STAR benefit recorded</div><div style={{fontFamily:"var(--fd)",fontSize:26,fontWeight:800,marginTop:4}}>{stats.homes?`${Math.round(stats.homesWithStar/stats.homes*100)}%`:"-"}</div><div style={{fontSize:11,color:"var(--gray)",marginTop:2}}>{nf(stats.homesWithStar)} of {nf(stats.homes)} residential properties (exemption or credit)</div></Card>
+          <Card><div style={{fontSize:12,color:"var(--gray)",fontWeight:700}}>Owner likely lives elsewhere</div><div style={{fontFamily:"var(--fd)",fontSize:26,fontWeight:800,marginTop:4}}>{nf(stats.absenteeCount)}</div><div style={{fontSize:11,color:"var(--gray)",marginTop:2}}>Estimated from mailing addresses and exemptions</div></Card>
+          <Card><div style={{fontSize:12,color:"var(--gray)",fontWeight:700}}>Properties on the map</div><div style={{fontFamily:"var(--fd)",fontSize:26,fontWeight:800,marginTop:4}}>{geomCoverage?`${geomCoverage.pct}%`:"-"}</div><div style={{fontSize:11,color:"var(--gray)",marginTop:2}}>{geomCoverage?`${geomCoverage.matched.toLocaleString()} matched to a parcel boundary`:"Map boundaries are still loading"}</div></Card>
+        </div>
+        <div className="quick-grid">
+          {researchCards.map(card=>(
+            <Card key={card.id} style={{display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+              <div>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:800,marginBottom:6}}>{card.title}</h3>
+                <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7}}>{card.body}</div>
+              </div>
+              <button onClick={()=>navigateToTab(card.id)} style={{marginTop:12,alignSelf:"flex-start",background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:9,padding:"8px 12px",fontSize:12,cursor:"pointer",fontWeight:700,minHeight:36}}>Open {card.title.toLowerCase()}</button>
+            </Card>
+          ))}
+        </div>
+      </section>
     </div>
   );
   const renderTab = () => {
     if(tab==="home") return renderHome();
-    if(tab==="browse") return <Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)} ownerPortfolioIndex={ownerPortfolioIndex}/>;
+    if(tab==="browse") return <Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)} ownerPortfolioIndex={ownerPortfolioIndex} focusRequest={focusRequest?.target==="browse"?focusRequest:null} onCheckAssessment={checkAssessmentForParcel} onOpenTaxRelief={openTaxReliefForParcel} compareLimitNotice={compareLimitNotice}/>;
     if(tab==="mapview") return <MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} neighborhoodBoundaries={neighborhoodBoundaries} neighborhoodAssociations={neighborhoodAssociations} compareList={compareList} onCompare={toggleCompare} onDrill={setDrillList} jumpRequest={mapJumpRequest} advanced={true} ownerPortfolioIndex={ownerPortfolioIndex}/>;
-    if(tab==="equity") return <Equity parcels={parcels} onDrill={setDrillList}/>;
-    if(tab==="taxtools") return <TaxTools parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex} salesByParcelId={salesByParcelId} parcelGeometry={parcelGeometry} dataSource={dataSource} autoloadPhase={autoloadState.phase} uploading={uploading}/>;
-    if(tab==="compare") return <Compare parcels={parcels} compareList={compareList} onRemove={removeCompare} onAdd={addToCompare}/>;
+    if(tab==="equity") return <Equity parcels={parcels} onDrill={setDrillList} meta={meta}/>;
+    if(tab==="assessment") return <TaxTools key="assessment" mode="assessment" parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex} salesByParcelId={salesByParcelId} parcelGeometry={parcelGeometry} dataSource={dataSource} autoloadPhase={autoloadState.phase} uploading={uploading} focusRequest={focusRequest?.target==="assessment"?focusRequest:null} onOpenTaxRelief={openTaxReliefForParcel} onCheckAssessment={checkAssessmentForParcel}/>;
+    if(tab==="taxtools") return <TaxTools key="relief" mode="relief" parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex} salesByParcelId={salesByParcelId} parcelGeometry={parcelGeometry} dataSource={dataSource} autoloadPhase={autoloadState.phase} uploading={uploading} focusRequest={focusRequest?.target==="relief"?focusRequest:null} onOpenTaxRelief={openTaxReliefForParcel} onCheckAssessment={checkAssessmentForParcel}/>;
+    if(tab==="compare") return <Compare parcels={parcels} compareList={compareList} onRemove={removeCompare} onAdd={addToCompare} onFindProperties={()=>navigateToTab("browse",{focusId:"browse-search"})}/>;
     if(tab==="ownership") return <Ownership parcels={parcels} onDrill={setDrillList} ownerPortfolioGroups={ownerPortfolioGroups} salesByParcelId={salesByParcelId}/>;
     if(tab==="analytics") return <Analytics parcels={parcels} onDrill={setDrillList}/>;
     if(tab==="opportunity") return <Opportunity parcels={parcels} onDrill={setDrillList} salesByParcelId={salesByParcelId}/>;
@@ -9570,169 +10116,173 @@ const handleFile=useCallback(e=>{
     if(tab==="guide") return <HomebuyerGuide parcels={parcels} myHome={myHome}/>;
     return null;
   };
+  const renderTabButton = (t, variant="primary") => (
+    <button key={t.id} type="button" onClick={()=>navigateToTab(t.id, t.id==="browse"?{focusId:"browse-search"}:t.id==="assessment"?{focusId:"assessment-search"}:{})} aria-current={tab===t.id?"page":undefined} className="tab-chip" style={{
+      background:tab===t.id?"var(--blue)":"transparent",
+      color:tab===t.id?"white":variant==="primary"?"var(--gray)":"var(--gray)",
+      border:"none",
+      borderRadius:"10px 10px 0 0",
+      padding:variant==="primary"?"11px 14px":"8px 12px",
+      fontSize:variant==="primary"?13:12,
+      fontWeight:700,
+      cursor:"pointer",
+      whiteSpace:"nowrap",
+      minHeight:variant==="primary"?44:36,
+      borderBottom:tab===t.id?"2px solid var(--blue3)":"2px solid transparent"
+    }}>{t.label}</button>
+  );
   return (
     <>
       <GS/>
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <div style={{minHeight:"100vh",background:"linear-gradient(180deg,var(--bg) 0%,#edf3f9 38%,var(--bg) 100%)"}}>
-        <div style={{background:"linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 55%,#d8e3f0 100%)",borderBottom:"1px solid var(--border)",padding:"0 0 24px"}}>
-          <div className="app-shell" style={{paddingTop:16}}>
+        <header style={{background:"linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 55%,#d8e3f0 100%)",borderBottom:"1px solid var(--border)",padding:tab==="home"?"0 0 24px":"0 0 14px"}}>
+          <div className="app-shell" style={{paddingTop:14}}>
             <div className="app-header-row">
               <div className="app-brand">
-                <div style={{width:48,height:48,background:"linear-gradient(135deg,var(--blue) 0%,var(--teal) 100%)",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,boxShadow:"0 12px 24px rgba(37,99,235,.18)"}}>ALB</div>
+                <div aria-hidden="true" style={{width:44,height:44,background:"linear-gradient(135deg,var(--blue) 0%,var(--teal) 100%)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"white",flexShrink:0}}>ALB</div>
                 <div>
-                  <div className="app-title">Albany Property Tax Explorer</div>
+                  <h1 className="app-title" style={{margin:0}}><button type="button" onClick={()=>navigateToTab("home")} style={{background:"none",border:"none",padding:0,font:"inherit",color:"inherit",cursor:"pointer",textAlign:"left"}}>Albany Property Tax Explorer</button></h1>
                   <div style={{fontSize:12,color:"var(--gray)",marginTop:2}}>{heroSubtitle}</div>
                 </div>
               </div>
               <div className="app-toolbar">
-                <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.7)",border:"1px solid var(--border)",borderRadius:999,padding:"6px 12px"}}>
-                  <span className="pulse" style={{width:7,height:7,borderRadius:"50%",background:dataStatusColor,display:"inline-block"}}></span>
-                  <span style={{fontSize:11,color:"var(--gray)",fontFamily:"var(--fm)"}}>{dataStatusLabel}</span>
+                <div role="status" aria-live="polite" style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.75)",border:"1px solid var(--border)",borderRadius:999,padding:"6px 12px"}}>
+                  <span className={dataLoading?"pulse":undefined} aria-hidden="true" style={{width:8,height:8,borderRadius:"50%",background:dataStatusColor,display:"inline-block"}}></span>
+                  <span style={{fontSize:12,color:"var(--gray)"}}>{dataStatusLabel}</span>
                 </div>
-                {currentHome&&(
-                  <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(34,197,94,.1)",border:"1px solid rgba(34,197,94,.25)",borderRadius:999,padding:"6px 12px",cursor:"pointer"}} onClick={()=>navigateToTab("browse")} title="Open my property">
-                    <span style={{fontSize:12}}>Home</span>
-                    <span style={{fontSize:11,color:"var(--green2)",fontWeight:700,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentHome.address}</span>
-                    <button onClick={e=>{e.stopPropagation();saveHome(null);}} style={{background:"none",border:"none",color:"var(--gray3)",cursor:"pointer",fontSize:12,padding:0}}>X</button>
-                  </div>
+                {currentHome ? (
+                  <button type="button" onClick={()=>openPropertyDetails(currentHome)} title="Open my home" style={{background:"rgba(21,128,61,.1)",color:"var(--green2)",border:"1px solid rgba(21,128,61,.3)",borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minHeight:36}}>My home: {currentHome.address}</button>
+                ) : (
+                  <button type="button" onClick={()=>setShowHomeSetup(true)} style={{background:"rgba(255,255,255,.85)",color:"var(--gray)",border:"1px solid var(--border2)",borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36}}>Save my home</button>
                 )}
-                <button onClick={()=>setShowHomeSetup(true)} style={{background:currentHome?"rgba(34,197,94,.15)":"rgba(255,255,255,.8)",color:currentHome?"var(--green2)":"var(--gray)",border:`1px solid ${currentHome?"rgba(34,197,94,.35)":"var(--border)"}`,borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  {currentHome?"My Home":"Set My Home"}
-                </button>
-                <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}} title="Load a roll CSV/TXT/JSON or map geometry JSON/GeoJSON">
-                  {uploading?"Parsing...":"Load Data Files"}
-                </button>
-                <input ref={fileRef} type="file" accept=".json,.geojson,.txt,.csv" style={{display:"none"}} onChange={handleFile}/>
+                <button type="button" onClick={()=>setAboutDataOpen(v=>!v)} aria-expanded={aboutDataOpen} aria-controls="about-data-panel" style={{background:"rgba(255,255,255,.85)",color:"var(--blue3)",border:"1px solid var(--border2)",borderRadius:999,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36}}>About this data</button>
               </div>
             </div>
 
-
-            <div className="hero-grid" style={{marginTop:18}}>
-              <Card style={{background:"linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(248,250,252,.92) 100%)",border:"1px solid rgba(37,99,235,.16)",boxShadow:"0 18px 40px rgba(15,23,42,.06)"}}>
-                <div style={{fontSize:11,color:"var(--blue3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1.1}}>One application for Albany property intelligence</div>
-                <div className="hero-title">Search, map, and analyze the 2025 Albany assessment roll in one place.</div>
-                <div style={{fontSize:14,color:"var(--gray2)",lineHeight:1.8,marginTop:12,maxWidth:760}}>This version merges resident and research workflows into one interface. You can move from address lookup to parcel mapping, fairness checks, ownership review, analytics, and data-quality review without switching modes.</div>
-                {dataSource==="sample"&&<div style={{fontSize:12,color:"#7c2d12",lineHeight:1.7,marginTop:10,maxWidth:760,background:"rgba(245,158,11,.14)",border:"1px solid rgba(245,158,11,.28)",borderRadius:12,padding:"10px 12px"}}>Sample data is still active. The full Albany roll did not load at startup. Check the <b style={{color:"#431407"}}>Startup autoload</b> panel for the exact file-by-file result, or use <b style={{color:"#431407"}}>Load Data Files</b> to load the Albany files manually.</div>}
-                <div className="hero-actions">
-                  <button onClick={()=>navigateToTab("browse")} style={{background:"var(--blue)",color:"white",border:"none",borderRadius:10,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Search a parcel</button>
-                  <button onClick={()=>navigateToTab("mapview")} style={{background:"rgba(255,255,255,.78)",color:"var(--gray)",border:"1px solid var(--border)",borderRadius:10,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Open Application Map</button>
-                </div>
-              </Card>
-
-              <Card style={{background:"linear-gradient(180deg,rgba(13,148,136,.08) 0%,rgba(255,255,255,.88) 72%)",border:"1px solid rgba(13,148,136,.14)"}}>
-                <div style={{fontSize:11,color:"var(--gray2)",textTransform:"uppercase",letterSpacing:1.1,fontWeight:700}}>Current dataset</div>
-                <div style={{marginTop:12,display:"grid",gap:12}}>
-                  <div style={{background:"rgba(255,255,255,.75)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:800}}>Roll status</div>
-                    <div style={{fontSize:12,color:"var(--gray2)",marginTop:4,lineHeight:1.7}}>{dataStatusLabel}</div>
+            {aboutDataOpen&&(
+              <div id="about-data-panel" style={{marginTop:14}}>
+                <Card style={{background:"rgba(255,255,255,.92)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+                    <h2 style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:800}}>About this data</h2>
+                    <button type="button" onClick={()=>setAboutDataOpen(false)} style={{background:"var(--card2)",border:"1px solid var(--border2)",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",color:"var(--gray)"}}>Close</button>
                   </div>
-                  <div style={{background:"rgba(255,255,255,.75)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:800}}>Startup autoload</div>
-                    <div style={{fontSize:12,color:"var(--gray2)",marginTop:4,lineHeight:1.7}}>{autoloadSummary}</div>
-                    {autoloadEntries.length>0 && <div style={{display:"grid",gap:8,marginTop:10}}>
-                      {autoloadEntries.map(entry=>(
-                        <div key={`${entry.kind}:${entry.name}`} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"8px 10px",border:"1px solid rgba(15,23,42,.08)",borderRadius:10,background:"rgba(248,250,252,.8)"}}>
-                          <div style={{minWidth:0}}>
-                            <div style={{fontSize:12,fontWeight:700,color:"var(--gray)",wordBreak:"break-word"}}>{entry.name}</div>
-                            <div style={{fontSize:11,color:"var(--gray2)",marginTop:3}}>{entry.message || entry.kind}</div>
-                          </div>
-                          <div style={{fontSize:11,fontWeight:700,color:autoloadStatusTone(entry.status),whiteSpace:"nowrap"}}>{autoloadStatusLabel(entry.status)}</div>
+                  <div className="cols-2" style={{display:"grid",gap:12,marginTop:10,fontSize:13,color:"var(--gray)",lineHeight:1.7}}>
+                    <div>
+                      <div><b style={{color:"var(--white)"}}>Source:</b> City of Albany {rollDescriptor || ""} Assessment Roll{meta?.source?` (${meta.source})`:""}.</div>
+                      {valuationDateLabel&&<div><b style={{color:"var(--white)"}}>Values as of:</b> {valuationDateLabel}{meta?.taxableStatusDate?`; ownership and exemptions as of ${formatIsoDate(meta.taxableStatusDate)}`:""}.</div>}
+                      <div><b style={{color:"var(--white)"}}>Assessment level:</b> {levelPercentLabel} of full value, the same for every property.</div>
+                      <div><b style={{color:"var(--white)"}}>Sales:</b> NYS Office of Real Property Tax Services sales records, used only in Check My Assessment.</div>
+                      {meta?.priorRoll?.assessmentYear&&<div><b style={{color:"var(--white)"}}>Last year:</b> {meta.priorRoll.assessmentYear} {meta.priorRoll.rollType||""} roll values (assessed {meta.priorRoll.uniformPercentOfValue?`at ${meta.priorRoll.uniformPercentOfValue}%`:""}) are kept for year-over-year comparisons.</div>}
+                      <div style={{marginTop:6}}>Newer assessment rolls may have different values. For your current official assessment, contact the <a href={ALBANY_ASSESSOR_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>City of Albany Assessor's Office</a>.</div>
+                    </div>
+                    <div>
+                      <div><b style={{color:"var(--white)"}}>Status:</b> {autoloadSummary}</div>
+                      <div><b style={{color:"var(--white)"}}>Map coverage:</b> {geomCoverage?`${geomCoverage.pct}% of properties are matched to a parcel boundary.`:(dataLoading?"Checking for map files.":"Parcel boundaries are not loaded.")}</div>
+                      {autoloadEntries.length>0&&<details style={{marginTop:6}}>
+                        <summary style={{cursor:"pointer",fontWeight:700,color:"var(--gray)"}}>File loading details</summary>
+                        <div style={{display:"grid",gap:6,marginTop:8}}>
+                          {autoloadEntries.map(entry=>(
+                            <div key={`${entry.kind}:${entry.name}`} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:12}}>
+                              <span style={{wordBreak:"break-word"}}>{entry.name}</span>
+                              <span style={{fontWeight:700,color:autoloadStatusTone(entry.status),whiteSpace:"nowrap"}}>{autoloadStatusLabel(entry.status)}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>}
+                      </details>}
+                      <div style={{marginTop:10}}>
+                        <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading} style={{background:"var(--card2)",color:"var(--gray)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer"}}>{uploading?"Reading file...":"Load a different data file"}</button>
+                        <div style={{fontSize:11,color:"var(--gray)",marginTop:4}}>For researchers: a roll CSV/TXT/JSON or map GeoJSON. Files stay in your browser.</div>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{background:"rgba(255,255,255,.75)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:800}}>Map coverage</div>
-                    <div style={{fontSize:12,color:"var(--gray2)",marginTop:4,lineHeight:1.7}}>{geomCoverage?`${geomCoverage.pct}% of loaded parcels are linked to parcel geometry.`:(uploading?"Checking for parcel geometry files.":"Parcel boundaries are not loaded yet. The map will fall back to point locations where coordinates exist.")}</div>
-                  </div>
-                  <div style={{background:"rgba(255,255,255,.75)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:800}}>Next step</div>
-                    <div style={{fontSize:12,color:"var(--gray2)",marginTop:4,lineHeight:1.7}}>{dataSource==="sample"?"Load the Albany roll and geometry files to unlock the full parcel inventory and parcel-boundary mapping.":"Start with Property Search or open the Application Map, then move into Ownership, Fairness, Analytics, and Data Quality as needed."}</div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </div>
-        </div>
+                </Card>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept=".json,.geojson,.txt,.csv" aria-label="Load a data file" style={{display:"none"}} onChange={handleFile}/>
 
-        <div style={{background:"rgba(255,255,255,.55)",borderBottom:"1px solid var(--border)",backdropFilter:"blur(8px)"}}>
+            {tab==="home"&&(
+              <div style={{marginTop:18}}>
+                <Card style={{background:"linear-gradient(135deg,rgba(255,255,255,.95) 0%,rgba(248,250,252,.95) 100%)",border:"1px solid rgba(37,99,235,.18)",boxShadow:"0 18px 40px rgba(15,23,42,.06)"}}>
+                  <h2 className="hero-title" style={{marginTop:0}}>Look up any Albany property</h2>
+                  <div style={{fontSize:15,color:"var(--gray)",lineHeight:1.7,marginTop:8,maxWidth:760}}>See a property's assessment, taxable value, and exemptions, compare it with similar homes, and find tax relief programs. No property tax experience needed.</div>
+                  <form role="search" aria-label="Find a property" onSubmit={e=>{e.preventDefault();submitHeroSearch();}} style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:16,maxWidth:760}}>
+                    <AddressAutocompleteInput id="hero-search" inputRef={heroInputRef} ariaLabel="Property address" parcels={parcels} value={heroQuery} onChange={value=>{setHeroQuery(value);setHeroMessage("");}} onSelectParcel={p=>{setHeroQuery(p.address);openPropertyDetails(p);}} onEnter={submitHeroSearch} placeholder="Enter an address, e.g. 470 Elk St" disabled={false} inputStyle={{width:"100%",background:"white",border:"1px solid var(--border2)",color:"var(--white)",borderRadius:10,padding:"13px 14px",fontSize:16,fontFamily:"var(--fb)",cursor:"text"}} wrapperStyle={{flex:"1 1 280px"}}/>
+                    <button type="submit" style={{background:"var(--blue)",color:"white",border:"none",borderRadius:10,padding:"12px 20px",fontSize:15,fontWeight:700,cursor:"pointer",minHeight:48}}>Find property</button>
+                  </form>
+                  {heroMessage&&<div role="status" style={{fontSize:13,color:"#7c2d12",marginTop:10}}>{heroMessage}</div>}
+                  {dataLoading&&<div role="status" style={{fontSize:13,color:"var(--gray)",marginTop:10}}>Loading Albany property records. You can start typing; suggestions will include every property when loading finishes.</div>}
+                  {dataFailed&&<div role="alert" style={{fontSize:13,color:"#7c2d12",lineHeight:1.7,marginTop:10,background:"rgba(245,158,11,.14)",border:"1px solid rgba(245,158,11,.3)",borderRadius:10,padding:"10px 12px"}}>The full Albany property list could not be loaded, so only a small sample is available. Try reloading the page. <button type="button" onClick={()=>setAboutDataOpen(true)} style={{background:"none",border:"none",padding:0,color:"var(--blue3)",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:13}}>See details</button></div>}
+                  <div style={{fontSize:12,color:"var(--gray)",marginTop:12}}>Data: {rollDescriptor?`City of Albany ${rollDescriptor} Assessment Roll`:"City of Albany assessment roll"}{valuationDateLabel?`, values as of ${valuationDateLabel}`:""}. Newer assessments may differ.</div>
+                </Card>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <nav aria-label="Main sections" style={{background:"rgba(255,255,255,.7)",borderBottom:"1px solid var(--border)",backdropFilter:"blur(8px)"}}>
           <div className="app-shell desktop-tab-rail">
             <div className="tab-rail">
-              {tabs.map(t=>(
-                <button key={t.id} onClick={()=>navigateToTab(t.id)} style={{
-                  background:tab===t.id?"var(--blue)":"transparent",
-                  color:tab===t.id?"white":"var(--gray2)",
-                  border:"none",
-                  borderRadius:"10px 10px 0 0",
-                  padding:"11px 16px",
-                  fontSize:12,
-                  fontWeight:700,
-                  cursor:"pointer",
-                  whiteSpace:"nowrap",
-                  borderBottom:tab===t.id?"2px solid var(--blue2)":"2px solid transparent"
-                }} className="tab-chip">{t.icon?<span style={{marginRight:6}}>{t.icon}</span>:null}{t.label}</button>
-              ))}
+              {primaryTabs.map(t=>renderTabButton(t,"primary"))}
+            </div>
+            <div className="tab-rail research-rail" role="group" aria-label="Research tools">
+              <span style={{fontSize:11,fontWeight:800,color:"var(--gray)",textTransform:"uppercase",letterSpacing:.8,alignSelf:"center",marginRight:4}}>Research tools:</span>
+              {researchTabs.map(t=>renderTabButton(t,"research"))}
             </div>
           </div>
           <div className="app-shell mobile-tab-shell" style={{paddingTop:10,paddingBottom:10}}>
-            <button type="button" className="mobile-tab-trigger" onClick={()=>setMobileNavOpen(v=>!v)} aria-expanded={mobileNavOpen}>
+            <button type="button" className="mobile-tab-trigger" onClick={()=>setMobileNavOpen(v=>!v)} aria-expanded={mobileNavOpen} aria-controls="mobile-nav-list">
               <span>{currentTabMeta?.label || "Menu"}</span>
-              <span style={{fontFamily:"var(--fm)",fontSize:12,color:"var(--gray2)"}}>{mobileNavOpen?"Close":"Menu"}</span>
+              <span style={{fontSize:13,color:"var(--blue3)"}}>{mobileNavOpen?"Close menu":"Menu"}</span>
             </button>
-            {mobileNavOpen&&<div className="mobile-tab-list">
-              {tabs.map(t=>(
-                <button key={t.id} type="button" onClick={()=>navigateToTab(t.id)} className="mobile-tab-item" style={{background:tab===t.id?"rgba(37,99,235,.12)":"rgba(255,255,255,.92)",borderColor:tab===t.id?"rgba(37,99,235,.28)":"var(--border)",color:tab===t.id?"var(--blue3)":"var(--gray)"}}>{t.label}</button>
+            {mobileNavOpen&&<div id="mobile-nav-list" className="mobile-tab-list">
+              {primaryTabs.map(t=>(
+                <button key={t.id} type="button" onClick={()=>navigateToTab(t.id, t.id==="browse"?{focusId:"browse-search"}:t.id==="assessment"?{focusId:"assessment-search"}:{})} aria-current={tab===t.id?"page":undefined} className="mobile-tab-item" style={{background:tab===t.id?"rgba(37,99,235,.12)":"rgba(255,255,255,.95)",borderColor:tab===t.id?"rgba(37,99,235,.35)":"var(--border)",color:tab===t.id?"var(--blue3)":"var(--gray)"}}>{t.label}</button>
+              ))}
+              <div style={{fontSize:11,fontWeight:800,color:"var(--gray)",textTransform:"uppercase",letterSpacing:.8,marginTop:6}}>Research tools</div>
+              {researchTabs.map(t=>(
+                <button key={t.id} type="button" onClick={()=>navigateToTab(t.id)} aria-current={tab===t.id?"page":undefined} className="mobile-tab-item" style={{background:tab===t.id?"rgba(37,99,235,.12)":"rgba(255,255,255,.95)",borderColor:tab===t.id?"rgba(37,99,235,.35)":"var(--border)",color:tab===t.id?"var(--blue3)":"var(--gray)"}}>{t.label}</button>
               ))}
             </div>}
           </div>
-        </div>
+        </nav>
 
-        <div ref={contentTopRef} className="app-shell" style={{paddingTop:22,paddingBottom:40}}>
+        <main id="main-content" ref={contentTopRef} tabIndex={-1} className="app-shell" style={{paddingTop:22,paddingBottom:40,outline:"none",scrollMarginTop:8}}>
           {renderTab()}
-        </div>
+        </main>
 
-
-        <div style={{borderTop:"1px solid var(--border)",padding:"14px 24px",textAlign:"center",color:"var(--gray3)",fontSize:11}}>
-          Albany Property Tax Explorer | 2025 Final Assessment Roll | City of Albany, NY | Unified property search, mapping, fairness, ownership, and analytics
-        </div>
-        </div>
+        <footer style={{borderTop:"1px solid var(--border)",padding:"16px 24px",textAlign:"center",color:"var(--gray)",fontSize:12,lineHeight:1.7}}>
+          Albany Property Tax Explorer uses public records: the City of Albany {rollDescriptor || ""} Assessment Roll and NYS Office of Real Property Tax Services sales data. It is not an official City of Albany website. Confirm anything important with the <a href={ALBANY_ASSESSOR_URL} target="_blank" rel="noopener noreferrer" style={{color:"var(--blue3)"}}>City of Albany Assessor's Office</a>.
+        </footer>
+      </div>
 
       {drillList&&<PropListModal data={drillList} onClose={()=>setDrillList(null)}/>}
       {showHomeSetup&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(4px)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowHomeSetup(false)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:28,maxWidth:520,width:"100%",boxShadow:"0 25px 60px rgba(0,0,0,.5)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
-              <span style={{fontSize:28}}>Home</span>
-              <div>
-                <div style={{fontFamily:"var(--fd)",fontWeight:800,fontSize:20}}>Set My Home</div>
-                <div style={{fontSize:12,color:"var(--gray)",marginTop:1}}>Save your address once - use it everywhere</div>
-              </div>
-            </div>
-            <div style={{fontSize:12,color:"var(--gray2)",lineHeight:1.8,marginBottom:18,paddingBottom:18,borderBottom:"1px solid var(--border)"}}>
-              Once saved, your home address will be ready in the property browser, tax-savings tools, comparison workflow, and guide views. It stays in this browser only and is never sent anywhere.
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,.6)",backdropFilter:"blur(4px)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowHomeSetup(false)} onKeyDown={e=>{if(e.key==="Escape") setShowHomeSetup(false);}}>
+          <div role="dialog" aria-modal="true" aria-labelledby="home-setup-title" onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:24,maxWidth:520,width:"100%",boxShadow:"0 25px 60px rgba(0,0,0,.35)"}}>
+            <h2 id="home-setup-title" style={{fontFamily:"var(--fd)",fontWeight:800,fontSize:20}}>Save my home</h2>
+            <div style={{fontSize:13,color:"var(--gray)",lineHeight:1.7,margin:"6px 0 16px",paddingBottom:14,borderBottom:"1px solid var(--border)"}}>
+              Saving your address lets Find a Property, Check My Assessment, and Lower My Taxes fill it in for you. It is stored only in this browser and is never sent anywhere.
             </div>
             {currentHome&&(
-              <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.25)",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{background:"rgba(21,128,61,.08)",border:"1px solid rgba(21,128,61,.25)",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
                 <div>
-                  <div style={{fontSize:11,fontWeight:600,color:"var(--green2)"}}>Currently Saved Home</div>
+                  <div style={{fontSize:12,fontWeight:700,color:"var(--green2)"}}>Currently saved</div>
                   <div style={{fontSize:14,fontWeight:600,marginTop:2}}>{currentHome.address}{currentHome.neighborhood?` | ${currentHome.neighborhood}`:""}</div>
-                  <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--gray)",marginTop:1}}>Parcel {currentHome.parcelId}</div>
                 </div>
-                <button onClick={()=>saveHome(null)} style={{background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.3)",color:"#f87171",borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>Clear</button>
+                <button type="button" onClick={()=>saveHome(null)} style={{background:"rgba(185,28,28,.1)",border:"1px solid rgba(185,28,28,.3)",color:"var(--red2)",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer",fontWeight:700,whiteSpace:"nowrap"}}>Forget</button>
               </div>
             )}
-            <div style={{marginBottom:10}}>
-              <div style={{fontSize:12,fontWeight:600,color:"var(--gray)",marginBottom:8}}>Search for your address in the dataset:</div>
-              <div style={{display:"flex",gap:10}}>
-                <AddressAutocompleteInput parcels={parcels} value={homeSetupAddr} onChange={setHomeSetupAddr} onSelectParcel={p=>setHomeSetupAddr(p.address)} onEnter={setupHomeFromAddr} placeholder="e.g. 77 Academy, 15 Quail..." inputStyle={{flex:1,width:"100%",background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--white)",borderRadius:9,padding:"10px 14px",fontSize:14,fontFamily:"var(--fb)",cursor:"text"}} wrapperStyle={{flex:1}} autoFocus/>
-                <button onClick={setupHomeFromAddr} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Save</button>
-              </div>
-              {homeSetupAddr&&!findBestAddressMatch(parcels, homeSetupAddr)&&(
-                <div style={{fontSize:11,color:"var(--red2)",marginTop:8}}>No matching address found. Try a partial address like "Academy" or "Willett". Make sure the full roll file is loaded if your address is not in the demo.</div>
-              )}
+            <label htmlFor="home-setup-search" style={{display:"block",fontSize:13,fontWeight:700,color:"var(--gray)",marginBottom:8}}>Your address</label>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              <AddressAutocompleteInput id="home-setup-search" ariaLabel="Your address" parcels={parcels} value={homeSetupAddr} onChange={setHomeSetupAddr} onSelectParcel={p=>setHomeSetupAddr(p.address)} onEnter={setupHomeFromAddr} placeholder="e.g. 470 Elk St" inputStyle={{flex:1,width:"100%",background:"white",border:"1px solid var(--border2)",color:"var(--white)",borderRadius:9,padding:"10px 14px",fontSize:15,fontFamily:"var(--fb)",cursor:"text"}} wrapperStyle={{flex:"1 1 220px"}} autoFocus/>
+              <button type="button" onClick={setupHomeFromAddr} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"10px 18px",fontSize:14,fontWeight:700,cursor:"pointer",minHeight:42}}>Save</button>
             </div>
-            <div style={{fontSize:11,color:"var(--gray3)",marginTop:14}}>Tip: you can also save your home from the property detail panel after opening any parcel.</div>
-            <button onClick={()=>setShowHomeSetup(false)} style={{marginTop:18,width:"100%",background:"var(--card2)",border:"1px solid var(--border)",color:"var(--gray)",borderRadius:9,padding:"9px",fontSize:13,cursor:"pointer"}}>Close</button>
+            {homeSetupAddr&&!findBestAddressMatch(parcels, homeSetupAddr)&&(
+              <div role="status" style={{fontSize:12,color:"var(--red2)",marginTop:8}}>No matching address found. Pick your address from the suggestions, or try just the street name.</div>
+            )}
+            <div style={{fontSize:12,color:"var(--gray)",marginTop:14}}>Tip: you can also save a home from its property details.</div>
+            <button type="button" onClick={()=>setShowHomeSetup(false)} style={{marginTop:16,width:"100%",background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--gray)",borderRadius:9,padding:"10px",fontSize:13,cursor:"pointer",minHeight:42}}>Close</button>
           </div>
         </div>
       )}

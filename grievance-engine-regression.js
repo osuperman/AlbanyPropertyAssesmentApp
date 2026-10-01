@@ -422,6 +422,45 @@ test("normalized metric summary always returns a numeric score", () => {
   assert.strictEqual(supportive.label, "supportive");
 });
 
+test("SCAR 25% limit only applies above $450,000 equalized value (RPTL 730)", () => {
+  const saleBacked = estimatedSubjectFmv => ({
+    marketSaleModel: { available: true, estimatedSubjectFmv, saleCount: 12 },
+    evidenceSufficiency: { canRecommendValue: true, status: "sale_backed_sufficient" },
+    equalizationRate: 0.96,
+  });
+  const modest = engine.computeSuggestedRequestedValue({
+    subject: makeParcel({ assessedValue: 118000, fullMarketValue: 122917 }),
+    ...saleBacked(77849),
+  });
+  assert.strictEqual(modest.value, 74735);
+  assert.strictEqual(modest.scarWarning, null);
+
+  const expensiveLargeCut = engine.computeSuggestedRequestedValue({
+    subject: makeParcel({ assessedValue: 600000, fullMarketValue: 625000 }),
+    ...saleBacked(400000),
+  });
+  assert.ok(typeof expensiveLargeCut.scarWarning === "string" && expensiveLargeCut.scarWarning.includes("$450,000"));
+
+  const expensiveSmallCut = engine.computeSuggestedRequestedValue({
+    subject: makeParcel({ assessedValue: 600000, fullMarketValue: 625000 }),
+    ...saleBacked(560000),
+  });
+  assert.strictEqual(expensiveSmallCut.scarWarning, null);
+});
+
+test("condo units are only compared with condo units", () => {
+  const house = makeParcel({ parcelId: "house", propClass: "210", propClassDesc: "1 Family Res" });
+  const otherHouse = makeParcel({ parcelId: "house2", propClass: "210", propClassDesc: "1 Family Res" });
+  const condo = makeParcel({ parcelId: "condo", propClass: "210", propClassDesc: "1 Family Res - CONDO" });
+  const otherCondo = makeParcel({ parcelId: "condo2", propClass: "210", propClassDesc: "1 Family Res - CONDO" });
+  assert.strictEqual(engine.classCompatibilityTier(house, otherHouse).tier, "tier_0_exact");
+  assert.strictEqual(engine.classCompatibilityTier(condo, otherCondo).tier, "tier_0_exact");
+  assert.strictEqual(engine.classCompatibilityTier(house, condo).tier, "tier_3_incompatible");
+  assert.strictEqual(engine.classCompatibilityTier(condo, house, { allowBroadClass: true }).tier, "tier_3_incompatible");
+  assert.strictEqual(engine.residentialFamilyForClass("210", "1 Family Res - CONDO"), "condo");
+  assert.strictEqual(engine.residentialFamilyForClass("210", "1 Family Res"), "single_family");
+});
+
 let passed = 0;
 for (const entry of tests) {
   entry.fn();

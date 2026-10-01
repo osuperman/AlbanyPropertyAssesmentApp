@@ -1,6 +1,6 @@
 # Albany Property Tax Explorer
 
-A civic property tax explorer for Albany residents built from the official 2025 final assessment roll and local parcel geometry.
+A civic property tax explorer for Albany residents built from the official 2026 final assessment roll (with 2025 values kept for comparison) and local parcel geometry.
 
 ## Current scope
 
@@ -13,6 +13,30 @@ Core supported use cases:
 - find exemptions
 - identify absentee ownership
 - explore parcel patterns on a map
+
+How the app is organized for residents:
+
+- **Home** starts with one address search. Data status and file loading details are behind "About this data".
+- **Find a Property** shows a plain-language summary: assessed value, taxable value, and the exemptions or STAR credit on record.
+- **Check My Assessment** compares a home with similar nearby homes and recent sales (the grievance workflow).
+- **Lower My Taxes** shows recorded exemptions and which programs an owner may apply for (STAR credit, senior, veterans, disability).
+- **Research tools** (Citywide Patterns, Ownership, Analytics, Change Signals, Data Quality) stay one click away.
+- Each section has its own URL (`?tab=...`), so Back, Refresh, and shared links work.
+
+Assessment level: Albany assesses every property at a uniform percent of value (91.17% on the 2026 roll, 96% on the 2025 roll), and the roll's full market value is assessed value divided by that percent. The assessed-to-full-value ratio is therefore the same for nearly every parcel and is shown only as a record check, never as a fairness verdict. The app reads the percent from the loaded roll; nothing assumes a fixed level.
+
+Roll parsing notes:
+
+- The roll PDF is converted to text with `extract-roll-pdf.py` (pypdf, layout mode) and parsed by `roll-layout-parser.js`. It handles condominium units, split lots, and utility and special franchise records with suffixed print keys (for example `76.26-1-53.-101`, `54.13-4-6.1`, `555.-3-441`, `601.000-9999-132.350-2001`), mixed homestead / non-homestead parcels (it uses the PARCEL TOTALS block), and values of $1 million or more, which the roll prints without the millions comma (`3133,035`).
+- Parser check: the parsed record count, land, assessed, and county / city / STAR-taxable totals match the roll's own GRAND TOTALS page exactly (2026: 29,511 parcels, $16,595,109,523 assessed; 2025: 29,565 parcels, $16,707,148,440 assessed). Each record's assessed value is also checked against its full market value (assessed = full value x uniform percent).
+- The roll has no property ZIP field; every ZIP on it is the owner's mailing ZIP. That is the property's ZIP only when the owner lives there. For all other records (landlords, including those who live elsewhere in Albany), the ZIP is estimated from the three nearest owner-occupied homes by roll grid coordinates (98% agreement in a holdout test), then from the nearest owner-occupied house number on the same street, then from owner-occupied units on the same lot. PO box and agency ZIPs (12201, 12220s-12260s) are never used as property ZIPs.
+- Condo units are only compared with other condo units in Check My Assessment.
+
+Year-over-year data:
+
+- `albany-roll.json` is a compact column file (`roll-compact-format.js`, about 9 MB instead of about 45 MB) that the app decodes on load. It keeps the 2025 assessed, land, and full value, the three taxable values, exemption codes, and the owner, class, and tax class where they changed, for every parcel on both rolls.
+- The app uses these for "Same as 2025" / change lines on property cards, a "Change from 2025" section on each property, Browse sorting by change, Compare rows, a "Change since 2025" view in Citywide Patterns, and context in Check My Assessment.
+- On the 2026 roll, 99.4% of residential properties kept the same assessed value. The City's uniform percent fell from 96% to 91.17%, so each unchanged assessment now stands for a full-value estimate about 5.3% higher. Basic STAR exemptions on the roll fell from 4,080 to 2,745; property pages point owners to the state STAR credit when an exemption disappeared.
 
 Conditional or future features:
 
@@ -30,8 +54,14 @@ Use the local scripts from the repo root:
 - `npm run build` - rebuilds `bundle.js` from `albany-full-dashboard.jsx`
 - `npm run build:site` - stages a clean `site/` folder for GitHub Pages
 - `npm run check:publish` - rebuilds the app and stages the Pages artifact locally
-- `npm run refresh:data` - reconverts the Albany roll text file and reapplies county and geometry enrichment
-- `npm run prepare:data` - reapplies county and geometry enrichment to the existing `albany-roll.json`
+- `npm run extract:roll-pdf` - extracts `Albany 2026 Final Roll.pdf` to `Albany 2026 Final Roll.txt` (needs Python with `pypdf`; about 10 minutes)
+- `npm run convert:roll` - parses the roll text into `albany-roll.full.json`
+- `npm run convert:roll-prior` - parses and enriches the prior roll (`Albany 2025 Final Roll.txt`) into `albany-roll-2025.full.json`
+- `npm run prepare:data` - applies county, geometry, neighborhood, and inventory enrichment to `albany-roll.full.json`
+- `npm run build:roll` - writes the compact `albany-roll.json` (current roll plus prior-year columns) and verifies it round-trips
+- `npm run refresh:data` - runs convert, prepare, and build:roll in order
+
+The `*.full.json` files are intermediate and not committed (the GitHub file limit is 50 MB).
 
 Private Google Maps keys:
 
@@ -41,8 +71,8 @@ Private Google Maps keys:
 
 The current app auto-loads these local files when they are present in the repo root:
 
-- `albany-roll.json`
-- `Albany 2025 Final Roll conv.txt`
+- `albany-roll.json` (compact format; older full-format files still load)
+- `Albany 2025 Final Roll conv.txt` (fallback only, if `albany-roll.json` is missing)
 - `Albany_County_Parcels_2024_-1728787929616575091.csv`
 - `albany_parcels.json`
 - `albany-parcel-geometry.json`

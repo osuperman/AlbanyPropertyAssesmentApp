@@ -21,8 +21,10 @@ These files exist in the repo and are enough for a meaningful first release:
 
 | File | Role | Current value |
 | --- | --- | --- |
-| `albany-roll.json` | Parsed Albany assessment roll | Primary parcel fact table for the app |
-| `Albany 2025 Final Roll conv.txt` | Original 2025 final assessment roll text export | Provenance and re-parse source |
+| `albany-roll.json` | Parsed 2026 final roll with 2025 prior-year columns, compact column format | Primary parcel fact table for the app |
+| `Albany 2026 Final Roll.pdf` / `.txt` | Official 2026 final roll and its pypdf layout-text extract (not committed) | Provenance and re-parse source |
+| `Albany 2025 Final Roll.pdf` / `.txt` | Official 2025 final roll and its layout-text extract (not committed) | Prior-year source |
+| `Albany 2025 Final Roll conv.txt` | Older tab-separated 2025 text export | Legacy fallback only |
 | `albany-parcel-geometry.json` | Parcel geometry keyed by parcel id | Primary map geometry |
 | `Albany_County_Parcels_2024_-1728787929616575091.csv` | County parcel reference table | SWIS, print key, PIN/SBL, land use context |
 | `albany_street_centerlines.geojson` | Streets layer | Map orientation only |
@@ -232,6 +234,34 @@ The current `albany-roll.json` is already useful, but it needs a slightly richer
   }
 }
 ```
+
+### Storage format and prior-year data
+
+The canonical schema above describes the logical record. On disk, `albany-roll.json` uses the compact column format in `roll-compact-format.js` (`"format": "albany-roll-compact"`): top-level metadata as above, a `columns` list, dictionaries for repeated strings (`dicts`), and one array per parcel (`rows`). `decodeCompactRollPayload` rebuilds the flat parcel objects the app uses. This keeps the file near 9 MB instead of about 45 MB.
+
+The top level also carries `priorRoll` (year, roll type, dates, uniform percent, parcel counts), and each parcel found on the prior roll gets a `prior` object:
+
+```json
+{
+  "assessmentYear": 2025,
+  "uniformPercentOfValue": 96,
+  "assessedValue": 118000,
+  "landValue": 23600,
+  "fullMarketValue": 122917,
+  "countyTaxable": 118000,
+  "cityTaxable": 118000,
+  "schoolTaxable": 118000,
+  "exemptionCodes": [],
+  "owner1": "RIDGE RENTALS LLC",
+  "ownerChanged": false,
+  "propClass": "210",
+  "parcelType": "HOMESTEAD"
+}
+```
+
+Parcels are matched across years by parcel ID. New, split, or renumbered parcels have no `prior` object. Compare assessed values across years, not full-market values: the uniform percent changes each year.
+
+Property ZIP (`zip`) is estimated, because the roll only carries the owner's mailing ZIP; see the README "Roll parsing notes" for the method.
 
 ## Join strategy
 

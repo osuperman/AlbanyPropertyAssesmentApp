@@ -2,13 +2,15 @@
 
 const engine = require("./grievance-engine.js");
 const rollData = require("./albany-roll.json");
+const { isCompactRollPayload, decodeCompactRollPayload } = require("./roll-compact-format.js");
 const salesData = require("./albany-sales.json");
 
 const DEFAULT_SAMPLE_SIZE = 500;
 const DEFAULT_EXAMPLE_LIMIT = 10;
 const CURRENT_DATE = new Date("2026-03-16T00:00:00Z");
-const ROLL_EQUALIZATION_RATE = Number.isFinite(Number(rollData?.meta?.uniformPercentOfValue))
-  ? Number(rollData.meta.uniformPercentOfValue) / 100
+const ROLL_UNIFORM_PERCENT = rollData?.meta?.uniformPercentOfValue ?? rollData?.uniformPercentOfValue;
+const ROLL_EQUALIZATION_RATE = Number.isFinite(Number(ROLL_UNIFORM_PERCENT))
+  ? Number(ROLL_UNIFORM_PERCENT) / 100
   : null;
 
 function parseArgs(argv) {
@@ -150,7 +152,7 @@ function summarizeCandidateForOutput(candidate) {
 }
 
 function createAuditContext() {
-  const parcels = rollData?.parcels || [];
+  const parcels = isCompactRollPayload(rollData) ? decodeCompactRollPayload(rollData) : (rollData?.parcels || []);
   const residential = parcels.filter(parcel => engine.isResidentialPropClass(parcel?.propClass));
   const profileMap = new Map(residential.map(parcel => [
     engine.normalizeParcelId(parcel?.parcelIdNorm || parcel?.parcelId || parcel?.printKey || parcel?.pinSbl),

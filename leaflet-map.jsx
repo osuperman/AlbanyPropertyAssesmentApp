@@ -166,10 +166,10 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
   const residentPresetMap = { fairness: "equity", tax_relief: "exemption", ownership: "absentee", market: "fmv" };
   const LEGEND = {
     fmv: [[">$500k", "#f59e0b"], ["$300-500k", "#3b82f6"], ["$150-300k", "#0d9488"], ["<$150k", "#64748b"]],
-    equity: [["Under (<80%)", "#f59e0b"], ["Fair (80-120%)", "#22c55e"], ["Over (>120%)", "#dc2626"], ["No data", "#64748b"]],
+    equity: [["Standard city-wide level", FC.fair], ["Below city-wide level (record check)", FC.under], ["Above city-wide level (record check)", FC.over], ["No data", FC.neutral]],
     class: [["210 Single Family", "#3b82f6"], ["220 Two Family", "#0d9488"], ["230 Three Family", "#06b6d4"], ["411 Apartment", "#a78bfa"], ["400 Commercial", "#f97316"], ["300/330 Vacant", "#64748b"]],
-    exemption: [["Has Exemption", "#f59e0b"], ["No Exemption", "#475569"]],
-    absentee: [["Owner-Occupied", "#22c55e"], ["Absentee Owner", "#f97316"]],
+    exemption: [["Exemption or STAR credit recorded", "#f59e0b"], ["None recorded", "#475569"]],
+    absentee: [["No sign owner lives elsewhere", "#22c55e"], ["Owner likely lives elsewhere", "#f97316"]],
   };
   const SI = { background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "7px 11px", fontSize: 12, cursor: "pointer" };
 
@@ -723,22 +723,22 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       associationVisibleCount ? "Association boundaries" : null,
     ].filter(Boolean);
     if (currentZoom < BOUNDARY_RENDER_MIN_ZOOM) {
-      setMapStatus(`Zoom to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries, then z${POINT_RENDER_MIN_ZOOM}+ for parcel locations.`);
+      setMapStatus("Zoom in to see neighborhood and property boundaries. Zoom in further to see individual properties.");
     } else if (currentZoom < POINT_RENDER_MIN_ZOOM) {
-      setMapStatus(`Neighborhood and parcel boundaries are active. Zoom to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`);
+      setMapStatus("Boundaries are showing. Zoom in further to see individual properties.");
     } else if (polygonCapped || pointCapped) {
       const cappedKinds = [polygonCapped ? "boundaries" : null, pointCapped ? "markers" : null].filter(Boolean).join(" and ");
-      setMapStatus(`This view is limiting ${cappedKinds} for performance. Zoom in for full parcel detail.`);
+      setMapStatus("Some properties are hidden at this zoom level to keep the map fast. Zoom in to see all of them.");
     } else if (!hasParcelGeometry) {
       setMapStatus(overlayNames.length
         ? `Only trusted point locations are shown for parcels. ${overlayNames.join(" and ")} remain active.`
         : "Parcel boundary geometry is not active yet. Only trusted point locations are shown.");
     } else if (effectiveShowPropertyOverlay && currentZoom < POLYGON_RENDER_MIN_ZOOM) {
-      setMapStatus(`Zoom to z${POLYGON_RENDER_MIN_ZOOM}+ to load parcel boundaries.${overlayNames.length ? ` ${overlayNames.join(" and ")} remain active.` : ""}`);
+      setMapStatus("Zoom in to see property boundaries.");
     } else {
       setMapStatus(overlayNames.length
         ? `Parcel inspection is active with ${overlayNames.join(" and ")}.`
-        : "Parcel boundaries are active on the Leaflet map.");
+        : "Property boundaries are showing. Click a property to see its details.");
     }
   }, [advanced, associationFeatures, colorForParcel, effectiveShowParcelPoints, effectiveShowPropertyOverlay, focusParcel, geometryToLatLng, hasAssociationOverlayData, hasNeighborhoodOverlayData, hasParcelGeometry, hlSet, neighborhoodFeatures, residentMode, selectedItem, selectedParcelId, showAssociationOverlay, showNeighborhoodOverlay, visibleItems]);
 
@@ -775,8 +775,8 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
       if (renderStats.pointCapped || renderStats.polygonCapped) return "This map view is trimmed for speed. Zoom in for complete parcel detail.";
       return "Only your parcel and the grievance comps currently included in the package are shown here.";
     }
-    if (zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM) return `Zoom in to z${BOUNDARY_RENDER_MIN_ZOOM}+ to load neighborhood and parcel boundaries.`;
-    if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return `Parcel boundaries are active. Zoom in to z${POINT_RENDER_MIN_ZOOM}+ to load parcel locations.`;
+    if (zoomDisplay < BOUNDARY_RENDER_MIN_ZOOM) return "Zoom in, or search an address above, to see property boundaries.";
+    if (zoomDisplay < POINT_RENDER_MIN_ZOOM) return "Zoom in further to see individual properties.";
     if (renderStats.polygonCapped || renderStats.pointCapped) return "This view is trimmed for speed. Zoom in for complete parcel detail.";
     if (!hasParcelGeometry) return "Point locations are active because parcel boundary geometry is not loaded.";
     return null;
@@ -786,16 +786,16 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
     <div className="fi">
       {!compactMode ? (
         <>
-          <SectionTitle>Application Map</SectionTitle>
+          <SectionTitle>Map</SectionTitle>
           <Sub>{hasParcelGeometry
-            ? "Leaflet parcel map with Albany parcel boundaries, ownership overlays, and thematic layers in one unified mapping workspace."
-            : "Leaflet parcel map is active, but parcel boundary geometry is still missing so the map is using trusted point fallback where available."}</Sub>
+            ? "Search an address or click a property to see its details. Use the buttons below to color properties by value, type, exemptions, or likely absentee ownership."
+            : "Property boundaries are still loading, so properties are shown as points for now."}</Sub>
           <Card style={{ marginBottom: 14 }}>
             <div style={{ display: "grid", gap: 14 }}>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: "var(--gray)", fontWeight: 700 }}>{advanced ? "Color by" : "Resident view"}</span>
                 {advanced
-                  ? [["fmv", "Market value"], ["equity", "Equity"], ["class", "Class"], ["exemption", "Exemptions"], ["absentee", "Absentee"]].map(([k, l]) => (
+                  ? [["fmv", "Value"], ["equity", "Record check"], ["class", "Property type"], ["exemption", "Exemptions"], ["absentee", "Owner lives elsewhere"]].map(([k, l]) => (
                       <button key={k} onClick={() => setColorBy(k)} style={{ background: colorBy === k ? "var(--teal)" : "var(--card2)", border: `1px solid ${colorBy === k ? "var(--teal)" : "var(--border)"}`, color: colorBy === k ? "white" : "var(--gray)", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{l}</button>
                     ))
                   : [["fairness", "Assessment Fairness"], ["tax_relief", "Tax Relief"], ["ownership", "Ownership"], ["market", "Market Value"]].map(([k, l]) => (
@@ -817,17 +817,17 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" }}>
-                  <button onClick={() => stepZoom(1)} style={{ ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>+</button>
-                  <button onClick={() => stepZoom(-1)} style={{ ...SI, width: 34, height: 34, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>-</button>
+                  <button onClick={() => stepZoom(1)} aria-label="Zoom in" style={{ ...SI, width: 40, height: 40, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>+</button>
+                  <button onClick={() => stepZoom(-1)} aria-label="Zoom out" style={{ ...SI, width: 40, height: 40, padding: 0, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>-</button>
                   <button onClick={resetView} style={{ ...SI, fontSize: 11, padding: "7px 11px" }}>Reset view</button>
-                  <span style={{ fontSize: 11, color: "var(--gray2)", fontFamily: "var(--fm)", minWidth: 54, textAlign: "right" }}>{zoomDisplay ? `z${zoomDisplay}` : "..."}</span>
+                  
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <AddressAutocompleteInput parcels={parcels} value={addrSearch} onChange={setAddrSearch} onSelectParcel={p => { setAddrSearch(p.address); focusParcel(p.parcelId, 18); }} onEnter={() => { if (searchMatches[0]) focusParcel(searchMatches[0].parcelId, 18); }} placeholder="Search address, owner, or parcel ID" inputStyle={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }} wrapperStyle={{ flex: 1, minWidth: 220 }} />
+                <AddressAutocompleteInput id="map-search" ariaLabel="Search the map by address, owner, or parcel ID" parcels={parcels} value={addrSearch} onChange={setAddrSearch} onSelectParcel={p => { setAddrSearch(p.address); focusParcel(p.parcelId, 18); }} onEnter={() => { if (searchMatches[0]) focusParcel(searchMatches[0].parcelId, 18); }} placeholder="Search address, owner, or parcel ID" inputStyle={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--white)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none" }} wrapperStyle={{ flex: 1, minWidth: 220 }} />
                 {addrSearch && <button onClick={() => setAddrSearch("")} style={{ ...SI, fontSize: 11, padding: "7px 11px", background: "rgba(220,38,38,.15)", borderColor: "rgba(220,38,38,.30)" }}>Clear</button>}
                 {searchMatches.length > 1 && <button onClick={fitSearchMatches} style={{ ...SI, fontSize: 11, padding: "7px 11px" }}>Fit matches</button>}
-                <span style={{ fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" }}>{hlSet ? `${hlSet.size.toLocaleString()} matches` : "No active search"}</span>
+                <span style={{ fontSize: 12, color: hlSet ? "var(--amber2)" : "var(--gray3)", whiteSpace: "nowrap" }}>{hlSet ? `${hlSet.size.toLocaleString()} matches` : ""}</span>
                 <span style={{ fontSize: 12, color: "var(--gray2)" }}>{mapStatus}</span>
               </div>
             </div>
@@ -853,8 +853,8 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
             <div>
-              <div style={{ fontSize: 11, color: compactMode ? "var(--blue3)" : "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{compactMode ? "Grievance comparable map" : "Application map workspace"}</div>
-              <div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4 }}>{compactMode ? "Only the subject parcel and the currently included grievance comps are shown." : (hasParcelGeometry ? `Neighborhood and parcel boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+, and parcel locations load at z${POINT_RENDER_MIN_ZOOM}+.` : `Neighborhood boundaries load at z${BOUNDARY_RENDER_MIN_ZOOM}+ and trusted point locations load at z${POINT_RENDER_MIN_ZOOM}+ until the parcel boundary file is active.`)}</div>
+              <div style={{ fontSize: 11, color: compactMode ? "var(--blue3)" : "var(--teal2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{compactMode ? "Grievance comparable map" : "Map"}</div>
+              <div style={{ fontSize: 12, color: "var(--gray2)", marginTop: 4 }}>{compactMode ? "Only the subject parcel and the currently included grievance comps are shown." : (hasParcelGeometry ? "Zoom in to see property boundaries; zoom in further to see individual properties." : "Property boundaries are still loading, so properties show as points for now.")}</div>
             </div>
             <div style={{ fontSize: 12, color: "var(--gray2)" }}>{selectedParcel ? `Selected parcel ${selectedParcel.parcelId}` : (compactMode ? `${Math.max(renderStats.visible - compactCompareCount, 0)} subject + ${compactCompareCount} comp${compactCompareCount === 1 ? "" : "s"}` : `${renderStats.visible.toLocaleString()} visible parcels`)}</div>
           </div>
@@ -862,7 +862,7 @@ export const LeafletMapView = ({ parcels, parcelGeometry, neighborhoodBoundaries
             {!mapRuntimeReady ? (
               <div style={{ height: "min(620px, 70vh)", display: "grid", placeItems: "center", background: "#dbe4ee", padding: 24 }}>
                 <div style={{ maxWidth: 520, textAlign: "center" }}>
-                  <div style={{ fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 }}>Leaflet is not ready</div>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 28, fontWeight: 800 }}>The map could not load</div>
                   <div style={{ fontSize: 14, color: "var(--gray2)", lineHeight: 1.7, marginTop: 10 }}>The base mapping assets did not load. Check internet access for the browser session, then refresh.</div>
                 </div>
               </div>

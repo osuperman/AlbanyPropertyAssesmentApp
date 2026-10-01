@@ -5,15 +5,18 @@
   "main": "convert-roll.js",
   "scripts": {
     "build": "node build-app.js",
-    "convert:roll": "node convert-roll.js \"Albany 2025 Final Roll conv.txt\" albany-roll.json",
-    "prepare:data": "node prepare-albany-data.js albany-roll.json Albany_County_Parcels_2024_-1728787929616575091.csv albany-parcel-geometry.json albany-roll.json",
-    "refresh:data": "npm run convert:roll && npm run prepare:inventory && npm run prepare:data",
+    "convert:roll": "node convert-roll.js \"Albany 2026 Final Roll.txt\" albany-roll.full.json",
+    "prepare:data": "node prepare-albany-data.js albany-roll.full.json Albany_County_Parcels_2024_-1728787929616575091.csv albany-parcel-geometry.json albany-roll.full.json",
+    "refresh:data": "npm run convert:roll && npm run prepare:data && npm run build:roll",
     "serve": "node serve.js",
     "start": "node serve.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:site": "node stage-pages.js",
     "check:publish": "npm run build && npm run build:site",
-    "prepare:inventory": "node normalize-residential-inventory.js Residential_Inventory.csv residential-inventory-2025.csv residential-inventory-2025.json"
+    "prepare:inventory": "node normalize-residential-inventory.js Residential_Inventory.csv residential-inventory-2025.csv residential-inventory-2025.json",
+    "extract:roll-pdf": "python extract-roll-pdf.py \"Albany 2026 Final Roll.pdf\" \"Albany 2026 Final Roll.txt\"",
+    "convert:roll-prior": "node convert-roll.js \"Albany 2025 Final Roll.txt\" albany-roll-2025.full.json && node prepare-albany-data.js albany-roll-2025.full.json Albany_County_Parcels_2024_-1728787929616575091.csv albany-parcel-geometry.json albany-roll-2025.full.json",
+    "build:roll": "node build-compact-roll.js albany-roll.full.json --prior albany-roll-2025.full.json --out albany-roll.json"
   },
   "repository": {
     "type": "git",

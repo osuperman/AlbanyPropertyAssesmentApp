@@ -80,6 +80,12 @@ The engine prefers:
 - close residential class matches first
 - broader residential family matches second
 
+Condo units (property class description containing `CONDO`, e.g. `210 1 Family Res - CONDO`) are a separate residential family:
+
+- a condo unit is compatible only with other condo units, and a non-condo home only with non-condo homes, even when the class codes match
+- `residentialFamilyForClass` returns `condo` for residential condo classes, so the sale-backed market pool (section 19.1, "same residential family") also keeps condo and non-condo sales apart
+- the dashboard's neighborhood benchmark uses the same rule
+
 ## 4. Location Similarity Score
 
 Location similarity favors:
@@ -369,7 +375,12 @@ Do not display legacy `Method A` / `Method B` labels.
 
 ### 15.4 SCAR Cap Check
 
-If the recommended reduction exceeds about `25%`, show a SCAR warning. The warning does not by itself invalidate the requested value.
+Follow RPTL 730(1)(c): small claims assessment review (SCAR) is available when the property's equalized value is `$450,000` or less, or, above that, when the total requested reduction is `25%` or less of the assessed value.
+
+- Equalized value = assessed value / equalization rate (the loaded uniform percent of value); fall back to the roll full market value when no rate is loaded.
+- Show a SCAR warning only when the equalized value is above `$450,000` **and** the requested reduction is more than `25%`.
+- The warning does not by itself invalidate the requested value.
+- SCAR is also limited to owner-occupied one-, two-, and three-family homes. The engine does not know occupancy; the filing step explains the rule and adds a note when the owner on record looks like a business or is flagged as likely living elsewhere.
 
 ## 16. Overvaluation Flag (Independent Check)
 
@@ -607,6 +618,29 @@ Non-arm's-length subject sales are shown for context only.
 ## 22. Shared Snapshot Mode
 
 Shared snapshot mode may preload a fixed comp set, but the grievance workflow still applies the current package, evidence-sufficiency, market-evidence, and claim-guidance rules to that data.
+
+Consistency rules (a shared link must show what the sender saw):
+
+- Snapshots are scored only after every autoload file, including sales, has finished loading. Until then the workflow shows a loading message instead of a recommendation.
+- When the shared comp IDs are exactly the set a fresh lookup of the subject would show, the fresh result is reused (same visible list, package, and recommendation).
+- Otherwise the shared comps stay visible exactly as shared, are scored with the same sales data and options as a fresh lookup, and only comps that pass the normal package gates (quality `>= 50`, confidence `>= 60`, support `> 0`) can enter the default package.
+- If sales records finish loading after a lookup, the comparison is rebuilt for the same subject and comp set.
+- New share links use `tab=assessment&tool=neighbor`; older `tab=taxtools&tool=neighbor` links still open the comparison.
+
+## 22.1 Resident-Facing Labels
+
+The dashboard shows the recommendation codes with these labels:
+
+| Code | Label |
+| --- | --- |
+| `recommend_filing` | Filing looks supportable |
+| `recommend_filing_with_caution` | Consider filing, with caution |
+| `review_manually` | Review the evidence yourself |
+| `do_not_recommend` | This comparison does not support filing |
+
+When downgrade rules lower the case strength, the summary lists those reasons next to the score so the score and the suggested next step do not appear to contradict each other.
+
+The workflow order is: 1 Find your property, 2 Summary, 3 Evidence, 4 Comparable homes, 5 Share or print, 6 How to file, then the reference sections (How this works, Key terms). Grievance Day text is computed from today's date: it names the next expected Grievance Day (fourth Tuesday in May), notes when the current year's period has passed, and warns when the loaded roll is older than the grievance year.
 
 ## 23. Broadened Search List
 

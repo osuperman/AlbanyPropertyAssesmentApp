@@ -35,3 +35,7 @@ site/
 __dump_live.html
 __live_index.html
 grievance-settings.local.json
+
+# Full (uncompressed) roll payloads built on the way to the compact albany-roll.json
+albany-roll.full.json
+albany-roll-*.full.json

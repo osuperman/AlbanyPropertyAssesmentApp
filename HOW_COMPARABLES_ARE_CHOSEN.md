@@ -39,7 +39,7 @@ The visible list is still a physical-match engine.
 The app first removes clearly bad candidates, such as:
 
 - The subject parcel itself
-- Incompatible residential classes
+- Incompatible residential classes (condo units are only compared with other condo units, and houses only with houses, even though both can use class 210)
 - Parcels with missing core value data
 - Parcels that are too far away for the main comp engine
 - Homes that are much too different in living area, year built, beds, or baths
@@ -158,6 +158,8 @@ If sale-backed evidence is sufficient, the app:
 
 If sale-backed evidence is not sufficient, the app suppresses the requested assessed value and tells the user to review manually.
 
+The small claims (SCAR) warning follows state law: it appears only when the home's equalized value (assessed value divided by the uniform percent of value) is above $450,000 **and** the requested reduction is more than 25%. Below $450,000 there is no percentage cap. SCAR is also only for owner-occupied one- to three-family homes, which the filing step explains.
+
 ## 10. The ratio panel is now a verified sale-ratio study
 
 The old neighborhood equity percentile panel has been replaced for grievance purposes.
@@ -235,11 +237,17 @@ What changed is that the app is now much stricter about when it is willing to tu
 
 Neighborhood benchmark numbers may still appear, but only as secondary context. They are not supposed to outrank stronger direct sale-backed evidence.
 
-## 14. Admin explainability
+## 13a. Shared links show the same result
 
-The app now also exposes an internal explainability view for the visible comparable list.
+A shared comparison link opens the same property and the same comparable homes. The app waits until all property and sales data has loaded before it scores the comparison, and when the shared homes are the same ones a fresh lookup would find, it shows exactly the fresh result. If the shared list differs (for example because the data changed), the shared homes stay visible, but only those that pass the normal package checks can be part of the default package.
 
-That admin-facing view shows, for each visible comp:
+The recommendation labels shown to residents are: "Filing looks supportable", "Consider filing, with caution", "Review the evidence yourself", and "This comparison does not support filing". When a downgrade rule makes the suggestion more cautious than the score, the summary lists the reason.
+
+## 14. Researcher scoring view
+
+The app also exposes a scoring view for the visible comparable list. It is collapsed under "For researchers" so residents see the summary first.
+
+That view shows, for each visible comp:
 
 - why it made the visible list
 - whether it passed the default package gates

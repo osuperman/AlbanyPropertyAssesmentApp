@@ -179,7 +179,14 @@ function residentialUnitCountForClass(code, desc = "") {
   return null;
 }
 
+// Condo units share class codes with detached homes (e.g. "210 1 Family Res - CONDO") but are a different
+// kind of property, so they are only compared with, and only draw sale evidence from, other condo units.
+function isCondoUnit(parcel) {
+  return /\bCONDO\b/i.test(String(parcel?.propClassDesc || ""));
+}
+
 function residentialFamilyForClass(code, desc = "") {
+  if (/\bCONDO\b/i.test(String(desc || "")) && isResidentialPropClass(code)) return "condo";
   const unitCount = residentialUnitCountForClass(code, desc);
   if (unitCount === 1) return "single_family";
   if (unitCount === 2) return "two_family";
@@ -193,6 +200,7 @@ function classCompatibilityTier(subject, comp, { allowBroadClass = false } = {})
   const subjectCode = String(subject?.propClass || "").trim();
   const compCode = String(comp?.propClass || "").trim();
   if (!subjectCode || !compCode) return { tier: "tier_3_incompatible", score: 0, label: "Class unavailable" };
+  if (isCondoUnit(subject) !== isCondoUnit(comp)) return { tier: "tier_3_incompatible", score: 0, label: "Condo units are only compared with condo units" };
   if (subjectCode === compCode) return { tier: "tier_0_exact", score: 18, label: "Exact class match" };
   if (!isResidentialPropClass(subjectCode) || !isResidentialPropClass(compCode)) return { tier: "tier_3_incompatible", score: 0, label: "Incompatible class" };
   if (RESIDENTIAL_CLASS_CLOSE_PAIRS.has(`${subjectCode}|${compCode}`)) {
@@ -1916,6 +1924,21 @@ function computeNeighborhoodEquityModel({ subject, subjectProfile, parcels = [],
   };
 }
 
+// RPTL 730(1)(c): small claims assessment review (SCAR) is available when the property's equalized value is
+// $450,000 or less, or, above that, when the total reduction requested is 25% or less of the assessed value.
+// SCAR is also limited to owner-occupied one-, two-, or three-family homes; the dashboard explains that part.
+const SCAR_EQUALIZED_VALUE_LIMIT = 450000;
+function buildScarWarning(subject, requestedValue, equalizationRate) {
+  const subjectAv = asNumber(subject?.assessedValue);
+  if (!Number.isFinite(subjectAv) || subjectAv <= 0 || !Number.isFinite(requestedValue)) return null;
+  const reductionPct = (subjectAv - requestedValue) / subjectAv;
+  if (reductionPct <= 0.25) return null;
+  const rate = asNumber(equalizationRate);
+  const equalizedValue = Number.isFinite(rate) && rate > 0 ? subjectAv / rate : asNumber(subject?.fullMarketValue);
+  if (!Number.isFinite(equalizedValue) || equalizedValue <= SCAR_EQUALIZED_VALUE_LIMIT) return null;
+  return `Small claims (SCAR) limit: because this property's equalized value is above $450,000, small claims review is only available if the requested reduction is 25% or less of the assessed value. This request is a ${(reductionPct * 100).toFixed(1)}% reduction.`;
+}
+
 function computeSuggestedRequestedValue({ subject, selectedComps = [], marketSaleModel = null, equalizationRate = null, evidenceSufficiency = null }) {
   if (!marketSaleModel && !evidenceSufficiency) {
     const eligible = (Array.isArray(selectedComps) ? selectedComps : []).filter(comp =>
@@ -1999,13 +2022,7 @@ function computeSuggestedRequestedValue({ subject, selectedComps = [], marketSal
         scarWarning: null,
       };
     }
-    let scarWarning = null;
-    if (Number.isFinite(subjectAv) && Number.isFinite(value) && subjectAv > 0) {
-      const reductionPct = (subjectAv - value) / subjectAv;
-      if (reductionPct > 0.25) {
-        scarWarning = `SCAR limit exceeded: this reduction (${(reductionPct * 100).toFixed(1)}%) exceeds the 25% maximum typically allowed in SCAR proceedings.`;
-      }
-    }
+    const scarWarning = buildScarWarning(subject, value, equalizationRate);
     return {
       value: Number.isFinite(value) ? Math.round(value) : null,
       method,
@@ -2044,13 +2061,7 @@ function computeSuggestedRequestedValue({ subject, selectedComps = [], marketSal
       scarWarning: null,
     };
   }
-  let scarWarning = null;
-  if (Number.isFinite(subjectAv) && Number.isFinite(value) && subjectAv > 0) {
-    const reductionPct = (subjectAv - value) / subjectAv;
-    if (reductionPct > 0.25) {
-      scarWarning = `SCAR limit exceeded: this reduction (${(reductionPct * 100).toFixed(1)}%) exceeds the 25% maximum typically allowed in SCAR proceedings.`;
-    }
-  }
+  const scarWarning = buildScarWarning(subject, value, equalizationRate);
   return {
     value,
     method: "uniform_percent_of_value",
