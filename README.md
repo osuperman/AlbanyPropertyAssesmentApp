@@ -22,6 +22,12 @@ How the app is organized for residents:
 - **Lower My Taxes** shows recorded exemptions and which programs an owner may apply for (STAR credit, senior, veterans, disability).
 - **Research tools** (Citywide Patterns, Ownership, Analytics, Change Signals, Data Quality) stay one click away.
 - Each section has its own URL (`?tab=...`), so Back, Refresh, and shared links work.
+- Map links always say which map they open: "App map" / "Show on app map" stays in this site; "Google Maps ↗" and "Street View ↗" open Google in a new tab (or the Google Maps app on phones). The links use Google's Maps URLs (`google-maps-links.js`), which need no API key. Street View links start on the property's own street and face the parcel, using the street centerlines and parcel boundaries; Google's viewer opens black if a Street View link has no heading.
+- The app map opens colored by assessed value. Other views: value per square foot compared with the neighborhood (homes), change since the prior roll, exemptions and STAR, property type, and owner likely lives elsewhere. The assessed-to-full-value ratio is not a map view because nearly every parcel shares the same uniform percent.
+- "Aerial photo" swaps the street map for New York State's 2024 orthoimagery (NYS ITS Geospatial Services WMS). The statewide "Latest" composite is too slow for map tiles (20-30 seconds each), and the 2022, 2023, and 2025 services have no Albany County coverage.
+- Map links are shareable: the address records the selected parcel, map center and zoom, coloring, and base map (`?tab=mapview&parcel=...&lat=...&lng=...&z=...&layer=...&base=aerial`), and "Copy link to this view" copies it. Leaving the map tab drops those parameters.
+- Map drawing keeps parcel shapes between renders and only adds, removes, or restyles what changed. At the citywide view (about 25,000 shapes) a click on a parcel went from 1.2-1.8 seconds of main-thread work to under 0.1 seconds.
+- Exemption names explain themselves on hover, keyboard focus, or tap. Meanings come from the NYS Assessor Manual exemption code index, plus notes for Albany's local codes (50000, 51002, 99999).
 
 Assessment level: Albany assesses every property at a uniform percent of value (91.17% on the 2026 roll, 96% on the 2025 roll), and the roll's full market value is assessed value divided by that percent. The assessed-to-full-value ratio is therefore the same for nearly every parcel and is shown only as a record check, never as a fairness verdict. The app reads the percent from the loaded roll; nothing assumes a fixed level.
 

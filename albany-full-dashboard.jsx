@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useRef, useCallback, useEffect, createContext, useContext } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, ScatterChart, Scatter, LineChart, Line, Legend } from "recharts";
 import { LeafletMapView } from "./leaflet-map.jsx";
@@ -7,6 +7,7 @@ import propertyTypeClassificationCodes from "./property-type-classification-code
 import grievanceSettings from "./grievance-settings.json";
 import grievanceEngine from "./grievance-engine.js";
 import rollCompactFormat from "./roll-compact-format.js";
+import { googleMapsPropertyUrl, googleStreetViewUrl } from "./google-maps-links.js";
 
 const mergeDashboardSettings = (base, override) => {
   if(!override || typeof override !== "object" || Array.isArray(override)) return base;
@@ -46,6 +47,10 @@ const GS = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    .term-tip{position:relative;display:inline;cursor:help;text-decoration:underline dotted;text-decoration-color:rgba(100,116,139,.75);text-underline-offset:3px;border-radius:3px}
+    .term-tip:focus-visible{outline:2px solid var(--blue3);outline-offset:2px}
+    .term-tip .term-tip-bubble{position:absolute;left:0;top:calc(100% + 6px);z-index:90;width:max-content;max-width:min(300px,78vw);background:#0f172a;color:#f8fafc;font-family:var(--fb);font-size:12px;font-weight:400;font-style:normal;line-height:1.5;letter-spacing:0;text-transform:none;text-align:left;white-space:normal;padding:8px 10px;border-radius:8px;box-shadow:0 10px 24px rgba(15,23,42,.28);opacity:0;transform:translateY(-3px);pointer-events:none;transition:opacity .12s ease,transform .12s ease}
+    .term-tip:hover .term-tip-bubble,.term-tip:focus .term-tip-bubble{opacity:1;transform:none}
     :root{
       --bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#c8d3e2;
       --blue:#2563eb;--blue2:#3b82f6;--blue3:#1d4ed8;
@@ -1021,9 +1026,50 @@ const EXEMPTION_CODE_INFO = {
   "41934": { label:"Disability and limited-income exemption", kind:"disability", note:"For owners with a disability who meet the income limit." },
   "41400": { label:"Clergy exemption", kind:"other", note:"" },
   "44210": { label:"Home improvement exemption", kind:"other", note:"Temporarily excludes the added value of certain residential improvements." },
-  "50000": { label:"Wholly exempt property", kind:"other", note:"" },
-  "13350": { label:"City-owned public property", kind:"other", note:"Property the City owns and uses for a public purpose, such as parks, is exempt (RPTL 406(1))." },
-  "33200": { label:"Acquired by the City for unpaid taxes", kind:"other", note:"Property the City took through tax foreclosure is exempt while the City holds it (RPTL 406(5))." },
+  "41963": { label:"Historic property improvement", kind:"other", note:"Temporarily reduces taxes on the added value from restoring a locally designated historic property (RPTL 444-a)." },
+  "41966": { label:"Historic property improvement", kind:"other", note:"Temporarily reduces taxes on the added value from restoring a locally designated historic property (RPTL 444-a)." },
+  "41986": { label:"Low- or moderate-income housing", kind:"other", note:"Reduces taxes on qualifying low- or moderate-income housing (RPTL 421-e)." },
+  "47590": { label:"Mixed-use building conversion", kind:"other", note:"Phases in taxes on the added value from converting or renovating a building for mixed residential and commercial use (RPTL 485-a)." },
+  "47596": { label:"Mixed-use building conversion", kind:"other", note:"Phases in taxes on the added value from converting or renovating a building for mixed residential and commercial use (RPTL 485-a)." },
+  "47610": { label:"Business investment", kind:"other", note:"Temporarily reduces taxes on the added value of new or improved commercial or industrial buildings (RPTL 485-b)." },
+  "50000": { label:"Wholly exempt property (local code)", kind:"other", note:"A local code marking property that is fully exempt from property taxes. The roll does not say which law applies; ask the Assessor's Office for details." },
+  "51002": { label:"Condominium county reduction (local code)", kind:"other", note:"A local code that appears only on condominium units and lowers only the county taxable value. The roll does not define it; ask the Assessor's Office for details." },
+  "12100": { label:"New York State property", kind:"other", note:"Owned by New York State (RPTL 404(1))." },
+  "12200": { label:"NYS Teachers' Retirement System property", kind:"other", note:"Owned by the New York State Teachers' Retirement System (RPTL 404(3))." },
+  "12350": { label:"Public authority property", kind:"other", note:"Owned by a state public authority, such as the Dormitory Authority (RPTL 412 and Public Authorities Law)." },
+  "12360": { label:"Public authority property", kind:"other", note:"State code for property of a public authority (the State lists it under the Environmental Facilities Corporation). Albany's roll labels these \"Port of Albany\" (RPTL 412)." },
+  "12370": { label:"Local transportation authority", kind:"other", note:"Owned by a local transportation authority, here CDTA (RPTL 412 and Public Authorities Law)." },
+  "13100": { label:"County-owned property", kind:"other", note:"Owned by Albany County and used for a public purpose (RPTL 406(1))." },
+  "13350": { label:"City-owned public property", kind:"other", note:"Owned by the City and used for a public purpose, such as a park (RPTL 406(1))." },
+  "13440": { label:"Municipal utility property", kind:"other", note:"State code for city sewer or water property (RPTL 406(3)). Albany's roll labels this one county owned." },
+  "13500": { label:"Town-owned property", kind:"other", note:"Owned by a town and used for a public purpose (RPTL 406(1))." },
+  "13800": { label:"School district property", kind:"other", note:"Owned by a school district, such as a school building or field (RPTL 408)." },
+  "13890": { label:"Local public authority property", kind:"other", note:"Owned by a local public authority (RPTL 412 and Public Authorities Law)." },
+  "13970": { label:"Regional OTB corporation", kind:"other", note:"Owned by a regional off-track betting corporation (Racing Law 513)." },
+  "14000": { label:"Local public authority property", kind:"other", note:"Owned by a specific local public authority, such as a water or parking authority (RPTL 412 and Public Authorities Law)." },
+  "14100": { label:"Federal (U.S.) property", kind:"other", note:"Owned by the United States government (RPTL 400(1))." },
+  "14110": { label:"Federal property (specified uses)", kind:"other", note:"Owned by the United States for specified uses, such as a post office (State Law 54)." },
+  "18020": { label:"Industrial development agency (IDA)", kind:"other", note:"Held by a city or county industrial development agency, usually as part of an economic development project. The owner often makes payments in lieu of taxes (PILOT) instead (RPTL 412-a, General Municipal Law 874)." },
+  "18040": { label:"Urban renewal or public housing (municipal)", kind:"other", note:"Owned by a municipal agency for urban renewal or housing, here mostly the Albany Housing Authority (General Municipal Law 506, 555, 560)." },
+  "18060": { label:"Urban renewal (agency owned)", kind:"other", note:"Owned by an urban renewal agency (General Municipal Law 506, 555, 560)." },
+  "18180": { label:"Empire State Development (UDC) property", kind:"other", note:"Owned by the New York State Urban Development Corporation, now Empire State Development (non-housing use)." },
+  "21600": { label:"Clergy residence (parsonage)", kind:"other", note:"A residence owned by a religious organization for its clergy (RPTL 462)." },
+  "25110": { label:"Nonprofit: religious", kind:"other", note:"Owned by a nonprofit and used for religious purposes, such as a house of worship (RPTL 420-a)." },
+  "25120": { label:"Nonprofit: educational", kind:"other", note:"Owned by a nonprofit and used for education, such as a private school or college (RPTL 420-a)." },
+  "25130": { label:"Nonprofit: charitable", kind:"other", note:"Owned by a nonprofit and used for charitable purposes (RPTL 420-a)." },
+  "25210": { label:"Nonprofit: hospital", kind:"other", note:"Owned by a nonprofit and used as a hospital (RPTL 420-a)." },
+  "25230": { label:"Nonprofit: moral or mental improvement", kind:"other", note:"Owned by a nonprofit and used for the moral or mental improvement of people, such as community or youth programs (RPTL 420-a)." },
+  "25300": { label:"Nonprofit: other uses", kind:"other", note:"Owned by a nonprofit and used for purposes such as bible, tract, benevolent, or cemetery uses (RPTL 420-b)." },
+  "25400": { label:"Fraternal organization", kind:"other", note:"Owned by a fraternal organization (RPTL 428)." },
+  "25500": { label:"Nonprofit medical or dental", kind:"other", note:"Owned by a nonprofit medical or dental service corporation (RPTL 486)." },
+  "25900": { label:"Land bank", kind:"other", note:"Owned by a land bank, which holds vacant or abandoned property to return it to productive use (Not-for-Profit Corporation Law 1608)." },
+  "26100": { label:"Veterans organization", kind:"other", note:"Owned by a veterans organization, such as a VFW or American Legion post (RPTL 452)." },
+  "26250": { label:"Historical society", kind:"other", note:"Owned by a historical society (RPTL 444)." },
+  "26400": { label:"Volunteer fire company", kind:"other", note:"Owned by a volunteer fire company or department (RPTL 464(2))." },
+  "28520": { label:"Nonprofit nursing home", kind:"other", note:"Owned by a nonprofit nursing home corporation (RPTL 422)." },
+  "29350": { label:"Hospital, library, or playground trustees", kind:"other", note:"Held by trustees for a hospital, library, or playground (RPTL 438)." },
+  "33200": { label:"Taken by the county for unpaid taxes", kind:"other", note:"Albany County took this property through tax foreclosure. It is exempt while the county holds it (RPTL 406(5))." },
+  "33201": { label:"Taken by the county for unpaid taxes", kind:"other", note:"Albany County took this property through tax foreclosure. It is exempt while the county holds it (RPTL 406(5))." },
 };
 const tidyExemptionName = raw => (raw||"").toString().replace(/\s+/g," ").trim();
 const exemptionInfo = ex => {
@@ -1031,6 +1077,22 @@ const exemptionInfo = ex => {
   const known = EXEMPTION_CODE_INFO[code];
   if(known) return { ...known, code, rollName: tidyExemptionName(ex?.name) };
   return { label: tidyExemptionName(ex?.name) || `Exemption ${code}`, kind:"other", note:"", code, rollName: tidyExemptionName(ex?.name) };
+};
+// Exemption name with an explanation on hover, keyboard focus, or tap (the roll's abbreviations, like "SCH DIST",
+// mean little on their own). The explanation stays in the page text so screen readers read it too.
+const exemptionExplanation = ex => {
+  const info = exemptionInfo(ex);
+  const rollText = info.rollName && info.rollName.toLowerCase() !== info.label.toLowerCase() ? `Roll abbreviation: ${info.rollName}. ` : "";
+  return `${info.note ? `${info.note} ` : ""}${rollText}Exemption code ${info.code}.`;
+};
+const ExemptionTerm = ({ex, children}) => {
+  const info = exemptionInfo(ex);
+  return (
+    <span className="term-tip" tabIndex={0}>
+      {children ?? info.label}
+      <span className="term-tip-bubble" role="tooltip"> {exemptionExplanation(ex)}</span>
+    </span>
+  );
 };
 const isStarCreditRecord = ex => (ex?.code||"").toString().trim()==="99999";
 // Exemptions that actually reduce a taxable value on the roll (the STAR credit is paid separately).
@@ -1752,10 +1814,7 @@ const VirtualRows = ({items,rowHeight=96,height=480,overscan=4,renderRow,empty})
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ SHARED UI ATOMS ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */
 const googleLocationQuery = (address, zip, neighborhood) => [address, neighborhood, "Albany, NY", zip].filter(Boolean).join(", ");
-const googleMapsHref = (address, zip, neighborhood) => {
-  const q = googleLocationQuery(address, zip, neighborhood);
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
-};
+const googleMapsHref = (address, zip, neighborhood, latLng=null) => googleMapsPropertyUrl({ address, zip, latLng });
 const streetViewSettings = {
   embedApiKey: String(resolvedGrievanceSettings?.streetView?.embedApiKey || "").trim(),
   staticApiKey: String(resolvedGrievanceSettings?.streetView?.staticApiKey || resolvedGrievanceSettings?.streetView?.embedApiKey || "").trim(),
@@ -1862,14 +1921,15 @@ const StreetViewModal = ({open, onClose, address, zip, neighborhood, streetViewS
           <div style={{fontSize:11,color:"var(--gray2)",marginTop:4}}>{[neighborhood, zip].filter(Boolean).join(" | ") || "Albany, NY"}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",justifyContent:"flex-end"}}>
-          <a
+          {googleMapsHref(address, zip, neighborhood)&&<a
             href={googleMapsHref(address, zip, neighborhood)}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
+            aria-label={`Open ${address} in Google Maps (opens in a new tab)`}
             style={{fontSize:11,fontWeight:700,color:"var(--blue3)",textDecoration:"underline",textUnderlineOffset:2}}
           >
-            Open in Google Maps
-          </a>
+            Open in Google Maps <span aria-hidden="true">↗</span>
+          </a>}
           <button
             type="button"
             onClick={()=>onClose?.()}
@@ -2117,32 +2177,172 @@ const StreetViewPreview = ({address, zip, neighborhood, streetViewLatLng=null, s
     <StreetViewModal open={streetViewOpen} onClose={()=>setStreetViewOpen(false)} address={address} zip={zip} neighborhood={neighborhood} streetViewSrc={streetViewSrc} />
   </>;
 };
-const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, children, stopPropagation=true, style={}}) => {
-  const label = children ?? address ?? "(no address)";
-  if(!address) return <>{label}</>;
+// Parcel locations for Google links, built from the boundary file (albany-parcel-geometry.json) and the street
+// centerlines (both in UTM zone 18N meters). App provides { latLng(parcelId), streetView(parcelId, address) } once the
+// files load. Addresses alone are enough for Google Maps search links; Street View needs coordinates.
+const ParcelLocationContext = createContext(null);
+const UTM18_CENTRAL_MERIDIAN = -75;
+const streetNameKey = raw => String(raw||"").toLowerCase()
+  .replace(/\(.*?\)/g, " ").replace(/\bunit\b.*$/, " ").replace(/#\S*/g, " ")
+  .replace(/\bwest\b/g, "w").replace(/\beast\b/g, "e").replace(/\bnorth\b/g, "n").replace(/\bsouth\b/g, "s")
+  .replace(/\bmount\b/g, "mt").replace(/\bsaint\b/g, "st")
+  .replace(/[^a-z0-9]/g, "");
+const addressStreetName = address => String(address||"").replace(/^(?:rear\s+|pt\s+)?[\d.\-]+[a-z]?\s+/i, "");
+const nearestPointOnStreets = (streets, x, y, maxDistance) => {
+  let best = null;
+  for(const street of streets){
+    const b = street.b;
+    if(Array.isArray(b) && (x < b[0]-maxDistance || x > b[2]+maxDistance || y < b[1]-maxDistance || y > b[3]+maxDistance)) continue;
+    for(const line of street.g || []){
+      for(let i=1;i<line.length;i++){
+        const [x1,y1] = line[i-1], [x2,y2] = line[i];
+        const dx = x2-x1, dy = y2-y1, len2 = dx*dx+dy*dy;
+        const t = len2 ? Math.max(0, Math.min(1, ((x-x1)*dx+(y-y1)*dy)/len2)) : 0;
+        const px = x1+t*dx, py = y1+t*dy, d = Math.hypot(px-x, py-y);
+        if(d <= maxDistance && (!best || d < best.d)) best = { x:px, y:py, d };
+      }
+    }
+  }
+  return best;
+};
+const buildParcelLocationLookup = (parcelGeometry, streetCenterlines) => {
+  const source = parcelGeometry?.parcels;
+  if(!source || Array.isArray(source)) return null;
+  const keyByNorm = new Map();
+  for(const key of Object.keys(source)) keyByNorm.set(normalizeParcelId(key), key);
+  const streets = Array.isArray(streetCenterlines?.streets) ? streetCenterlines.streets : [];
+  const streetsByName = new Map();
+  for(const street of streets){
+    const key = streetNameKey(street.n);
+    if(!key) continue;
+    if(!streetsByName.has(key)) streetsByName.set(key, []);
+    streetsByName.get(key).push(street);
+  }
+  const latLngCache = new Map();
+  const streetViewCache = new Map();
+  const centerOf = id => { const key = keyByNorm.get(id); return key ? source[key]?.c || null : null; };
+  const latLng = parcelId => {
+    const id = normalizeParcelId(parcelId || "");
+    if(!id) return null;
+    if(latLngCache.has(id)) return latLngCache.get(id);
+    const center = centerOf(id);
+    const value = center ? projectNativePointToLatLng(center) : null;
+    if(value || !center) latLngCache.set(id, value);
+    return value;
+  };
+  // Street View: start on the property's own street at the point nearest the parcel, facing the parcel. Falls back
+  // to the nearest street of any name, then to the parcel center (facing north) when no street is within 150 m.
+  const streetView = (parcelId, address="") => {
+    const id = normalizeParcelId(parcelId || "");
+    if(!id) return null;
+    if(streetViewCache.has(id)) return streetViewCache.get(id);
+    const center = centerOf(id);
+    const parcelLatLng = center ? projectNativePointToLatLng(center) : null;
+    if(!parcelLatLng) return null;
+    const named = streetsByName.get(streetNameKey(addressStreetName(address))) || [];
+    const spot = (named.length ? nearestPointOnStreets(named, center[0], center[1], 150) : null)
+      || nearestPointOnStreets(streets, center[0], center[1], 150);
+    let value = { latLng: parcelLatLng, heading: null };
+    if(spot && spot.d >= 3){
+      const gridBearing = Math.atan2(center[0]-spot.x, center[1]-spot.y) * 180 / Math.PI;
+      const convergence = (parcelLatLng[1] - UTM18_CENTRAL_MERIDIAN) * Math.sin(parcelLatLng[0] * Math.PI / 180);
+      value = { latLng: projectNativePointToLatLng([spot.x, spot.y]) || parcelLatLng, heading: gridBearing + convergence };
+    }
+    streetViewCache.set(id, value);
+    return value;
+  };
+  return { latLng, streetView };
+};
+const streetViewHrefFor = (location, parcelId, address, fallbackLatLng=null) => {
+  const target = location?.streetView ? location.streetView(parcelId, address) : null;
+  return googleStreetViewUrl(target || { latLng: fallbackLatLng });
+};
+// Map actions shown with an address. The address text is not a link; each action names the map it opens:
+// "App map" stays in this site, "Google Maps" and "Street View" open Google in a new tab.
+const MapLinkPinIcon = ({size=11}) => <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" style={{flexShrink:0}}><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>;
+const mapActionTextStyle = {display:"inline-flex",alignItems:"center",gap:3,fontFamily:"var(--fb)",fontSize:11,fontWeight:700,lineHeight:1.35,whiteSpace:"nowrap",textDecoration:"underline",textUnderlineOffset:2,background:"transparent",border:"none",padding:0,cursor:"pointer"};
+const MapActionLinks = ({address, zip, neighborhood, parcelId=null, parcel=null, latLng=null, streetViewHref=null, stopPropagation=true}) => {
+  const stop = e => { if(stopPropagation) e.stopPropagation(); };
+  const googleHref = googleMapsHref(address, zip, neighborhood, latLng);
   return (
-    <span style={{display:"inline-flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
-      <a
-        href={googleMapsHref(address, zip, neighborhood)}
-        target="_blank"
-        rel="noreferrer"
-        onClick={e=>{ if(stopPropagation) e.stopPropagation(); }}
-        title={`Open ${address}${neighborhood?` (${neighborhood})`:""}${zip?` ${zip}`:""} in Google Maps`}
-        style={{color:"inherit",textDecoration:"underline",textDecorationColor:"rgba(59,130,246,.55)",textUnderlineOffset:2,...style}}
-      >
-        {label}
-        {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` | ${neighborhood}`}</span>}
-      </a>
+    <span style={{display:"inline-flex",alignItems:"center",gap:12,rowGap:2,flexWrap:"wrap"}}>
       <button
         type="button"
-        onClick={e=>{ if(stopPropagation) e.stopPropagation(); dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel }); }}
-        title={`Show ${address} on the map`}
-        aria-label={`Show ${address} on the map`}
-        style={{background:"transparent",border:"none",padding:0,color:"var(--teal2)",fontSize:"0.85em",fontWeight:700,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}
-      >
-        Show on map
-      </button>
+        onClick={e=>{ stop(e); dispatchApplicationMapJump({ address, zip, neighborhood, parcelId: parcelId || parcel?.parcelId || "", parcel }); }}
+        title={`Show ${address} on the map in this app`}
+        aria-label={`Show ${address} on the app map`}
+        style={{...mapActionTextStyle,color:"var(--teal2)"}}
+      ><MapLinkPinIcon/>App map</button>
+      {googleHref&&<a
+        href={googleHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={stop}
+        title={`Open ${address} in Google Maps (new tab)`}
+        aria-label={`Open ${address} in Google Maps (opens in a new tab)`}
+        style={{...mapActionTextStyle,color:"var(--blue3)"}}
+      >Google Maps<span aria-hidden="true">↗</span></a>}
+      {streetViewHref&&<a
+        href={streetViewHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={stop}
+        title={`Open Street View near ${address} in Google Maps (new tab)`}
+        aria-label={`Open Google Street View near ${address} (opens in a new tab)`}
+        style={{...mapActionTextStyle,color:"var(--blue3)"}}
+      >Street View<span aria-hidden="true">↗</span></a>}
     </span>
+  );
+};
+const AddrLink = ({address, zip, neighborhood, parcelId=null, parcel=null, children, stopPropagation=true, style={}, showStreetView=false, streetViewLatLng=null}) => {
+  const location = useContext(ParcelLocationContext);
+  const label = children ?? address ?? "(no address)";
+  if(!address) return <>{label}</>;
+  const id = parcelId || parcel?.parcelId;
+  const latLng = (location ? location.latLng(id) : null) || streetViewLatLng;
+  const streetViewHref = showStreetView ? streetViewHrefFor(location, id, address, latLng) : null;
+  return (
+    <span style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start",gap:2,maxWidth:"100%",minWidth:0,verticalAlign:"top"}}>
+      <span style={{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",...style}}>
+        {label}
+        {neighborhood&&<span style={{opacity:.75,fontSize:"0.9em"}}>{` | ${neighborhood}`}</span>}
+      </span>
+      <MapActionLinks address={address} zip={zip} neighborhood={neighborhood} parcelId={parcelId} parcel={parcel} latLng={latLng} streetViewHref={streetViewHref} stopPropagation={stopPropagation}/>
+    </span>
+  );
+};
+// Larger version for the property page.
+const mapButtonStyle = {display:"inline-flex",alignItems:"center",gap:6,borderRadius:8,padding:"7px 12px",fontFamily:"var(--fb)",fontSize:12,fontWeight:700,lineHeight:1.2,cursor:"pointer",minHeight:36,textDecoration:"none",whiteSpace:"nowrap"};
+const PropertyMapButtons = ({p}) => {
+  const location = useContext(ParcelLocationContext);
+  const latLng = location ? location.latLng(p.parcelId) : null;
+  const streetViewHref = streetViewHrefFor(location, p.parcelId, p.address, latLng);
+  const googleHref = googleMapsHref(p.address, p.zip, p.neighborhood, latLng);
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        <button
+          type="button"
+          onClick={()=>dispatchApplicationMapJump({ address: p.address || p.parcelId, zip: p.zip, neighborhood: p.neighborhood, parcelId: p.parcelId, parcel: p })}
+          style={{...mapButtonStyle,background:"rgba(13,148,136,.10)",border:"1px solid rgba(13,148,136,.35)",color:"var(--teal2)"}}
+        ><MapLinkPinIcon size={13}/>Show on app map</button>
+        {googleHref&&<a
+          href={googleHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${p.address || "this property"} in Google Maps (opens in a new tab)`}
+          style={{...mapButtonStyle,background:"var(--card)",border:"1px solid var(--border2)",color:"var(--blue3)"}}
+        >Open in Google Maps <span aria-hidden="true">↗</span></a>}
+        {streetViewHref&&<a
+          href={streetViewHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open Google Street View near ${p.address || "this property"} (opens in a new tab)`}
+          style={{...mapButtonStyle,background:"var(--card)",border:"1px solid var(--border2)",color:"var(--blue3)"}}
+        >Street View <span aria-hidden="true">↗</span></a>}
+      </div>
+      {(googleHref||streetViewHref)&&<div style={{fontSize:11,color:"var(--gray2)",marginTop:6,lineHeight:1.5}}>"Show on app map" stays on this site. Google Maps and Street View open in a new tab.</div>}
+    </div>
   );
 };
 const PROP_CLASSIFICATION_MAP = (propertyTypeClassificationCodes || []).reduce((acc, row) => {
@@ -5336,8 +5536,9 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
   return (
     <section className="fi" aria-label={`Property details for ${p.address}`} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:20,height:"100%",maxWidth:"100%",minWidth:0,overflowY:"auto",position:"relative"}}>
       <button onClick={onClose} aria-label="Close property details" style={{position:"absolute",top:12,right:12,background:"var(--card2)",border:"1px solid var(--border)",borderRadius:8,color:"var(--gray)",width:36,height:36,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>x</button>
-      <h2 tabIndex={-1} data-detail-heading="true" style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:40,lineHeight:1.1,overflowWrap:"anywhere",wordBreak:"break-word"}}><AddrLink address={p.address} zip={p.zip} neighborhood={p.neighborhood} parcelId={p.parcelId}>{p.address}</AddrLink></h2>
+      <h2 tabIndex={-1} data-detail-heading="true" style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:800,marginBottom:2,paddingRight:40,lineHeight:1.1,overflowWrap:"anywhere",wordBreak:"break-word"}}>{p.address}</h2>
       <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)",marginBottom:10,overflowWrap:"anywhere",wordBreak:"break-word"}}>Parcel {p.parcelId} | Albany, NY {p.zip}{parcelAreaSummary(p)?` | ${parcelAreaSummary(p)}`:""}</div>
+      <PropertyMapButtons p={p}/>
       {/* Save My Home button */}
       {onSaveHome&&<button onClick={()=>onSaveHome(p)} style={{
         display:"flex",alignItems:"center",gap:6,
@@ -5438,8 +5639,8 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
           return (
             <div key={i} style={{background:"var(--card)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 11px",marginBottom:7}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4}}>
-                <span style={{fontSize:12,fontWeight:700,color:"var(--white)"}}>{info.label}</span>
-                <span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)"}}>Code {info.code}</span>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--white)"}}><ExemptionTerm ex={ex}/></span>
+                <span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--gray)"}}>Code {info.code}{info.rollName&&info.rollName.toLowerCase()!==info.label.toLowerCase()?` | roll: ${info.rollName}`:""}</span>
               </div>
               {info.note&&<div style={{fontSize:11,color:"var(--gray)",lineHeight:1.6,marginBottom:isStarCreditRecord(ex)?0:4}}>{info.note}</div>}
               {!isStarCreditRecord(ex)&&<div className="cols-3" style={{display:"grid",gap:4,fontSize:11,color:"var(--gray)"}}>
@@ -5481,7 +5682,7 @@ const DetailPanel = ({p,onClose,myHome,onSaveHome,ownerPortfolioIndex,onSelectPa
           {p.eastCoord>0&&<Row label="State plane coordinates" value={`E-${p.eastCoord} N-${p.nrthCoord}`} mono/>}
           {Number.isFinite(Number(inventoryOf(p)?.inventoryTotalAssessedValue))&&<Row label="Residential inventory assessed value" value={$f(Number(inventoryOf(p)?.inventoryTotalAssessedValue))} mono/>}
           {inventoryOf(p)?.joinSource&&<Row label="Residential inventory source" value={inventoryOf(p)?.joinSource}/>}
-          {p.exemptions.map((ex,i)=><Row key={i} label={`Roll exemption text (${ex.code})`} value={ex.name} mono/>)}
+          {p.exemptions.map((ex,i)=><Row key={i} label={`Roll exemption text (${ex.code})`} value={<ExemptionTerm ex={ex}>{ex.name}</ExemptionTerm>} mono/>)}
         </div>
       </details>
     </section>
@@ -5758,7 +5959,7 @@ const Browse = ({parcels,meta={},compareList,onCompare,myHome,onSaveHome,onOpenH
               <td style={{padding:"7px 11px",fontFamily:"var(--fm)"}}>{$f(p.assessedValue)}</td>
               <td style={{padding:"7px 11px"}}><span style={{color:FC[eqFlagFast(p)],fontFamily:"var(--fm)",fontWeight:600}}>{eqRFast(p)}%</span></td>
               <td style={{padding:"7px 11px"}}>{p.parcelType==="HOMESTEAD"?"Homestead":"Non-homestead"}</td>
-              <td style={{padding:"7px 11px"}}>{p.exemptions.map((e,idx)=><Badge key={`${e.code}-${idx}`} color="#92400e" small>{exemptionInfo(e).label}</Badge>)}</td>
+              <td style={{padding:"7px 11px"}}>{p.exemptions.map((e,idx)=><Badge key={`${e.code}-${idx}`} color="#92400e" small><ExemptionTerm ex={e}/></Badge>)}</td>
             </tr>)}</tbody>
           </table>
         </div>}
@@ -6063,7 +6264,7 @@ const Ownership = ({parcels, onDrill, ownerPortfolioGroups=[], salesByParcelId=n
                   </div>
                   </button>
                 {openDupes[g.id]&&<div style={{padding:"0 16px 16px"}}>
-                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Use the parcel list below to jump into each record. The "Show on map" link next to each address opens that property on the map.</div>
+                  <div style={{fontSize:11,color:"var(--gray2)",lineHeight:1.6,marginBottom:10}}>Use the parcel list below to jump into each record. Under each address, "App map" shows the property on this site's map and "Google Maps" opens it in Google Maps in a new tab.</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
                     {g.parcels.map(p=><div key={p.parcelId} style={{background:"var(--card)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)",minWidth:0}}>
                       <div style={{fontFamily:"var(--fd)",fontWeight:600,fontSize:13,overflowWrap:"anywhere",wordBreak:"break-word"}}>{p.owner1}</div>
@@ -6149,7 +6350,7 @@ const Equity = ({parcels, onDrill, meta={}}) => {
     parcels.forEach(p=>taxReducingExemptions(p).forEach(e=>{
       const info=exemptionInfo(e);
       const key=info.label;
-      if(!m[key])m[key]={name:key,rollNames:new Set(),count:0,totalCounty:0,totalCity:0,totalSchool:0};
+      if(!m[key])m[key]={name:key,code:e.code,rollNames:new Set(),count:0,totalCounty:0,totalCity:0,totalSchool:0};
       m[key].rollNames.add(e.name);
       m[key].count++;m[key].totalCounty+=e.countyAmt;m[key].totalCity+=e.cityAmt;m[key].totalSchool+=e.schoolAmt;
     }));
@@ -6296,7 +6497,7 @@ const Equity = ({parcels, onDrill, meta={}}) => {
               <div key={ex.name} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:9,padding:"12px 16px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
                   <div>
-                    <span style={{fontWeight:700,fontSize:14,color:"var(--white)"}}>{ex.name}</span>
+                    <span style={{fontWeight:700,fontSize:14,color:"var(--white)"}}><ExemptionTerm ex={{code:ex.code,name:[...ex.rollNames].join(", ")}}>{ex.name}</ExemptionTerm></span>
                     <span style={{fontSize:12,color:"var(--gray)",marginLeft:10}}>{onDrill?<button onClick={()=>onDrill({title:`Properties with ${ex.name}`,parcels:parcels.filter(p=>taxReducingExemptions(p).some(e=>exemptionInfo(e).label===ex.name))})} style={{background:"var(--card2)",border:"1px solid var(--border2)",color:"var(--blue3)",borderRadius:5,padding:"2px 8px",fontSize:12,cursor:"pointer",fontWeight:600}}>{ex.count.toLocaleString()} properties</button>:`${ex.count.toLocaleString()} properties`}</span>
                   </div>
                   <div style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--white)"}}>{$f(ex.totalCounty+ex.totalCity+ex.totalSchool)} total</div>
@@ -7371,7 +7572,7 @@ const TaxTools = ({parcels, myHome, meta={}, ownerPortfolioIndex=null, salesByPa
             <div className="cols-2" style={{display:"grid",gap:10,marginBottom:14}}>
               <div style={{background:"var(--card)",borderRadius:9,padding:"12px 14px",border:"1px solid var(--border2)"}}>
                 <div style={{fontSize:12,fontWeight:700,color:"var(--white)",marginBottom:6}}>Recorded on the roll</div>
-                {found.exemptions.length>0?found.exemptions.map((e,idx)=>{const info=exemptionInfo(e);return <div key={`${e.code}-${idx}`} style={{fontSize:12,marginBottom:6,lineHeight:1.6}}><b>{info.label}</b>{isStarCreditRecord(e)?" - paid by New York State, not shown as a reduction here":` - lowers taxable value by up to ${$f(Math.max(e.schoolAmt||0,e.countyAmt||0,e.cityAmt||0))}`}</div>;}):<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>No exemptions or STAR credit recorded on this roll.</div>}
+                {found.exemptions.length>0?found.exemptions.map((e,idx)=>{const info=exemptionInfo(e);return <div key={`${e.code}-${idx}`} style={{fontSize:12,marginBottom:6,lineHeight:1.6}}><b><ExemptionTerm ex={e}/></b>{isStarCreditRecord(e)?" - paid by New York State, not shown as a reduction here":` - lowers taxable value by up to ${$f(Math.max(e.schoolAmt||0,e.countyAmt||0,e.cityAmt||0))}`}</div>;}):<div style={{fontSize:12,color:"var(--gray)",lineHeight:1.6}}>No exemptions or STAR credit recorded on this roll.</div>}
               </div>
               <div style={{background:"rgba(37,99,235,.05)",borderRadius:9,padding:"12px 14px",border:"1px solid rgba(37,99,235,.18)"}}>
                 <div style={{fontSize:12,fontWeight:700,color:"var(--white)",marginBottom:6}}>Programs an owner may want to check</div>
@@ -9141,6 +9342,8 @@ const LegacyCanvasMapView = ({parcels, parcelGeometry, streetCenterlines, onDril
   );
 };
 const MapView = ({ownerPortfolioIndex=null, ...props}) => {
+  const parcelLocation = useContext(ParcelLocationContext);
+  const streetViewUrlForParcel = useCallback(parcel => parcel ? streetViewHrefFor(parcelLocation, parcel.parcelId, parcel.address) : null, [parcelLocation]);
   const getOwnerPortfolioGroup = useCallback(parcel=>{
     if(!parcel || !ownerPortfolioIndex) return null;
     const ownerKey = normalizeOwnerPortfolioKey(parcel.owner1 || "");
@@ -9166,6 +9369,11 @@ const MapView = ({ownerPortfolioIndex=null, ...props}) => {
         inventoryBathText,
         hasInventoryProfile,
         getOwnerPortfolioGroup,
+        streetViewUrlForParcel,
+        priorOf,
+        assessedChangePct,
+        describeChangeShort,
+        ExemptionTerm,
         $f,
         SectionTitle,
         Sub,
@@ -9538,6 +9746,7 @@ export default function App() {
   const [meta,setMeta]=useState({});
   const [parcelGeometry,setParcelGeometry]=useState(null);
   const [streetCenterlines,setStreetCenterlines]=useState(null);
+  const parcelLocationLookup=useMemo(()=>buildParcelLocationLookup(parcelGeometry, streetCenterlines),[parcelGeometry, streetCenterlines]);
   const [neighborhoodBoundaries,setNeighborhoodBoundaries]=useState(null);
   const [neighborhoodAssociations,setNeighborhoodAssociations]=useState(null);
   const [salesRecords,setSalesRecords]=useState([]);
@@ -9566,6 +9775,7 @@ export default function App() {
         const current = url.searchParams.get("tab") || "home";
         // Leaving the comparison drops its shared-link parameters so the URL describes the page actually shown.
         if(nextTab!=="assessment") COMPARE_SNAPSHOT_QUERY_KEYS.forEach(key=>url.searchParams.delete(key));
+        if(nextTab!=="mapview") ["parcel","lat","lng","z","layer","base"].forEach(key=>url.searchParams.delete(key));
         if(nextTab==="home") url.searchParams.delete("tab");
         else url.searchParams.set("tab", nextTab);
         if(current!==nextTab || url.toString()!==window.location.href){
@@ -10053,7 +10263,8 @@ const handleFile=useCallback(e=>{
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>openPropertyDetails(currentHome)} style={{background:"var(--green)",color:"white",border:"none",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>View details</button>
               <button onClick={()=>checkAssessmentForParcel(currentHome)} style={{background:"var(--card)",color:"var(--blue3)",border:"1px solid var(--border2)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Check my assessment</button>
-              <button onClick={()=>openApplicationMapForParcel({ parcel: currentHome })} style={{background:"var(--card)",color:"var(--gray)",border:"1px solid var(--border2)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Show on map</button>
+              <button onClick={()=>openApplicationMapForParcel({ parcel: currentHome })} style={{background:"var(--card)",color:"var(--gray)",border:"1px solid var(--border2)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Show on app map</button>
+              {googleMapsHref(currentHome.address, currentHome.zip, currentHome.neighborhood, parcelLocationLookup ? parcelLocationLookup.latLng(currentHome.parcelId) : null)&&<a href={googleMapsHref(currentHome.address, currentHome.zip, currentHome.neighborhood, parcelLocationLookup ? parcelLocationLookup.latLng(currentHome.parcelId) : null)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${currentHome.address} in Google Maps (opens in a new tab)`} style={{display:"inline-flex",alignItems:"center",gap:6,background:"var(--card)",color:"var(--blue3)",border:"1px solid var(--border2)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38,textDecoration:"none",boxSizing:"border-box"}}>Open in Google Maps <span aria-hidden="true">↗</span></a>}
               <button onClick={()=>saveHome(null)} style={{background:"none",color:"var(--red2)",border:"1px solid rgba(185,28,28,.3)",borderRadius:9,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:38}}>Forget my home</button>
             </div>
           </div>
@@ -10104,7 +10315,7 @@ const handleFile=useCallback(e=>{
   const renderTab = () => {
     if(tab==="home") return renderHome();
     if(tab==="browse") return <Browse parcels={parcels} meta={meta} compareList={compareList} onCompare={toggleCompare} myHome={myHome} onSaveHome={saveHome} onOpenHomeSetup={()=>setShowHomeSetup(true)} ownerPortfolioIndex={ownerPortfolioIndex} focusRequest={focusRequest?.target==="browse"?focusRequest:null} onCheckAssessment={checkAssessmentForParcel} onOpenTaxRelief={openTaxReliefForParcel} compareLimitNotice={compareLimitNotice}/>;
-    if(tab==="mapview") return <MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} neighborhoodBoundaries={neighborhoodBoundaries} neighborhoodAssociations={neighborhoodAssociations} compareList={compareList} onCompare={toggleCompare} onDrill={setDrillList} jumpRequest={mapJumpRequest} advanced={true} ownerPortfolioIndex={ownerPortfolioIndex}/>;
+    if(tab==="mapview") return <MapView parcels={parcels} parcelGeometry={parcelGeometry} streetCenterlines={streetCenterlines} neighborhoodBoundaries={neighborhoodBoundaries} neighborhoodAssociations={neighborhoodAssociations} compareList={compareList} onCompare={toggleCompare} onDrill={setDrillList} jumpRequest={mapJumpRequest} advanced={true} ownerPortfolioIndex={ownerPortfolioIndex} onOpenProperty={openPropertyDetails}/>;
     if(tab==="equity") return <Equity parcels={parcels} onDrill={setDrillList} meta={meta}/>;
     if(tab==="assessment") return <TaxTools key="assessment" mode="assessment" parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex} salesByParcelId={salesByParcelId} parcelGeometry={parcelGeometry} dataSource={dataSource} autoloadPhase={autoloadState.phase} uploading={uploading} focusRequest={focusRequest?.target==="assessment"?focusRequest:null} onOpenTaxRelief={openTaxReliefForParcel} onCheckAssessment={checkAssessmentForParcel}/>;
     if(tab==="taxtools") return <TaxTools key="relief" mode="relief" parcels={parcels} myHome={myHome} meta={meta} ownerPortfolioIndex={ownerPortfolioIndex} salesByParcelId={salesByParcelId} parcelGeometry={parcelGeometry} dataSource={dataSource} autoloadPhase={autoloadState.phase} uploading={uploading} focusRequest={focusRequest?.target==="relief"?focusRequest:null} onOpenTaxRelief={openTaxReliefForParcel} onCheckAssessment={checkAssessmentForParcel}/>;
@@ -10132,6 +10343,7 @@ const handleFile=useCallback(e=>{
     }}>{t.label}</button>
   );
   return (
+    <ParcelLocationContext.Provider value={parcelLocationLookup}>
     <>
       <GS/>
       <a href="#main-content" className="skip-link">Skip to main content</a>
@@ -10287,6 +10499,7 @@ const handleFile=useCallback(e=>{
         </div>
       )}
     </>
+    </ParcelLocationContext.Provider>
   );
 }
 
